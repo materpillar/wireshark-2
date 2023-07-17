@@ -50,7 +50,7 @@ dissect_csp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data 
     proto_tree_add_item(csp_header_tree, hf_csp_rdp, tvb, 0, 4, ENC_BIG_ENDIAN);
     proto_tree_add_item(csp_header_tree, hf_csp_crc, tvb, 0, 4, ENC_BIG_ENDIAN);
 
-    proto_tree *csp_payload_tree = proto_tree_add_subtree(csp_tree, tvb, 4, -1, ett_csp_header, NULL,
+    proto_tree *csp_payload_tree = proto_tree_add_subtree(csp_tree, tvb, 4, -1, ett_csp_payload, NULL,
         "CSP Payload");
     proto_tree_add_item(csp_payload_tree, hf_csp_payload, tvb, 4, tvb_reported_length(tvb) - 4, ENC_BIG_ENDIAN);
 
@@ -144,6 +144,8 @@ proto_register_csp(void)
 
     proto_register_field_array(proto_csp, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    register_dissector("csp", dissect_csp, proto_csp);
 }
 
 void
