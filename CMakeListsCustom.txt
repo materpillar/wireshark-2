@@ -12,6 +12,7 @@
 # Fail CMake stage if any of these plugins are missing from source tree
 set(CUSTOM_PLUGIN_SRC_DIR
 	plugins/epan/ccsds_aos_sdlp
+	plugins/epan/csp
 )
 
 # Do not fail CMake stage if any of the optional plugins are missing from source tree
