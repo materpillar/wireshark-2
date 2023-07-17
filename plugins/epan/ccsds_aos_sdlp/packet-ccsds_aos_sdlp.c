@@ -1,5 +1,6 @@
 #include "config.h"
 #include <epan/packet.h>
+#include <wiretap/wtap.h>
 
 static int proto_aos_sdlp = -1;
 
