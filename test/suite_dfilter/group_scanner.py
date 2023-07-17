@@ -2,13 +2,11 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-import unittest
-import fixtures
+import pytest
 from suite_dfilter.dfiltertest import *
 
 
-@fixtures.uses_fixtures
-class case_scanner(unittest.TestCase):
+class TestDfilterScanner:
     trace_file = "http.pcap"
 
     def test_dquote_1(self, checkDFilterCount):
@@ -31,6 +29,6 @@ class case_scanner(unittest.TestCase):
         dfilter = 'http.request.method == "\\111EAD"'
         checkDFilterCount(dfilter, 0)
 
-    def test_dquote_6(self, checkDFilterCount):
-        dfilter = 'http.request.method == "\\HEAD"'
-        checkDFilterCount(dfilter, 1)
+    def test_dquote_6(self, checkDFilterFail):
+        dfilter = r'http.request.method == "\HEAD"'
+        checkDFilterFail(dfilter, 'not a valid character escape sequence')

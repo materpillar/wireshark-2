@@ -53,11 +53,6 @@ static const true_false_string UP_truth = {
     "User Acknowledgement optional"
 };
 
-static const true_false_string TVETOK_truth = {
-    "True",
-    "False"
-};
-
 static const value_string vals_wtp_pdu_type[] = {
     { 0, "Not Allowed" },
     { 1, "Invoke" },
@@ -323,7 +318,7 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     gint           dataLen;
 
 #define SZINFO_SIZE 256
-    szInfo=(char *)wmem_alloc(wmem_packet_scope(), SZINFO_SIZE);
+    szInfo=(char *)wmem_alloc(pinfo->pool, SZINFO_SIZE);
 
     b0 = tvb_get_guint8 (tvb, offCur + 0);
     /* Discover Concatenated PDUs */
@@ -386,7 +381,7 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 #endif
 
     /* Develop the string to put in the Info column */
-    returned_length =  g_snprintf(szInfo, SZINFO_SIZE, "WTP %s",
+    returned_length =  snprintf(szInfo, SZINFO_SIZE, "WTP %s",
             val_to_str(pdut, vals_wtp_pdu_type, "Unknown PDU type 0x%x"));
     str_index += MIN(returned_length, SZINFO_SIZE-str_index);
 
@@ -396,7 +391,7 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             TID = tvb_get_ntohs(tvb, offCur + 1);
             psn = 0;
             clsTransaction = transaction_class(tvb_get_guint8(tvb, offCur + 3));
-            returned_length = g_snprintf(&szInfo[str_index], SZINFO_SIZE-str_index,
+            returned_length = snprintf(&szInfo[str_index], SZINFO_SIZE-str_index,
                     " Class %d", clsTransaction);
             str_index += MIN(returned_length, SZINFO_SIZE-str_index);
             cbHeader = 4;
@@ -408,7 +403,7 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             TID = tvb_get_ntohs(tvb, offCur + 1);
             psn = tvb_get_guint8(tvb, offCur + 3);
             if (psn != 0) {
-                returned_length = g_snprintf(&szInfo[str_index], SZINFO_SIZE-str_index,
+                returned_length = snprintf(&szInfo[str_index], SZINFO_SIZE-str_index,
                         " (%u)", psn);
                 str_index += MIN(returned_length, SZINFO_SIZE-str_index);
             }
@@ -440,7 +435,7 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             break;
     };
     if (fRID) {
-        /*returned_length =*/ g_snprintf(&szInfo[str_index], SZINFO_SIZE-str_index, " R" );
+        /*returned_length =*/ snprintf(&szInfo[str_index], SZINFO_SIZE-str_index, " R" );
         /*str_index += MIN(returned_length, SZINFO_SIZE-str_index);*/
     };
     /* In the interest of speed, if "tree" is NULL, don't do any work not
@@ -450,7 +445,7 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         fprintf(stderr, "dissect_wtp: cbHeader = %d\n", cbHeader);
 #endif
         /* NOTE - Length will be set when we process the TPI */
-        ti = proto_tree_add_item(tree, proto_wtp, tvb, offCur, 0, ENC_NA);
+        ti = proto_tree_add_item(tree, proto_wtp, tvb, offCur, -1, ENC_NA);
 #ifdef DEBUG
         fprintf(stderr, "dissect_wtp: (7) Returned from proto_tree_add_item\n");
 #endif
@@ -864,7 +859,7 @@ proto_register_wtp(void)
         },
         { &hf_wtp_header_Ack_flag_TVETOK,
             { "Tve/Tok flag", "wtp.ack.tvetok",
-                FT_BOOLEAN, 8, TFS( &TVETOK_truth ), 0x04,
+                FT_BOOLEAN, 8, TFS( &tfs_true_false ), 0x04,
                 NULL, HFILL
             }
     },

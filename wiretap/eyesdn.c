@@ -13,7 +13,10 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
+
+static int eyesdn_file_type_subtype = -1;
+
+void register_eyesdn(void);
 
 /* This module reads the output of the EyeSDN USB S0/E1 ISDN probes
  * They store HDLC frames of D and B channels in a binary format
@@ -130,7 +133,7 @@ wtap_open_return_val eyesdn_open(wtap *wth, int *err, gchar **err_info)
 		return WTAP_OPEN_NOT_MINE;
 
 	wth->file_encap = WTAP_ENCAP_PER_PACKET;
-	wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_EYESDN;
+	wth->file_type_subtype = eyesdn_file_type_subtype;
 	wth->snapshot_length = 0; /* not known */
 	wth->subtype_read = eyesdn_read;
 	wth->subtype_seek_read = eyesdn_seek_read;
@@ -175,7 +178,7 @@ read_eyesdn_rec(FILE_T fh, wtap_rec *rec, Buffer *buf, int *err,
 	guint8		hdr[EYESDN_HDR_LENGTH];
 	time_t		secs;
 	int		usecs;
-	int		pkt_len;
+	guint		pkt_len;
 	guint8		channel, direction;
 	guint8		*pd;
 
@@ -233,7 +236,7 @@ read_eyesdn_rec(FILE_T fh, wtap_rec *rec, Buffer *buf, int *err,
 
 		if(pkt_len != CELL_LEN) {
 			*err = WTAP_ERR_BAD_FILE;
-			*err_info = g_strdup_printf(
+			*err_info = ws_strdup_printf(
 			    "eyesdn: ATM cell has a length != 53 (%u)",
 			    pkt_len);
 			return FALSE;
@@ -289,12 +292,13 @@ read_eyesdn_rec(FILE_T fh, wtap_rec *rec, Buffer *buf, int *err,
 
 	if(pkt_len > WTAP_MAX_PACKET_SIZE_STANDARD) {
 		*err = WTAP_ERR_BAD_FILE;
-		*err_info = g_strdup_printf("eyesdn: File has %u-byte packet, bigger than maximum of %u",
+		*err_info = ws_strdup_printf("eyesdn: File has %u-byte packet, bigger than maximum of %u",
 		    pkt_len, WTAP_MAX_PACKET_SIZE_STANDARD);
 		return FALSE;
 	}
 
 	rec->rec_type = REC_TYPE_PACKET;
+	rec->block = wtap_block_create(WTAP_BLOCK_PACKET);
 	rec->presence_flags = WTAP_HAS_TS;
 	rec->ts.secs = secs;
 	rec->ts.nsecs = usecs * 1000;
@@ -338,19 +342,18 @@ static gboolean eyesdn_dump(wtap_dumper *wdh,
 			    const wtap_rec *rec,
 			    const guint8 *pd, int *err, gchar **err_info);
 
-gboolean eyesdn_dump_open(wtap_dumper *wdh, int *err)
+static gboolean eyesdn_dump_open(wtap_dumper *wdh, int *err, gchar **err_info _U_)
 {
 	wdh->subtype_write=eyesdn_dump;
 
 	if (!wtap_dump_file_write(wdh, eyesdn_hdr_magic,
 	    EYESDN_HDR_MAGIC_SIZE, err))
 		return FALSE;
-	wdh->bytes_dumped += EYESDN_HDR_MAGIC_SIZE;
 	*err=0;
 	return TRUE;
 }
 
-int eyesdn_dump_can_write_encap(int encap)
+static int eyesdn_dump_can_write_encap(int encap)
 {
 	switch (encap) {
 	case WTAP_ENCAP_ISDN:
@@ -470,6 +473,31 @@ static gboolean eyesdn_dump(wtap_dumper *wdh,
 	if (!esc_write(wdh, pd, size, err))
 		return FALSE;
 	return TRUE;
+}
+
+static const struct supported_block_type eyesdn_blocks_supported[] = {
+	/*
+	 * We support packet blocks, with no comments or other options.
+	 */
+	{ WTAP_BLOCK_PACKET, MULTIPLE_BLOCKS_SUPPORTED, NO_OPTIONS_SUPPORTED }
+};
+
+static const struct file_type_subtype_info eyesdn_info = {
+	"EyeSDN USB S0/E1 ISDN trace format", "eyesdn", "trc", NULL,
+	FALSE, BLOCKS_SUPPORTED(eyesdn_blocks_supported),
+	eyesdn_dump_can_write_encap, eyesdn_dump_open, NULL
+};
+
+void register_eyesdn(void)
+{
+	eyesdn_file_type_subtype = wtap_register_file_type_subtype(&eyesdn_info);
+
+	/*
+	 * Register name for backwards compatibility with the
+	 * wtap_filetypes table in Lua.
+	 */
+	wtap_register_backwards_compatibility_lua_name("EYESDN",
+	    eyesdn_file_type_subtype);
 }
 
 /*

@@ -31,6 +31,9 @@
 void proto_register_hip(void);
 void proto_reg_handoff_hip(void);
 
+static dissector_handle_t hip_ip_handle;
+static dissector_handle_t hip_udp_handle;
+
 #define HIP_UDP_PORT 10500
 
 #define HI_ALG_DSA 3
@@ -997,10 +1000,10 @@ dissect_hip_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, proto_item *ti, i
                         break;
                 if (di_type == 1) {
                         /* RFC 1035 */
-                        proto_tree_add_item(t, hf_hip_fqdn, tvb, offset+16+hi_len, di_len, ENC_ASCII|ENC_NA);
+                        proto_tree_add_item(t, hf_hip_fqdn, tvb, offset+16+hi_len, di_len, ENC_ASCII);
                 } else if (di_type == 2) {
                         /* RFC 4282 */
-                        proto_tree_add_item(t, hf_hip_nai, tvb, offset+16+hi_len, di_len, ENC_ASCII|ENC_NA);
+                        proto_tree_add_item(t, hf_hip_nai, tvb, offset+16+hi_len, di_len, ENC_ASCII);
                 }
                 break;
         case PARAM_CERT: /* CERT */
@@ -1371,7 +1374,7 @@ proto_register_hip(void)
 
                 { &hf_hip_tlv_notification_type,
                   { "Notification Message Type", "hip.tlv.notification_type",
-                    FT_UINT16, BASE_DEC, VALS(notification_vals), 0xFFFF, NULL, HFILL }},
+                    FT_UINT16, BASE_DEC, VALS(notification_vals), 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_notification_data,
                   { "Notification Data", "hip.tlv.notification_data",
@@ -1458,7 +1461,7 @@ proto_register_hip(void)
                     FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_locator_address,
-                  { "Locator" , "hip.tlv.locator_address",
+                  { "Locator", "hip.tlv.locator_address",
                     FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_cert_group,
@@ -1498,63 +1501,63 @@ proto_register_hip(void)
                     FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_transaction_minta,
-                  { "Min Ta" , "hip.tlv_transaction_minta",
+                  { "Min Ta", "hip.tlv_transaction_minta",
                     FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_from_address,
-                  { "Address" , "hip.tlv_from_address",
+                  { "Address", "hip.tlv_from_address",
                     FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_rvs_address,
-                  { "RVS Address" , "hip.tlv_rvs_address",
+                  { "RVS Address", "hip.tlv_rvs_address",
                     FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_relay_from_protocol,
-                  { "Protocol" , "hip.tlv_relay_from_protocol",
+                  { "Protocol", "hip.tlv_relay_from_protocol",
                     FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_relay_from_reserved,
-                  { "Reserved" , "hip.tlv_relay_from_reserved",
+                  { "Reserved", "hip.tlv_relay_from_reserved",
                     FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_relay_from_address,
-                  { "Address" , "hip.tlv_relay_from_address",
+                  { "Address", "hip.tlv_relay_from_address",
                     FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_relay_to_protocol,
-                  { "Protocol" , "hip.tlv_relay_to_protocol",
+                  { "Protocol", "hip.tlv_relay_to_protocol",
                     FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_relay_to_reserved,
-                  { "Reserved" , "hip.tlv_relay_to_reserved",
+                  { "Reserved", "hip.tlv_relay_to_reserved",
                     FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_relay_to_address,
-                  { "Address" , "hip.tlv_relay_to_address",
+                  { "Address", "hip.tlv_relay_to_address",
                     FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_reg_from_protocol,
-                  { "Protocol" , "hip.tlv_reg_from_protocol",
+                  { "Protocol", "hip.tlv_reg_from_protocol",
                     FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_reg_from_reserved,
-                  { "Reserved" , "hip.tlv_reg_from_reserved",
+                  { "Reserved", "hip.tlv_reg_from_reserved",
                     FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_tlv_reg_from_address,
-                  { "Address" , "hip.tlv_reg_from_address",
+                  { "Address", "hip.tlv_reg_from_address",
                     FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_encrypted_parameter_data,
-                  { "Encrypted Parameter Data" , "hip.encrypted_parameter_data",
+                  { "Encrypted Parameter Data", "hip.encrypted_parameter_data",
                     FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_fqdn,
-                  { "FQDN" , "hip.fqdn",
+                  { "FQDN", "hip.fqdn",
                     FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
                 { &hf_hip_nai,
-                  { "NAI" , "hip.nai",
+                  { "NAI", "hip.nai",
                     FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
         };
@@ -1580,6 +1583,8 @@ proto_register_hip(void)
         expert_module_t* expert_hip;
 
         proto_hip = proto_register_protocol("Host Identity Protocol", "HIP", "hip");
+        hip_ip_handle = register_dissector("hip", dissect_hip, proto_hip);
+        hip_udp_handle = register_dissector("hip_udp", dissect_hip_in_udp, proto_hip);
 
         proto_register_field_array(proto_hip, hf, array_length(hf));
         proto_register_subtree_array(ett, array_length(ett));
@@ -1590,14 +1595,8 @@ proto_register_hip(void)
 void
 proto_reg_handoff_hip(void)
 {
-        dissector_handle_t hip_handle;
-        dissector_handle_t hip_handle2;
-
-        hip_handle = create_dissector_handle(dissect_hip, proto_hip);
-        dissector_add_uint("ip.proto", IP_PROTO_HIP, hip_handle);
-
-        hip_handle2 = create_dissector_handle(dissect_hip_in_udp, proto_hip);
-        dissector_add_uint_with_preference("udp.port", HIP_UDP_PORT, hip_handle2);
+        dissector_add_uint("ip.proto", IP_PROTO_HIP, hip_ip_handle);
+        dissector_add_uint_with_preference("udp.port", HIP_UDP_PORT, hip_udp_handle);
 }
 /*
  * Editor modelines  -  https://www.wireshark.org/tools/modelines.html

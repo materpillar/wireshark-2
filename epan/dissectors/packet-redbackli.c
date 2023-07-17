@@ -93,7 +93,7 @@ redbackli_dissect_avp(guint8 avptype, guint8 avplen, tvbuff_t *tvb, gint offset,
 			break;
 		case(RB_AVP_LABEL):
 			proto_tree_add_item(st, hf_redbackli_label, tvb,
-					    offset+2, avplen, ENC_ASCII|ENC_NA);
+					    offset+2, avplen, ENC_ASCII);
 			break;
 		case(RB_AVP_EOH):
 			proto_tree_add_item(st, hf_redbackli_eohpad, tvb,
@@ -237,17 +237,13 @@ void proto_register_redbackli(void) {
 		{ &hf_redbackli_sessid,
 			{ "Session Id", "redbackli.sessid", FT_UINT32, BASE_DEC, NULL, 0x0,
 			"Session Identifier", HFILL }},
-#if 0 /* XXX: If one goes by the heuristic then this field can be variable length ??
-	 In the absence of any documentation We'll assume that's the case
-	 (even though 'direction' sounds like a fixed length field */
-		{ &hf_redbackli_dir,
-			{ "Direction", "redbackli.dir", FT_UINT8, BASE_DEC, NULL, 0x0,
-			NULL, HFILL }},
-#else
+		/* XXX: If one goes by the heuristic then this field can be variable length ??
+		 * In the absence of any documentation We'll assume that's the case
+		 * (even though 'direction' sounds like a fixed length field
+		 */
 		{ &hf_redbackli_dir,
 			{ "Direction", "redbackli.dir", FT_BYTES, BASE_NONE, NULL, 0x0,
 			NULL, HFILL }},
-#endif
 		{ &hf_redbackli_label,
 			{ "Label", "redbackli.label", FT_STRING, BASE_NONE, NULL, 0x0,
 			NULL, HFILL }},

@@ -25,6 +25,7 @@
 #include "packet-zbee-security.h"
 #include "packet-zbee-aps.h"
 #include "packet-zbee-zdp.h"
+#include "packet-zbee-tlv.h"
 
 /*************************
  * Function Declarations *
@@ -51,6 +52,7 @@ static guint   dissect_zbee_t2                 (tvbuff_t *tvb, proto_tree *tree,
 /* Helper routine. */
 static guint   zbee_apf_transaction_len    (tvbuff_t *tvb, guint offset, guint8 type);
 
+void dissect_zbee_aps_status_code(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset);
 void proto_register_zbee_aps(void);
 
 /********************
@@ -231,6 +233,8 @@ static const value_string zbee_aps_cmd_names[] = {
     { ZBEE_APS_CMD_TUNNEL,          "Tunnel" },
     { ZBEE_APS_CMD_VERIFY_KEY,      "Verify Key" },
     { ZBEE_APS_CMD_CONFIRM_KEY,     "Confirm Key" },
+    { ZBEE_APS_CMD_RELAY_MSG_DOWNSTREAM, "Relay Message Downstream" },
+    { ZBEE_APS_CMD_RELAY_MSG_UPSTREAM,   "Relay Message Upstream" },
     { 0, NULL }
 };
 
@@ -512,7 +516,7 @@ const range_string zbee_aps_apid_names[] = {
 };
 
 /* ZigBee Application Profile ID Abbreviations */
-const range_string zbee_aps_apid_abbrs[] = {
+static const range_string zbee_aps_apid_abbrs[] = {
     { ZBEE_DEVICE_PROFILE,  ZBEE_DEVICE_PROFILE,    "ZDP" },
     { ZBEE_PROFILE_IPM,     ZBEE_PROFILE_IPM,       "IPM" },
     { ZBEE_PROFILE_T1,      ZBEE_PROFILE_T1,        "T1" },
@@ -651,7 +655,7 @@ const range_string zbee_aps_cid_names[] = {
 };
 
 /* APS Test Profile #2 Cluster Names */
-const value_string zbee_aps_t2_cid_names[] = {
+static const value_string zbee_aps_t2_cid_names[] = {
     { ZBEE_APS_T2_CID_BR,         "Broadcast Request"},
     { ZBEE_APS_T2_CID_BTADR,      "Broadcast to All Devices Response"},
     { ZBEE_APS_T2_CID_BTARACR,    "Broadcast to All Routers and Coordinator Response"},
@@ -674,7 +678,7 @@ const value_string zbee_aps_t2_cid_names[] = {
 };
 
 /* APS Test Profile #2 Buffer Test Response Status Names */
-const value_string zbee_aps_t2_btres_status_names[] = {
+static const value_string zbee_aps_t2_btres_status_names[] = {
     { ZBEE_APS_T2_CID_BTRES_S_SBT,   "Successful Buffer Test"},
     { ZBEE_APS_T2_CID_BTRES_S_TFOFA, "Transmission Failure on First Attempt"},
 
@@ -944,8 +948,9 @@ dissect_zbee_aps(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
         switch (tvb_get_letohs(tvb, offset + 2)) {
             case ZBEE_DEVICE_PROFILE:
                 proto_tree_add_uint_format(aps_tree, hf_zbee_aps_zdp_cluster, tvb, offset, 2, nwk->cluster_id,
-                    "%s (Cluster ID: 0x%04x)", val_to_str(nwk->cluster_id, zbee_zdp_cluster_names,
-                    "Unknown Device Profile Cluster"), nwk->cluster_id);
+                    "%s (Cluster ID: 0x%04x)",
+                    val_to_str_const(nwk->cluster_id, zbee_zdp_cluster_names, "Unknown Device Profile Cluster"),
+                    nwk->cluster_id);
                 break;
             case ZBEE_PROFILE_T2:
                 proto_tree_add_item(aps_tree, hf_zbee_aps_t2_cluster, tvb, offset, 2, ENC_LITTLE_ENDIAN);
@@ -1179,7 +1184,7 @@ dissect_zbee_aps_no_endpt:
  *@param tvb pointer to buffer containing raw packet.
  *@param pinfo pointer to packet information fields
  *@param tree pointer to data tree Wireshark uses to display packet.
- *@param proto_root pointer to the root of the APS tree
+ *@param version version of APS
  *@param data raw packet private data.
 */
 static void dissect_zbee_aps_cmd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint8 version, void *data)
@@ -1265,9 +1270,16 @@ static void dissect_zbee_aps_cmd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
             offset = dissect_zbee_aps_confirm_key(tvb, pinfo, cmd_tree, offset);
             break;
 
+        case ZBEE_APS_CMD_RELAY_MSG_DOWNSTREAM:
+        case ZBEE_APS_CMD_RELAY_MSG_UPSTREAM:
+            break;
+
         default:
             break;
     } /* switch */
+
+    /* Dissect any TLVs */
+    offset = dissect_zbee_tlvs(tvb, pinfo, tree, offset, data, ZBEE_TLV_SRC_TYPE_ZBEE_APS, cmd_id);
 
     /* Check for any excess bytes. */
     if (offset < tvb_captured_length(tvb)) {
@@ -1711,6 +1723,7 @@ dissect_zbee_aps_tunnel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
     return offset;
 } /* dissect_zbee_aps_tunnel */
 
+
 /**
  *ZigBee Application Framework dissector for Wireshark. Note
  *
@@ -1920,6 +1933,14 @@ static const enum_val_t zbee_zcl_protocol_version_enums[] = {
 
 gint gPREF_zbee_se_protocol_version = ZBEE_SE_VERSION_1_4;
 
+void
+dissect_zbee_aps_status_code(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset)
+{
+    guint status = tvb_get_guint8(tvb, offset);
+    proto_tree_add_item(tree, hf_zbee_aps_cmd_status, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+    col_append_fstr(pinfo->cinfo, COL_INFO, ", %s", val_to_str_const(status, zbee_aps_status_names, "Unknown Status"));
+}
+
 /**
  *ZigBee APS protocol registration routine.
  *
@@ -1940,7 +1961,7 @@ void proto_register_zbee_aps(void)
                 NULL, HFILL }},
 
             { &hf_zbee_aps_fcf_ack_format,
-            { "Acknowledgement Format",  "zbee_aps.ack_format", FT_BOOLEAN, 8, NULL, ZBEE_APS_FCF_ACK_FORMAT,
+            { "Acknowledgement Format", "zbee_aps.ack_format", FT_BOOLEAN, 8, NULL, ZBEE_APS_FCF_ACK_FORMAT,
                 NULL, HFILL }},
 
             { &hf_zbee_aps_fcf_security,
@@ -2060,7 +2081,7 @@ void proto_register_zbee_aps(void)
                 NULL, HFILL }},
 
             { &hf_zbee_aps_cmd_key_hash,
-            { "Key Hash",                    "zbee_aps.cmd.key_hash", FT_BYTES, BASE_NONE, NULL, 0x0,
+            { "Key Hash",               "zbee_aps.cmd.key_hash", FT_BYTES, BASE_NONE, NULL, 0x0,
                 NULL, HFILL }},
 
             { &hf_zbee_aps_cmd_key_type,
@@ -2068,11 +2089,11 @@ void proto_register_zbee_aps(void)
                     VALS(zbee_aps_key_names), 0x0, NULL, HFILL }},
 
             { &hf_zbee_aps_cmd_dst,
-            { "Extended Destination",    "zbee_aps.cmd.dst", FT_EUI64, BASE_NONE, NULL, 0x0,
+            { "Extended Destination",   "zbee_aps.cmd.dst", FT_EUI64, BASE_NONE, NULL, 0x0,
                 NULL, HFILL }},
 
             { &hf_zbee_aps_cmd_src,
-            { "Extended Source",         "zbee_aps.cmd.src", FT_EUI64, BASE_NONE, NULL, 0x0,
+            { "Extended Source",        "zbee_aps.cmd.src", FT_EUI64, BASE_NONE, NULL, 0x0,
                 NULL, HFILL }},
 
             { &hf_zbee_aps_cmd_seqno,
@@ -2089,7 +2110,7 @@ void proto_register_zbee_aps(void)
                 "Update device status.", HFILL }},
 
             { &hf_zbee_aps_cmd_status,
-            { "Status",          "zbee_aps.cmd.status", FT_UINT8, BASE_HEX,
+            { "Status",                 "zbee_aps.cmd.status", FT_UINT8, BASE_HEX,
                     VALS(zbee_aps_status_names), 0x0,
                 "APS status.", HFILL }},
 

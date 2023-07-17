@@ -27,7 +27,7 @@
 #include "main_status_bar.h"
 #include "profile_dialog.h"
 #include <ui/qt/utils/stock_icon.h>
-#include <ui/qt/utils/tango_colors.h>
+#include <ui/qt/utils/color_utils.h>
 #include <ui/qt/capture_file.h>
 #include <ui/qt/widgets/clickable_label.h>
 
@@ -36,6 +36,7 @@
 #include <QHBoxLayout>
 #include <QSplitter>
 #include <QToolButton>
+#include <QLatin1Char>
 
 // To do:
 // - Use the CaptureFile class.
@@ -60,14 +61,10 @@ statusbar_push_temporary_msg(const gchar *msg_format, ...)
     if (!cur_main_status_bar_) return;
 
     va_start(ap, msg_format);
-#if QT_VERSION >= QT_VERSION_CHECK(5, 5, 0)
     push_msg = QString::vasprintf(msg_format, ap);
-#else
-    push_msg.vsprintf(msg_format, ap);
-#endif
     va_end(ap);
 
-    wsApp->pushStatus(WiresharkApplication::TemporaryStatus, push_msg);
+    mainApp->pushStatus(WiresharkApplication::TemporaryStatus, push_msg);
 }
 
 /*
@@ -170,11 +167,11 @@ MainStatusBar::MainStatusBar(QWidget *parent) :
     progress_frame_.enableTaskbarUpdates(true);
 #endif
 
-    connect(wsApp, SIGNAL(appInitialized()), splitter, SLOT(show()));
-    connect(wsApp, SIGNAL(appInitialized()), this, SLOT(appInitialized()));
+    connect(mainApp, SIGNAL(appInitialized()), splitter, SLOT(show()));
+    connect(mainApp, SIGNAL(appInitialized()), this, SLOT(appInitialized()));
     connect(&info_status_, SIGNAL(toggleTemporaryFlash(bool)),
             this, SLOT(toggleBackground(bool)));
-    connect(wsApp, SIGNAL(profileNameChanged(const gchar *)),
+    connect(mainApp, SIGNAL(profileNameChanged(const gchar *)),
             this, SLOT(setProfileName()));
     connect(&profile_status_, SIGNAL(clickedAt(QPoint,Qt::MouseButton)),
             this, SLOT(showProfileMenu(QPoint,Qt::MouseButton)));
@@ -249,6 +246,7 @@ void MainStatusBar::changeEvent(QEvent *event)
     if (event->type() == QEvent::LanguageChange) {
         info_status_.popText(STATUS_CTX_MAIN);
         info_status_.pushText(ready_msg_, STATUS_CTX_MAIN);
+        setStatusbarForCaptureFile();
         showCaptureStatistics();
         setProfileName();
     }
@@ -259,6 +257,18 @@ void MainStatusBar::setCaptureFile(capture_file *cf)
 {
     cap_file_ = cf;
     comment_button_->setEnabled(cap_file_ != NULL);
+}
+
+void MainStatusBar::setStatusbarForCaptureFile()
+{
+    if (cap_file_ && cap_file_->filename && (cap_file_->state != FILE_CLOSED)) {
+        popGenericStatus(STATUS_CTX_FILE);
+        QString msgtip = QString("%1 (%2)")
+                .arg(cap_file_->filename)
+                .arg(file_size_to_qstring(cap_file_->f_datalen));
+        pushGenericStatus(STATUS_CTX_FILE,
+                gchar_free_to_qstring(cf_get_display_name(cap_file_)), msgtip);
+    }
 }
 
 void MainStatusBar::selectedFieldChanged(FieldInformation * finfo)
@@ -355,7 +365,7 @@ void MainStatusBar::setProfileName()
 void MainStatusBar::appInitialized()
 {
     setProfileName();
-    connect(wsApp->mainWindow(), SIGNAL(framesSelected(QList<int>)), this, SLOT(selectedFrameChanged(QList<int>)));
+    connect(mainApp->mainWindow(), SIGNAL(framesSelected(QList<int>)), this, SLOT(selectedFrameChanged(QList<int>)));
 }
 
 void MainStatusBar::selectedFrameChanged(QList<int>)
@@ -368,71 +378,75 @@ void MainStatusBar::showCaptureStatistics()
     QString packets_str;
 
     QList<int> rows;
-    MainWindow * mw = qobject_cast<MainWindow *>(wsApp->mainWindow());
+    MainWindow * mw = qobject_cast<MainWindow *>(mainApp->mainWindow());
     if (mw)
         rows = mw->selectedRows(true);
 
 #ifdef HAVE_LIBPCAP
     if (cap_file_) {
         /* Do we have any packets? */
-        if (cs_fixed_ && cs_count_ > 0) {
-            if (prefs.gui_qt_show_selected_packet && rows.count() == 1) {
-                packets_str.append(QString(tr("Selected Packet: %1 %2 "))
-                                   .arg(rows.at(0))
-                                   .arg(UTF8_MIDDLE_DOT));
-            }
-            packets_str.append(QString(tr("Packets: %1"))
-                               .arg(cs_count_));
-        } else if (cs_count_ > 0) {
-            if (prefs.gui_qt_show_selected_packet && rows.count() == 1) {
+        if (!cs_fixed_) {
+            cs_count_ = cap_file_->count;
+        }
+        if (cs_count_ > 0) {
+            if (prefs.gui_show_selected_packet && rows.count() == 1) {
                 packets_str.append(QString(tr("Selected Packet: %1 %2 "))
                                    .arg(rows.at(0))
                                    .arg(UTF8_MIDDLE_DOT));
             }
             packets_str.append(QString(tr("Packets: %1 %4 Displayed: %2 (%3%)"))
-                               .arg(cap_file_->count)
+                               .arg(cs_count_)
                                .arg(cap_file_->displayed_count)
-                               .arg((100.0*cap_file_->displayed_count)/cap_file_->count, 0, 'f', 1)
+                               .arg((100.0*cap_file_->displayed_count)/cs_count_, 0, 'f', 1)
                                .arg(UTF8_MIDDLE_DOT));
             if (rows.count() > 1) {
                 packets_str.append(QString(tr(" %1 Selected: %2 (%3%)"))
                                    .arg(UTF8_MIDDLE_DOT)
                                    .arg(rows.count())
-                                   .arg((100.0*rows.count())/cap_file_->count, 0, 'f', 1));
+                                   .arg((100.0*rows.count())/cs_count_, 0, 'f', 1));
             }
             if (cap_file_->marked_count > 0) {
                 packets_str.append(QString(tr(" %1 Marked: %2 (%3%)"))
                                    .arg(UTF8_MIDDLE_DOT)
                                    .arg(cap_file_->marked_count)
-                                   .arg((100.0*cap_file_->marked_count)/cap_file_->count, 0, 'f', 1));
+                                   .arg((100.0*cap_file_->marked_count)/cs_count_, 0, 'f', 1));
             }
             if (cap_file_->drops_known) {
                 packets_str.append(QString(tr(" %1 Dropped: %2 (%3%)"))
                                    .arg(UTF8_MIDDLE_DOT)
                                    .arg(cap_file_->drops)
-                                   .arg((100.0*cap_file_->drops)/cap_file_->count, 0, 'f', 1));
+                                   .arg((100.0*cap_file_->drops)/cs_count_, 0, 'f', 1));
             }
             if (cap_file_->ignored_count > 0) {
                 packets_str.append(QString(tr(" %1 Ignored: %2 (%3%)"))
                                    .arg(UTF8_MIDDLE_DOT)
                                    .arg(cap_file_->ignored_count)
-                                   .arg((100.0*cap_file_->ignored_count)/cap_file_->count, 0, 'f', 1));
+                                   .arg((100.0*cap_file_->ignored_count)/cs_count_, 0, 'f', 1));
             }
             if (cap_file_->packet_comment_count > 0) {
                 packets_str.append(QString(tr(" %1 Comments: %2"))
                     .arg(UTF8_MIDDLE_DOT)
                     .arg(cap_file_->packet_comment_count));
             }
-            if (prefs.gui_qt_show_file_load_time && !cap_file_->is_tempfile) {
+            if (prefs.gui_show_file_load_time && !cap_file_->is_tempfile) {
                 /* Loading an existing file */
                 gulong computed_elapsed = cf_get_computed_elapsed(cap_file_);
                 packets_str.append(QString(tr(" %1  Load time: %2:%3.%4"))
                                    .arg(UTF8_MIDDLE_DOT)
-                                   .arg(computed_elapsed/60000)
-                                   .arg(computed_elapsed%60000/1000)
-                                   .arg(computed_elapsed%1000));
+                                   .arg(computed_elapsed/60000, 2, 10, QLatin1Char('0'))
+                                   .arg(computed_elapsed%60000/1000, 2, 10, QLatin1Char('0'))
+                                   .arg(computed_elapsed%1000, 3, 10, QLatin1Char('0')));
             }
         }
+    } else if (cs_fixed_ && cs_count_ > 0) {
+        /* There shouldn't be any rows without a cap_file_ but this is benign */
+        if (prefs.gui_show_selected_packet && rows.count() == 1) {
+            packets_str.append(QString(tr("Selected Packet: %1 %2 "))
+                .arg(rows.at(0))
+                .arg(UTF8_MIDDLE_DOT));
+        }
+        packets_str.append(QString(tr("Packets: %1"))
+            .arg(cs_count_));
     }
 #endif // HAVE_LIBPCAP
 
@@ -482,9 +496,10 @@ void MainStatusBar::showProfileMenu(const QPoint &global_pos, Qt::MouseButton bu
 {
     ProfileModel model;
 
-    QMenu profile_menu_;
-    QActionGroup global(this);
-    QActionGroup user(this);
+    QMenu * profile_menu = new QMenu(this);
+    profile_menu->setAttribute(Qt::WA_DeleteOnClose);
+    QActionGroup * global = new QActionGroup(profile_menu);
+    QActionGroup * user = new QActionGroup(profile_menu);
 
     for (int cnt = 0; cnt < model.rowCount(); cnt++)
     {
@@ -502,16 +517,16 @@ void MainStatusBar::showProfileMenu(const QPoint &global_pos, Qt::MouseButton bu
 
         if (idx.data(ProfileModel::DATA_IS_DEFAULT).toBool())
         {
-            pa = profile_menu_.addAction(name);
+            pa = profile_menu->addAction(name);
         }
         else if (idx.data(ProfileModel::DATA_IS_GLOBAL).toBool())
         {
             /* Check if this profile does not exist as user */
             if (cnt == model.findByName(name))
-                pa = global.addAction(name);
+                pa = global->addAction(name);
         }
         else
-            pa = user.addAction(name);
+            pa = user->addAction(name);
 
         if (! pa)
             continue;
@@ -527,12 +542,12 @@ void MainStatusBar::showProfileMenu(const QPoint &global_pos, Qt::MouseButton bu
         connect(pa, &QAction::triggered, this, &MainStatusBar::switchToProfile);
     }
 
-    profile_menu_.addActions(user.actions());
-    profile_menu_.addSeparator();
-    profile_menu_.addActions(global.actions());
+    profile_menu->addActions(user->actions());
+    profile_menu->addSeparator();
+    profile_menu->addActions(global->actions());
 
     if (button == Qt::LeftButton) {
-        profile_menu_.exec(global_pos);
+        profile_menu->popup(global_pos);
     } else {
 
         bool enable_edit = false;
@@ -541,52 +556,53 @@ void MainStatusBar::showProfileMenu(const QPoint &global_pos, Qt::MouseButton bu
         if (! idx.data(ProfileModel::DATA_IS_DEFAULT).toBool() && ! idx.data(ProfileModel::DATA_IS_GLOBAL).toBool())
             enable_edit = true;
 
-        profile_menu_.setTitle(tr("Switch to"));
-        QMenu ctx_menu_;
-        QAction * action = ctx_menu_.addAction(tr("Manage Profiles…"), this, SLOT(manageProfile()));
+        profile_menu->setTitle(tr("Switch to"));
+        QMenu * ctx_menu_ = new QMenu(this);
+        ctx_menu_->setAttribute(Qt::WA_DeleteOnClose);
+        QAction * action = ctx_menu_->addAction(tr("Manage Profiles…"), this, SLOT(manageProfile()));
         action->setProperty("dialog_action_", (int)ProfileDialog::ShowProfiles);
 
-        ctx_menu_.addSeparator();
-        action = ctx_menu_.addAction(tr("New…"), this, SLOT(manageProfile()));
+        ctx_menu_->addSeparator();
+        action = ctx_menu_->addAction(tr("New…"), this, SLOT(manageProfile()));
         action->setProperty("dialog_action_", (int)ProfileDialog::NewProfile);
-        action = ctx_menu_.addAction(tr("Edit…"), this, SLOT(manageProfile()));
+        action = ctx_menu_->addAction(tr("Edit…"), this, SLOT(manageProfile()));
         action->setProperty("dialog_action_", (int)ProfileDialog::EditCurrentProfile);
         action->setEnabled(enable_edit);
-        action = ctx_menu_.addAction(tr("Delete"), this, SLOT(manageProfile()));
+        action = ctx_menu_->addAction(tr("Delete"), this, SLOT(manageProfile()));
         action->setProperty("dialog_action_", (int)ProfileDialog::DeleteCurrentProfile);
         action->setEnabled(enable_edit);
-        ctx_menu_.addSeparator();
+        ctx_menu_->addSeparator();
 
 #ifdef HAVE_MINIZIP
         QMenu * importMenu = new QMenu(tr("Import"));
-        action = importMenu->addAction(tr("from zip file"), this, SLOT(manageProfile()));
+        action = importMenu->addAction(tr("From Zip File..."), this, SLOT(manageProfile()));
         action->setProperty("dialog_action_", (int)ProfileDialog::ImportZipProfile);
-        action = importMenu->addAction(tr("from directory"), this, SLOT(manageProfile()));
+        action = importMenu->addAction(tr("From Directory..."), this, SLOT(manageProfile()));
         action->setProperty("dialog_action_", (int)ProfileDialog::ImportDirProfile);
-        ctx_menu_.addMenu(importMenu);
+        ctx_menu_->addMenu(importMenu);
 
         if (model.userProfilesExist())
         {
-            QMenu * exportMenu = new QMenu(tr("Export"));
+            QMenu * exportMenu = new QMenu(tr("Export"), ctx_menu_);
             if (enable_edit)
             {
-                action = exportMenu->addAction(tr("selected personal profile"), this, SLOT(manageProfile()));
+                action = exportMenu->addAction(tr("Selected Personal Profile..."), this, SLOT(manageProfile()));
                 action->setProperty("dialog_action_", (int)ProfileDialog::ExportSingleProfile);
                 action->setEnabled(enable_edit);
             }
-            action = exportMenu->addAction(tr("all personal profiles"), this, SLOT(manageProfile()));
+            action = exportMenu->addAction(tr("All Personal Profiles..."), this, SLOT(manageProfile()));
             action->setProperty("dialog_action_", (int)ProfileDialog::ExportAllProfiles);
-            ctx_menu_.addMenu(exportMenu);
+            ctx_menu_->addMenu(exportMenu);
         }
 
 #else
-        action = ctx_menu_.addAction(tr("Import"), this, SLOT(manageProfile()));
+        action = ctx_menu_->addAction(tr("Import"), this, SLOT(manageProfile()));
         action->setProperty("dialog_action_", (int)ProfileDialog::ImportDirProfile);
 #endif
-        ctx_menu_.addSeparator();
+        ctx_menu_->addSeparator();
 
-        ctx_menu_.addMenu(&profile_menu_);
-        ctx_menu_.exec(global_pos);
+        ctx_menu_->addMenu(profile_menu);
+        ctx_menu_->popup(global_pos);
     }
 }
 
@@ -595,12 +611,10 @@ void MainStatusBar::toggleBackground(bool enabled)
     if (enabled) {
         setStyleSheet(QString(
                           "QStatusBar {"
-                          "  color: #%1;"
-                          "  background-color: #%2;"
+                          "  background-color: %2;"
                           "}"
                           )
-                      .arg(ws_css_warn_text, 6, 16, QChar('0'))
-                      .arg(ws_css_warn_background, 6, 16, QChar('0')));
+                      .arg(ColorUtils::warningBackground().name()));
     } else {
         setStyleSheet(QString());
     }
@@ -612,7 +626,7 @@ void MainStatusBar::switchToProfile()
 
     if (pa && pa->property("profile_name").isValid()) {
         QString profile = pa->property("profile_name").toString();
-        wsApp->setConfigurationProfile(profile.toUtf8().constData());
+        mainApp->setConfigurationProfile(profile.toUtf8().constData());
     }
 }
 
@@ -621,10 +635,11 @@ void MainStatusBar::manageProfile()
     QAction *pa = qobject_cast<QAction*>(sender());
 
     if (pa) {
-        ProfileDialog cp_dialog;
+        ProfileDialog * cp_dialog = new ProfileDialog(this);
+        cp_dialog->setAttribute(Qt::WA_DeleteOnClose);
 
         int profileAction = pa->property("dialog_action_").toInt();
-        cp_dialog.execAction(static_cast<ProfileDialog::ProfileAction>(profileAction));
+        cp_dialog->execAction(static_cast<ProfileDialog::ProfileAction>(profileAction));
     }
 }
 
@@ -637,6 +652,9 @@ void MainStatusBar::captureEventHandler(CaptureEvent ev)
         switch (ev.eventType())
         {
         case CaptureEvent::Continued:
+            updateCaptureStatistics(ev.capSession());
+            break;
+        case CaptureEvent::Finished:
             updateCaptureStatistics(ev.capSession());
             break;
         default:
@@ -670,16 +688,3 @@ void MainStatusBar::captureEventHandler(CaptureEvent ev)
         break;
     }
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

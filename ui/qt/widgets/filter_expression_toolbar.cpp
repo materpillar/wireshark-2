@@ -13,7 +13,7 @@
 #include <ui/qt/utils/wireshark_mime_data.h>
 #include <ui/qt/models/uat_model.h>
 #include <ui/qt/filter_action.h>
-#include <ui/qt/wireshark_application.h>
+#include <ui/qt/main_application.h>
 
 #include <epan/filter_expressions.h>
 #include <ui/preference_utils.h>
@@ -24,10 +24,12 @@
 #include <QEvent>
 #include <QContextMenuEvent>
 #include <QToolButton>
+#include <QToolTip>
 
 static const char *dfe_property_ = "display filter expression"; //TODO : Fix Translate
 static const char *dfe_property_label_ = "display_filter_expression_label";
 static const char *dfe_property_expression_ = "display_filter_expression_expr";
+static const char *dfe_property_comment_ = "display_filter_expression_comment";
 static const char *dfe_menu_ = "filter_menu";
 
 #define PARENT_SEPARATOR "//"
@@ -51,9 +53,9 @@ FilterExpressionToolBar::FilterExpressionToolBar(QWidget * parent) :
     connect(this, &DragDropToolBar::actionMoved, this, &FilterExpressionToolBar::onActionMoved);
     connect(this, &DragDropToolBar::newFilterDropped, this, &FilterExpressionToolBar::onFilterDropped);
 
-    connect(wsApp, &WiresharkApplication::appInitialized,
+    connect(mainApp, &MainApplication::appInitialized,
             this, &FilterExpressionToolBar::filterExpressionsChanged);
-    connect(wsApp, &WiresharkApplication::filterExpressionsChanged,
+    connect(mainApp, &MainApplication::filterExpressionsChanged,
             this, &FilterExpressionToolBar::filterExpressionsChanged);
 
 }
@@ -83,6 +85,7 @@ void FilterExpressionToolBar::onCustomMenuHandler(const QPoint& pos)
 void FilterExpressionToolBar::customMenu(FilterExpressionToolBar * target, QAction * filterAction, const QPoint& pos)
 {
     QMenu * filterMenu = new QMenu(target);
+    filterMenu->setAttribute(Qt::WA_DeleteOnClose);
 
     /* Only display context menu for actual filter actions */
     QString filterText = filterAction->property(dfe_property_expression_).toString().trimmed();
@@ -117,7 +120,7 @@ void FilterExpressionToolBar::customMenu(FilterExpressionToolBar * target, QActi
     /* Forcing the menus to get closed, no matter which action has been triggered */
     connect(filterMenu, &QMenu::triggered, this, &FilterExpressionToolBar::closeMenu);
 
-    filterMenu->exec(mapToGlobal(pos));
+    filterMenu->popup(mapToGlobal(pos));
 }
 
 void FilterExpressionToolBar::filterExpressionsChanged()
@@ -292,16 +295,31 @@ int FilterExpressionToolBar::uatRowIndexForFilter(QString label, QString express
 
 bool FilterExpressionToolBar::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::ContextMenu)
-    {
-        QMenu * qm = qobject_cast<QMenu *>(obj);
+    QMenu * qm = qobject_cast<QMenu *>(obj);
 
-        if (qm && qm->property(dfe_menu_).toBool()) {
+    if (qm && qm->property(dfe_menu_).toBool())
+    {
+
+        if (event->type() == QEvent::ContextMenu)
+        {
             QContextMenuEvent *ctx = static_cast<QContextMenuEvent *>(event);
             QAction * filterAction = qm->actionAt(ctx->pos());
 
             if (filterAction)
                 customMenu(this, filterAction, ctx->pos());
+            return true;
+        }
+        else if (event->type() == QEvent::ToolTip)
+        {
+            QHelpEvent *helpEvent = static_cast<QHelpEvent *>(event);
+            QAction * filterAction = qm->actionAt(helpEvent->pos());
+            if (filterAction) {
+                QToolTip::showText(helpEvent->globalPos(), filterAction->property(dfe_property_comment_).toString().trimmed());
+            } else {
+                QToolTip::hideText();
+                event->ignore();
+            }
+
             return true;
         }
     }
@@ -364,11 +382,13 @@ QMenu * FilterExpressionToolBar::findParentMenu(const QStringList tree, void *fe
         QString parentName = tree.at(0).trimmed();
         QToolButton * menuButton = new QToolButton();
         menuButton->setText(parentName);
-        menuButton->setPopupMode(QToolButton::InstantPopup);
+        menuButton->setPopupMode(QToolButton::MenuButtonPopup);
         QMenu * parentMenu = new QMenu(menuButton);
         parentMenu->installEventFilter(data->toolbar);
         parentMenu->setProperty(dfe_menu_, QVariant::fromValue(true));
         menuButton->setMenu(parentMenu);
+        // Required for QToolButton::MenuButtonPopup.
+        connect(menuButton, &QToolButton::pressed, menuButton, &QToolButton::showMenu);
         data->toolbar->addWidget(menuButton);
 
         return findParentMenu(tree.mid(1), fed_data, parentMenu);
@@ -379,7 +399,7 @@ QMenu * FilterExpressionToolBar::findParentMenu(const QStringList tree, void *fe
     return Q_NULLPTR;
 }
 
-gboolean FilterExpressionToolBar::filter_expression_add_action(const void *key _U_, void *value, void *user_data)
+bool FilterExpressionToolBar::filter_expression_add_action(const void *key _U_, void *value, void *user_data)
 {
     filter_expression_t* fe = (filter_expression_t*)value;
     struct filter_expression_data* data = (filter_expression_data*)user_data;
@@ -402,12 +422,14 @@ gboolean FilterExpressionToolBar::filter_expression_add_action(const void *key _
     {
         QString tooltip = QString("%1\n%2").arg(fe->comment).arg(fe->expression);
         dfb_action->setToolTip(tooltip);
+        dfb_action->setProperty(dfe_property_comment_, tooltip);
     }
     else
     {
         dfb_action->setToolTip(fe->expression);
+        dfb_action->setProperty(dfe_property_comment_, QString(fe->expression));
     }
-    dfb_action->setData(fe->expression);
+    dfb_action->setData(QString::fromUtf8(fe->expression));
     dfb_action->setProperty(dfe_property_, true);
     dfb_action->setProperty(dfe_property_label_, QString(fe->label));
     dfb_action->setProperty(dfe_property_expression_, QString(fe->expression));
@@ -441,16 +463,3 @@ void FilterExpressionToolBar::filterClicked()
 
     emit filterSelected(filterText, prepare);
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

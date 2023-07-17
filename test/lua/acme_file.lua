@@ -31,10 +31,9 @@
 
     To-do:
     - make it use Struct.tohex/fromhex now that we have the Struct library in Wireshark
-    - make it use a linux cooked-mode pseudo-header (see https://wiki.wireshark.org/SLL)
+    - make it use a linux cooked-mode pseudo-header (see https://gitlab.com/wireshark/wireshark/-/wikis/SLL)
     - make it use preferences, once I write C-code for Wireshark to do that :)
-    - rewrite some of the pattern searches to use real regex/PCRE instead? It's not in Wireshark yet,
-        but it's coming (see https://code.wireshark.org/review/#/c/332/)
+    - rewrite some of the pattern searches to use real regex/PCRE instead?
 
 Example SIP over UDP message:
 Aug 26 19:25:10.685 On [5:0]2.1.1.1:5060 received from 2.1.2.115:5060
@@ -667,7 +666,6 @@ function Packet:set_wslua_fields(frame)
     frame.flags = wtap_presence_flags.TS  -- for timestamp
     if self.comment then
         frame.comment = self.comment
-        frame.flags = frame.flags + wtap_presence_flags.COMMENTS  -- comment flag
     end
     return true
 end

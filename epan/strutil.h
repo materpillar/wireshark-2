@@ -13,7 +13,7 @@
 
 #include "ws_symbol_export.h"
 
-#include <epan/wmem/wmem.h>
+#include <epan/wmem_scopes.h>
 #include <wsutil/str_util.h>
 
 #ifdef __cplusplus
@@ -46,94 +46,6 @@ const guchar *find_line_end(const guchar *data, const guchar *dataend,
 WS_DLL_PUBLIC
 int        get_token_len(const guchar *linep, const guchar *lineend,
     const guchar **next_token);
-
-/** Given a wmem scope, a not-necessarily-null-terminated string,
- *  expected to be in UTF-8 but possibly containing invalid sequences
- *  (as it may have come from packet data), and the length of the string,
- *  generate a valid UTF-8 string from it, allocated in the specified
- *  wmem scope, that:
- *
- *   shows printable Unicode characters as themselves;
- *
- *   shows non-printable ASCII characters as C-style escapes (octal
- *   if not one of the standard ones such as LF -> '\n');
- *
- *   shows non-printable Unicode-but-not-ASCII characters as
- *   their universal character names;
- *
- *   shows illegal UTF-8 sequences as a sequence of bytes represented
- *   as C-style hex escapes;
- *
- *  and return a pointer to it.
- *
- * @param allocator The wmem scope
- * @param string A pointer to the input string
- * @param len The length of the input string
- * @return A pointer to the formatted string
- *
- * @see tvb_format_text()
- */
-WS_DLL_PUBLIC
-gchar*     format_text(wmem_allocator_t* allocator, const guchar *string, size_t len);
-
-/** Given a wmem scope and a null-terminated string, expected to be in
- *  UTF-8 but possibly containing invalid sequences (as it may have come
- *  from packet data), and the length of the string, generate a valid
- *  UTF-8 string from it, allocated in the specified wmem scope, that:
- *
- *   shows printable Unicode characters as themselves;
- *
- *   shows non-printable ASCII characters as C-style escapes (octal
- *   if not one of the standard ones such as LF -> '\n');
- *
- *   shows non-printable Unicode-but-not-ASCII characters as
- *   their universal character names;
- *
- *   shows illegal UTF-8 sequences as a sequence of bytes represented
- *   as C-style hex escapes;
- *
- *  and return a pointer to it.
- *
- * @param allocator The wmem scope
- * @param string A pointer to the input string
- * @return A pointer to the formatted string
- *
- * @see tvb_format_text()
- */
-WS_DLL_PUBLIC
-gchar*     format_text_string(wmem_allocator_t* allocator, const guchar *string);
-
-/**
- * Given a string, generate a string from it that shows non-printable
- * characters as C-style escapes except a whitespace character
- * (space, tab, carriage return, new line, vertical tab, or formfeed)
- * which will be replaced by a space, and return a pointer to it.
- *
- * @param allocator The wmem scope
- * @param line A pointer to the input string
- * @param len The length of the input string
- * @return A pointer to the formatted string
- *
- */
-WS_DLL_PUBLIC
-gchar*     format_text_wsp(wmem_allocator_t* allocator, const guchar *line, size_t len);
-
-/**
- * Given a string, generate a string from it that shows non-printable
- * characters as the chr parameter passed, except a whitespace character
- * (space, tab, carriage return, new line, vertical tab, or formfeed)
- * which will be replaced by a space, and return a pointer to it.
- *
- * @param allocator The wmem scope
- * @param string A pointer to the input string
- * @param len The length of the input string
- * @param chr The character to use to replace non-printable characters
- * @return A pointer to the formatted string
- *
- */
-WS_DLL_PUBLIC
-gchar*     format_text_chr(wmem_allocator_t* allocator, const guchar *string, const size_t len, const guchar chr);
-
 
 /** Turn a string of hex digits with optional separators (defined by
  *  is_byte_sep() into a byte array.
@@ -177,33 +89,26 @@ WS_DLL_PUBLIC
 gboolean hex_str_to_bytes_encoding(const char *hex_str, GByteArray *bytes, const char **endptr,
                                    const guint encoding, const gboolean fail_if_partial);
 
+/** Turn an RFC 3986 percent-encoded array of characters, not necessarily
+ * null-terminated, into a byte array.
+ *
+ * @param uri_str The string of hex digits.
+ * @param bytes The GByteArray that will receive the bytes.  This
+ *        must be initialized by the caller.
+ * @return True if the string was converted successfully
+ */
+WS_DLL_PUBLIC
+gboolean   uri_to_bytes(const char *uri_str, GByteArray *bytes, size_t len);
+
 /** Turn an RFC 3986 percent-encoded string into a byte array.
  *
  * @param uri_str The string of hex digits.
  * @param bytes The GByteArray that will receive the bytes.  This
  *        must be initialized by the caller.
  * @return True if the string was converted successfully
- * @see format_uri()
  */
 WS_DLL_PUBLIC
 gboolean   uri_str_to_bytes(const char *uri_str, GByteArray *bytes);
-
-/** Turn a byte array into an RFC 3986 percent-encoded string.
- *
- * @param allocator The wmem scope
- * @param bytes The GByteArray that will receive the bytes.  This
- *        must be initialized by the caller.
- * @param reserved_chars Normally the "gen-delims" and "sub-delims"
- *        from RFC 3986 (":/?#[]@" and "!$&'()*+,;=" respectively)
- *        plus space (hex value 20) are treated as reserved characters.
- *        If this variable is non-NULL, its contents will be used
- *        instead.
- * @note Any non-printing character determined by isprint(), along
- *       with the % character itself are always reserved.
- * @see uri_str_to_bytes(),  format_text(), isprint()
- */
-WS_DLL_PUBLIC
-gchar* format_uri(wmem_allocator_t* allocator, const GByteArray *bytes, const gchar *reserved_chars);
 
 /** Turn a OID string representation (dot notation) into a byte array.
  *
@@ -261,22 +166,6 @@ gboolean byte_array_equal(GByteArray *ba1, GByteArray *ba2);
 WS_DLL_PUBLIC
 gchar*     xml_escape(const gchar *unescaped);
 
-/**
- * Return the first occurrence of needle in haystack.
- * Algorithm copied from GNU's glibc 2.3.2 memcmp()
- *
- * @param haystack The data to search
- * @param haystack_len The length of the search data
- * @param needle The string to look for
- * @param needle_len The length of the search string
- * @return A pointer to the first occurrence of "needle" in
- *         "haystack".  If "needle" isn't found or is NULL, or if
- *         "needle_len" is 0, NULL is returned.
- */
-WS_DLL_PUBLIC
-const guint8 * epan_memmem(const guint8 *haystack, guint haystack_len,
-		const guint8 *needle, guint needle_len);
-
 /** Scan a string to make sure it's valid hex.
  *
  * @param string The string to validate
@@ -298,83 +187,23 @@ guint8 * convert_string_to_hex(const char *string, size_t *nbytes);
 WS_DLL_PUBLIC
 char * convert_string_case(const char *string, gboolean case_insensitive);
 
-/** Finds the first occurrence of string 'needle' in string 'haystack'.
- *  The matching is done in a case insensitive manner.
- *
- * @param haystack The string possibly containing the substring
- * @param needle The substring to be searched
- * @return A pointer into 'haystack' where 'needle' is first found.
- *   Otherwise it returns NULL.
- */
-WS_DLL_PUBLIC
-const char * epan_strcasestr(const char *haystack, const char *needle);
-
-/** Guarantee a non-null string.
- *
- * @param string The string to check
- * @return A pointer 'string' if it's non-null, otherwise "[NULL]".
- */
-WS_DLL_PUBLIC
-const char * string_or_null(const char *string);
-
-WS_DLL_PUBLIC
-int escape_string_len(const char *string);
-WS_DLL_PUBLIC
-char * escape_string(char *dst, const char *string);
-
-
 WS_DLL_PUBLIC
 void IA5_7BIT_decode(unsigned char * dest, const unsigned char* src, int len);
 
-/** Copy a string, escaping the 'chr' characters in it
- *
- * @param str The string to be copied
- * @param chr The character to be escaped
- * @return A copy of the string with every original 'chr' being
- * transformed into double 'chr'.
- */
-WS_DLL_PUBLIC
-gchar* ws_strdup_escape_char (const gchar *str, const gchar chr);
+#define FORMAT_LABEL_REPLACE_SPACE      (0x1 << 0)
 
-/** Copy a string, unescaping the 'chr' characters in it
- *
- * @param str The string to be copied
- * @param chr The character to be escaped
- * @return A copy of the string with every occurrence of double 'chr' in
- * the original string being copied as a single 'chr'.
- */
 WS_DLL_PUBLIC
-gchar* ws_strdup_unescape_char (const gchar *str, const gchar chr);
+size_t ws_label_strcpy(char *label_str, size_t bufsize, gsize pos, const uint8_t *str, int flags);
 
-/** Replace values in a string
- *
- * @param str String containing 0 or more values to be replaced.
- * @param old_val Old value.
- * @param new_val New value. May be NULL, in which case occurences of
- *                           old_value will be removed.
- * @return A newly-allocated version of str with replacement values or
- * NULL on failure.
- */
 WS_DLL_PUBLIC
-gchar *string_replace(const gchar* str, const gchar *old_val, const gchar *new_val);
+size_t ws_label_strcat(char *label_str, size_t bufsize, const uint8_t *str, int flags);
 
-/**
-* format_size_wmem:
-* Based on format_size (wsutil/str_util.h)
-*
-* Given a size, return its value in a human-readable format
-*
-* Prefixes up to "T/Ti" (tera, tebi) are currently supported.
-*
-* @param allocator  An enumeration of the different types of available allocators.
-* @param size The size value
-* @param flags Flags to control the output (unit of measurement,
-* SI vs IEC, etc). Unit, prefix and suffix flags may be ORed together.
-* @return A newly-allocated string representing the value.
-*/
-WS_DLL_PUBLIC
-gchar*
-format_size_wmem(wmem_allocator_t *allocator, gint64 size, format_size_flags_e flags);
+/*
+ * Check name is valid. This covers names for display filter fields, dissector
+ * tables, preference modules, etc. Lower case is preferred.
+ */
+WS_DLL_LOCAL guchar
+module_check_valid_name(const char *name, gboolean lower_only);
 
 #ifdef __cplusplus
 }

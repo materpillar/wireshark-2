@@ -11,10 +11,8 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 #include <wsutil/file_util.h>
 #include <wsutil/strtoi.h>
@@ -464,7 +462,7 @@ char *expand_reference(SnortConfig_t *snort_config, char *reference)
 
         /* Append prefix and remainder, and return!!!! */
         if (prefix_replacement) {
-            g_snprintf(expanded_reference, 512, "%s%s", prefix_replacement, reference+length+1);
+            snprintf(expanded_reference, 512, "%s%s", prefix_replacement, reference+length+1);
             return expanded_reference;
         }
         else {
@@ -596,16 +594,16 @@ static void process_rule_option(Rule_t *rule, char *options, int option_start_of
 
     if (colon_offset != 0) {
         /* Name and value */
-        g_strlcpy(name, options+option_start_offset, colon_offset-option_start_offset);
+        (void) g_strlcpy(name, options+option_start_offset, colon_offset-option_start_offset);
         if (options[colon_offset] == ' ') {
             spaces_after_colon = 1;
         }
-        g_strlcpy(value, options+colon_offset+spaces_after_colon, options_end_offset-spaces_after_colon-colon_offset);
+        (void) g_strlcpy(value, options+colon_offset+spaces_after_colon, options_end_offset-spaces_after_colon-colon_offset);
         value_length = (gint)strlen(value);
     }
     else {
         /* Just name */
-        g_strlcpy(name, options+option_start_offset, options_end_offset-option_start_offset);
+        (void) g_strlcpy(name, options+option_start_offset, options_end_offset-option_start_offset);
     }
 
     /* Some rule options expect a number, parse it now. Note that any space
@@ -741,7 +739,7 @@ static gboolean parse_rule(SnortConfig_t *snort_config, char *line, const char *
     }
 
     /* Allocate the rule itself */
-    rule = (Rule_t*)g_malloc(sizeof(Rule_t));
+    rule = g_new(Rule_t, 1);
 
     snort_debug_printf("looks like a rule: %s\n", line);
     memset(rule, 0, sizeof(Rule_t));
@@ -905,7 +903,7 @@ void create_config(SnortConfig_t **snort_config, const char *snort_config_file)
 
     snort_debug_printf("create_config (%s)\n", snort_config_file);
 
-    *snort_config = (SnortConfig_t*)g_malloc(sizeof(SnortConfig_t));
+    *snort_config = g_new(SnortConfig_t, 1);
     memset(*snort_config, 0, sizeof(SnortConfig_t));
 
     /* Create rule table */
@@ -928,16 +926,15 @@ void create_config(SnortConfig_t **snort_config, const char *snort_config_file)
     if (config_file_fd == NULL) {
         snort_debug_printf("Failed to open config file %s\n", snort_config_file);
         report_failure("Snort dissector: Failed to open config file %s\n", snort_config_file);
-        return;
     }
-
-    /* Start parsing from the top-level config file. */
-    parse_config_file(*snort_config, config_file_fd, snort_config_file, dirname, 1 /* recursion level */);
+    else {
+        /* Start parsing from the top-level config file. */
+        parse_config_file(*snort_config, config_file_fd, snort_config_file, dirname, 1 /* recursion level */);
+        fclose(config_file_fd);
+    }
 
     g_free(dirname);
     g_free(basename);
-
-    fclose(config_file_fd);
 }
 
 

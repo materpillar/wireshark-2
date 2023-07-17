@@ -22,6 +22,8 @@
 void proto_register_j1939(void);
 void proto_reg_handoff_j1939(void);
 
+static dissector_handle_t j1939_handle;
+
 static int proto_j1939 = -1;
 
 static int hf_j1939_can_id = -1;
@@ -145,15 +147,15 @@ static const value_string j1939_address_vals[] = {
     { 0, NULL }
 };
 
-value_string_ext j1939_address_vals_ext = VALUE_STRING_EXT_INIT(j1939_address_vals);
+static value_string_ext j1939_address_vals_ext = VALUE_STRING_EXT_INIT(j1939_address_vals);
 
 static void
 j1939_fmt_address(gchar *result, guint32 addr )
 {
     if ((addr < 128) || (addr > 247))
-        g_snprintf(result, ITEM_LABEL_LENGTH, "%d (%s)", addr, val_to_str_ext_const(addr, &j1939_address_vals_ext, "Reserved"));
+        snprintf(result, ITEM_LABEL_LENGTH, "%d (%s)", addr, val_to_str_ext_const(addr, &j1939_address_vals_ext, "Reserved"));
     else
-        g_snprintf(result, ITEM_LABEL_LENGTH, "%d (Arbitrary)", addr);
+        snprintf(result, ITEM_LABEL_LENGTH, "%d (Arbitrary)", addr);
 }
 
 static int dissect_j1939(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
@@ -236,7 +238,7 @@ static int dissect_j1939(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, vo
     else
     {
         /* For now just include raw bytes */
-        col_append_fstr(pinfo->cinfo, COL_INFO, "   %s", tvb_bytes_to_str_punct(wmem_packet_scope(), tvb, 0, data_length, ' '));
+        col_append_fstr(pinfo->cinfo, COL_INFO, "   %s", tvb_bytes_to_str_punct(pinfo->pool, tvb, 0, data_length, ' '));
     }
 
     msg_tree = proto_tree_add_subtree(j1939_tree, tvb, 0, tvb_reported_length(tvb), ett_j1939_message, NULL, "Message");
@@ -291,7 +293,7 @@ void proto_register_j1939(void)
         },
         { &hf_j1939_pgn,
             {"PGN", "j1939.pgn",
-            FT_UINT32, BASE_DEC, NULL, 0x3FFFFFF, NULL, HFILL }
+            FT_UINT32, BASE_DEC, NULL, 0x03FFFFFF, NULL, HFILL }
         },
         { &hf_j1939_extended_data_page,
             {"Extended Data Page", "j1939.ex_data_page",
@@ -341,14 +343,13 @@ void proto_register_j1939(void)
     subdissector_pgn_table = register_dissector_table("j1939.pgn", "PGN Handle", proto_j1939, FT_UINT32, BASE_DEC);
 
     j1939_address_type = address_type_dissector_register("AT_J1939", "J1939 Address", J1939_addr_to_str, J1939_addr_str_len, NULL, J1939_col_filter_str, J1939_addr_len, NULL, NULL);
+
+    j1939_handle = register_dissector("j1939",  dissect_j1939, proto_j1939 );
 }
 
 void
 proto_reg_handoff_j1939(void)
 {
-    dissector_handle_t j1939_handle;
-
-    j1939_handle = create_dissector_handle( dissect_j1939, proto_j1939 );
     dissector_add_for_decode_as("can.subdissector", j1939_handle );
 }
 

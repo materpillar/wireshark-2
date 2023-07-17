@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright (c) 2013 The Chromium Authors. All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -32,7 +32,7 @@ Examples:
 
 
 ALLOWED_LICENSES = [
-    'BSD',
+    'BSD (1 clause)',
     'BSD (2 clause)',
     'BSD (2 clause) GPL (v2 or later)',
     'BSD (3 clause)',
@@ -61,13 +61,13 @@ PATH_SPECIFIC_ALLOWED_LICENSES = {
     'wsutil/strnatcmp.h': [
         'Zlib',
     ],
-    'dtds': [
+    'resources/protocols/dtds': [
         'UNKNOWN',
     ],
-    'diameter/dictionary.dtd': [
+    'resources/protocols/diameter/dictionary.dtd': [
         'UNKNOWN',
     ],
-    'wimaxasncp/dictionary.dtd': [
+    'resources/protocols/wimaxasncp/dictionary.dtd': [
         'UNKNOWN',
     ],
     'doc/': [
@@ -97,10 +97,7 @@ PATH_SPECIFIC_ALLOWED_LICENSES = {
     'epan/except.h': [
         'UNKNOWN',
     ],
-    'cmake/TestFileOffsetBits.c': [
-        'UNKNOWN',
-    ],
-    # Generated header files by lex/yacc/whatever
+    # Generated header files by lex/lemon/whatever
     'epan/dtd_grammar.h': [
         'UNKNOWN',
     ],
@@ -120,22 +117,13 @@ PATH_SPECIFIC_ALLOWED_LICENSES = {
     'plugins/mate/mate_grammar.h': [
         'UNKNOWN',
     ],
-    'version.h': [
+    'vcs_version.h': [
         'UNKNOWN',
     ],
     # Special IDL license that appears to be compatible as far as I (not a
     # lawyer) can tell. See
     # https://www.wireshark.org/lists/wireshark-dev/201310/msg00234.html
     'epan/dissectors/pidl/idl_types.h': [
-        'UNKNOWN',
-    ],
-    # Written by Ronnie Sahlberg and correctly licensed, but cannot include
-    # a license header despite the file extension as they need to be
-    # parsed by the pidl tool
-    'epan/dissectors/pidl/mapi/request.cnf.c': [
-        'UNKNOWN',
-    ],
-    'epan/dissectors/pidl/mapi/response.cnf.c': [
         'UNKNOWN',
     ],
     # The following tools are under incompatible licenses (mostly GPLv3 or
@@ -150,6 +138,9 @@ PATH_SPECIFIC_ALLOWED_LICENSES = {
         'GPL (v2)'
     ],
     '.gitlab/': [
+        'UNKNOWN',
+    ],
+    'wsutil/safe-math.h': [ # Public domain (CC0)
         'UNKNOWN',
     ],
 }
@@ -186,9 +177,8 @@ def check_licenses(options, args):
                                   stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE)
   stdout, stderr = licensecheck.communicate()
-  if sys.version_info[0] >= 3:
-      stdout = stdout.decode('utf-8')
-      stderr = stderr.decode('utf-8')
+  stdout = stdout.decode('utf-8')
+  stderr = stderr.decode('utf-8')
   if options.verbose:
     print('----------- licensecheck stdout -----------')
     print(stdout)
@@ -208,7 +198,7 @@ def check_licenses(options, args):
 
     # All files in the build output directory are generated one way or another.
     # There's no need to check them.
-    if filename.startswith('out/') or filename.startswith('sconsbuild/'):
+    if os.path.dirname(filename).startswith('build'):
       continue
 
     # For now we're just interested in the license.

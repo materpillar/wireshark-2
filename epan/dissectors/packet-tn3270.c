@@ -5,12 +5,16 @@
  *  3270 Information Display System: Data Stream Programmer's Reference
  *    GA23-0059-07
  *    http://publib.boulder.ibm.com/cgi-bin/bookmgr_OS390/BOOKS/CN7P4000
+ *      (dead, not archived on the Wayback Machine)
+ *    http://bitsavers.trailing-edge.com/pdf/ibm/3174/GA23-0059-07_3270_Data_Stream_Programmers_Reference_199206.pdf
+ *      (some weird format)
+ *    http://bitsavers.trailing-edge.com/pdf/ibm/3270/GA23-0059-07_3270_Data_Stream_Programmers_Reference_199206.pdf
+ *      (straightforward scanned PDF, with OCR so searching might work)
  *    (Paragraph references in the comments in this file (e.g., 6.15) are to the above document)
  *
  *  3174 Establishment Controller Functional Description
  *    GA23-0218-11
  *    http://publib.boulder.ibm.com/cgi-bin/bookmgr/BOOKS/cn7a7003
- *
  *
  *  RFC 1041: Telnet 3270 Regime Option
  *    https://tools.ietf.org/html/rfc1041
@@ -1693,7 +1697,7 @@ add_data_until_next_order_code(proto_tree *tn3270_tree, tvbuff_t *tvb, gint offs
   if (datalen > 0) {
     /* XXX: Need to handle "Format Control Orders" ??  */
     proto_tree_add_item(tn3270_tree, hf_tn3270_field_data, tvb, offset,
-                        datalen, ENC_EBCDIC|ENC_NA);
+                        datalen, ENC_EBCDIC);
   }
 
   return datalen;
@@ -1884,7 +1888,7 @@ dissect_load_format_storage(proto_tree *tn3270_tree, tvbuff_t *tvb, gint offset,
   if (operand == LOAD_FORMAT_STORAGE_OPERAND_ADD) {
     gint fmtln = sf_body_length - (offset - start);
     proto_tree_add_item(tn3270_tree, hf_tn3270_load_format_storage_format_data,
-                        tvb, offset, fmtln, ENC_EBCDIC|ENC_NA);
+                        tvb, offset, fmtln, ENC_EBCDIC);
     offset += fmtln;
   }
 
@@ -2122,7 +2126,7 @@ dissect_present_absolute_format(proto_tree *tn3270_tree, tvbuff_t *tvb, gint off
                       hf_tn3270_format_name,
                       tvb, offset,
                       sf_body_length - (offset - start),
-                      ENC_EBCDIC|ENC_NA);
+                      ENC_EBCDIC);
   offset += (sf_body_length - (offset - start));
 
   return (offset - start);
@@ -2162,7 +2166,7 @@ dissect_present_relative_format(proto_tree *tn3270_tree, tvbuff_t *tvb, gint off
                       hf_tn3270_format_name,
                       tvb, offset,
                       sf_body_length - (offset - start),
-                      ENC_EBCDIC|ENC_NA);
+                      ENC_EBCDIC);
   offset += (sf_body_length - (offset - start));
 
   return (offset - start);
@@ -2503,7 +2507,7 @@ dissect_type_1_text(proto_tree *tn3270_tree, tvbuff_t *tvb, gint offset,
                       hf_tn3270_field_data,
                       tvb, offset,
                       sf_body_length - (offset - start),
-                      ENC_EBCDIC|ENC_NA);
+                      ENC_EBCDIC);
   offset += (sf_body_length - (offset - start));
 
   return (offset - start);
@@ -3216,7 +3220,7 @@ dissect_query_reply_cooperative(proto_tree *tn3270_tree, tvbuff_t *tvb, gint off
                       hf_tn3270_field_data,
                       tvb, offset,
                       sf_body_length - (offset-start),
-                      ENC_EBCDIC|ENC_NA);
+                      ENC_EBCDIC);
   offset += (sf_body_length - (offset - start));
 
   /* Uses same Self-Defining Parm as OEM Auxiliary Device */
@@ -3468,7 +3472,7 @@ dissect_query_reply_extended_drawing_routine(proto_tree *tn3270_tree, tvbuff_t *
   gint start = offset;
 
   proto_tree_add_item(tn3270_tree, hf_tn3270_field_data ,tvb, offset,
-                      sf_body_length, ENC_EBCDIC|ENC_NA);
+                      sf_body_length, ENC_EBCDIC);
 
   offset += sf_body_length;
 
@@ -3949,7 +3953,7 @@ dissect_query_reply_rpq_names(proto_tree *tn3270_tree, tvbuff_t *tvb, gint offse
                       hf_tn3270_rpq_name,
                       tvb, offset,
                       (rpql - 1),
-                      ENC_EBCDIC|ENC_NA);
+                      ENC_EBCDIC);
   offset += (rpql-1);
 
   offset += dissect_unknown_data(tn3270_tree, tvb, offset, start, sf_body_length);
@@ -4444,7 +4448,7 @@ process_outbound_structured_field(proto_tree *sf_tree, packet_info *pinfo, tvbuf
                           hf_tn3270_format_group,
                           tvb, offset,
                           (sf_body_length - (offset - start)),
-                          ENC_EBCDIC|ENC_NA);
+                          ENC_EBCDIC);
       offset += (sf_body_length - (offset - start));
       break;
     case SF_OB_SET_WINDOW_ORIGIN:
@@ -4714,7 +4718,7 @@ dissect_structured_fields(proto_tree *tn3270_tree, packet_info *pinfo, tvbuff_t 
     }
 
     /* Not found */
-    sf_id_str = wmem_strdup_printf(wmem_packet_scope(), "Unknown [%0*x]", sf_id_len*2, sf_id);
+    sf_id_str = wmem_strdup_printf(pinfo->pool, "Unknown [%0*x]", sf_id_len*2, sf_id);
     display_sf_hdr(tn3270_tree, tvb, offset, sf_length,
                    sf_length, sf_id_len, sf_id_str);
     offset += sf_length;
@@ -5058,7 +5062,7 @@ dissect_tn3270e_header(proto_tree *tn3270_tree, tvbuff_t *tvb, gint offset)
     case TN3270E_SCS_DATA:
     case TN3270E_SSCP_LU_DATA:
     case TN3270E_UNBIND:
-      proto_tree_add_item(tn3270e_hdr_tree, hf_tn3270_tn3270e_header_data, tvb, offset, -1, ENC_EBCDIC|ENC_NA);
+      proto_tree_add_item(tn3270e_hdr_tree, hf_tn3270_tn3270e_header_data, tvb, offset, -1, ENC_EBCDIC);
       offset += tvb_reported_length_remaining(tvb, offset);
       break;
     default:
@@ -5751,7 +5755,7 @@ proto_register_tn3270(void)
          NULL, HFILL }
     },
     { &hf_tn3270_load_format_storage_operand,
-      {  "Operand:",
+      {  "Operand",
          "tn3270.load_format_storage_operand",
          FT_UINT8, BASE_HEX, VALS(vals_load_storage_format_operand), 0x0,
          NULL, HFILL }
@@ -5833,7 +5837,7 @@ proto_register_tn3270(void)
          NULL, HFILL }
     },
     { &hf_tn3270_extended_ps_lh,
-      {  "Number of Y-units in character cell (depth ofcharacter matrixes)",
+      {  "Number of Y-units in character cell (depth of character matrixes)",
          "tn3270.extended_ps_lh",
          FT_UINT8, BASE_HEX, NULL, 0x0,
          NULL, HFILL }
@@ -5926,7 +5930,7 @@ proto_register_tn3270(void)
     { &hf_tn3270_bsc,
       {  "SNA BSC",
          "tn3270.bsc",
-         FT_UINT8, BASE_HEX, NULL, 0x0,
+         FT_UINT16, BASE_HEX, NULL, 0x0,
          NULL, HFILL }
     },
     /* END - 5.16 - Outbound 3270DS */
@@ -5952,7 +5956,7 @@ proto_register_tn3270(void)
     /* 5.19 - Read Partition */
     { &hf_tn3270_read_partition_operation_type,
       {  "Read Partition Operation Type",
-         "tn3270.read_partition_reqtyp",
+         "tn3270.read_partition_optyp",
          FT_UINT8, BASE_HEX, VALS(vals_read_partition_operation_type), 0x0,
          NULL, HFILL }
     },
@@ -5998,7 +6002,7 @@ proto_register_tn3270(void)
     { &hf_tn3270_interval,
       {  "Checkpoint interval",
          "tn3270.interval",
-         FT_UINT8, BASE_HEX, NULL, 0x0,
+         FT_UINT16, BASE_HEX, NULL, 0x0,
          "Specifies the number of pages in the interval between terminal checkpoints", HFILL }
     },
     /* End - 5.26 - Set Checkpoint Interval */
@@ -7527,7 +7531,7 @@ proto_register_tn3270(void)
     { &hf_tn3270_resbytes,
       {  "Flags (Reserved)",
          "tn3270.resbytes",
-         FT_UINT8, BASE_HEX, NULL, 0x0,
+         FT_UINT16, BASE_HEX, NULL, 0x0,
          NULL, HFILL }
     },
     { &hf_tn3270_res_twobytes,

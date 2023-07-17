@@ -670,7 +670,7 @@ dissect_openwire_type(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int o
         proto_item * cached_item = NULL;
         inlined = tvb_get_guint8(tvb, offset + 0) == TRUE ? TRUE : FALSE;
         cachedID = tvb_get_ntohs(tvb, offset + 1);
-        cache_str = wmem_strdup_printf(wmem_packet_scope(), " (CachedID: %d)", cachedID);
+        cache_str = wmem_strdup_printf(pinfo->pool, " (CachedID: %d)", cachedID);
         if (openwire_verbose_type)
         {
             proto_tree_add_item(tree, hf_openwire_cached_inlined, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1085,7 +1085,7 @@ dissect_openwire_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, in
     {
         if (tvb_reported_length_remaining(tvb, offset) >= 17)
         {
-            proto_tree_add_item(tree, hf_openwire_wireformatinfo_magic, tvb, offset + 0, 8, ENC_ASCII|ENC_NA);
+            proto_tree_add_item(tree, hf_openwire_wireformatinfo_magic, tvb, offset + 0, 8, ENC_ASCII);
             proto_tree_add_item(tree, hf_openwire_wireformatinfo_version, tvb, offset + 8, 4, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_openwire_wireformatinfo_data, tvb, offset + 12, 1, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_openwire_wireformatinfo_length, tvb, offset + 13, 4, ENC_BIG_ENDIAN);
@@ -1977,6 +1977,8 @@ proto_register_openwire(void)
     expert_openwire = expert_register_protocol(proto_openwire);
     expert_register_field_array(expert_openwire, ei, array_length(ei));
 
+    openwire_tcp_handle = register_dissector("openwire", dissect_openwire_tcp, proto_openwire);
+
     openwire_module = prefs_register_protocol(proto_openwire, NULL);
     prefs_register_bool_preference(openwire_module, "desegment",
         "Reassemble Openwire messages spanning multiple TCP segments",
@@ -1993,7 +1995,6 @@ void
 proto_reg_handoff_openwire(void)
 {
     heur_dissector_add("tcp", dissect_openwire_heur, "OpenWire over TCP", "openwire_tcp", proto_openwire, HEURISTIC_ENABLE);
-    openwire_tcp_handle = create_dissector_handle(dissect_openwire_tcp, proto_openwire);
     dissector_add_for_decode_as_with_preference("tcp.port", openwire_tcp_handle);
 }
 

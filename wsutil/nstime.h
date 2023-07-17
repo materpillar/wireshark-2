@@ -11,9 +11,8 @@
 #ifndef __NSTIME_H__
 #define __NSTIME_H__
 
+#include <wireshark.h>
 #include <time.h>
-
-#include "ws_symbol_export.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,7 +48,7 @@ typedef struct {
 /* Initialize to a specified number of seconds */
 #define NSTIME_INIT_SECS(secs)			{secs, 0}
 
-/* Initialize to the maxximum possible value */
+/* Initialize to the maximum possible value */
 #define NSTIME_INIT_MAX	{sizeof(time_t) > sizeof(int) ? LONG_MAX : INT_MAX, INT_MAX}
 
 /* functions */
@@ -58,7 +57,7 @@ typedef struct {
 WS_DLL_PUBLIC void nstime_set_zero(nstime_t *nstime);
 
 /** is the given nstime_t currently zero? */
-WS_DLL_PUBLIC gboolean nstime_is_zero(nstime_t *nstime);
+WS_DLL_PUBLIC gboolean nstime_is_zero(const nstime_t *nstime);
 
 /** set the given nstime_t to (0,maxint) to mark it as "unset"
  * That way we can find the first frame even when a timestamp
@@ -107,6 +106,8 @@ WS_DLL_PUBLIC void nstime_sum(nstime_t *sum, const nstime_t *a, const nstime_t *
  */
 WS_DLL_PUBLIC int nstime_cmp (const nstime_t *a, const nstime_t *b );
 
+WS_DLL_PUBLIC guint nstime_hash(const nstime_t *nstime);
+
 /** converts nstime to double, time base is milli seconds */
 WS_DLL_PUBLIC double nstime_to_msec(const nstime_t *nstime);
 
@@ -121,6 +122,31 @@ WS_DLL_PUBLIC gboolean filetime_to_nstime(nstime_t *nstime, guint64 filetime);
     rather than tenths of microseconds, to nstime, returns TRUE on success,
     FALSE on failure */
 WS_DLL_PUBLIC gboolean nsfiletime_to_nstime(nstime_t *nstime, guint64 nsfiletime);
+
+typedef enum {
+    ISO8601_DATETIME,       /** e.g. 2014-07-04T12:34:56.789+00:00 */
+    ISO8601_DATETIME_BASIC, /** ISO8601 Basic format, i.e. no - : separators */
+    ISO8601_DATETIME_AUTO,  /** Autodetect the presence of separators */
+} iso8601_fmt_e;
+
+/** parse an ISO 8601 format datetime string to nstime, returns number of
+    chars parsed on success, 0 on failure.
+    Note that nstime is set to unset in the case of failure */
+WS_DLL_PUBLIC guint8 iso8601_to_nstime(nstime_t *nstime, const char *ptr, iso8601_fmt_e format);
+
+/** parse an Unix epoch timestamp format datetime string to nstime, returns
+    number of chars parsed on success, 0 on failure.
+    Note that nstime is set to unset in the case of failure */
+WS_DLL_PUBLIC guint8 unix_epoch_to_nstime(nstime_t *nstime, const char *ptr);
+
+#define NSTIME_ISO8601_BUFSIZE  sizeof("YYYY-MM-DDTHH:MM:SS.123456789Z")
+
+WS_DLL_PUBLIC size_t nstime_to_iso8601(char *buf, size_t buf_size, const nstime_t *nstime);
+
+/* 64 bit signed number plus nanosecond fractional part */
+#define NSTIME_UNIX_BUFSIZE  (20+10+1)
+
+WS_DLL_PUBLIC void nstime_to_unix(char *buf, size_t buf_size, const nstime_t *nstime);
 
 #ifdef __cplusplus
 }

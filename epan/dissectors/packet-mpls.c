@@ -90,7 +90,9 @@ static dissector_handle_t dissector_ipv6;
 static dissector_handle_t dissector_ip;
 static dissector_handle_t dissector_pw_ach;
 static dissector_handle_t dissector_pw_eth_heuristic;
-static dissector_handle_t dissector_pw_ach_mcc;
+static dissector_handle_t mpls_handle;
+static dissector_handle_t mpls_pwcw_handle;
+static dissector_handle_t mpls_mcc_handle;
 
 /* For RFC6391 - Flow aware transport of pseudowire over a mpls PSN*/
 static gboolean mpls_bos_flowlabel = FALSE;
@@ -115,10 +117,6 @@ static expert_field ei_mpls_pw_ach_error_processing_message = EI_INIT;
 static expert_field ei_mpls_pw_ach_res = EI_INIT;
 static expert_field ei_mpls_pw_mcw_error_processing_message = EI_INIT;
 static expert_field ei_mpls_invalid_label = EI_INIT;
-
-static dissector_handle_t mpls_handle;
-static dissector_handle_t mpls_pwcw_handle;
-static dissector_handle_t mpls_mcc_handle;
 
 #if 0 /*not used yet*/
 /*
@@ -204,7 +202,7 @@ static dissector_table_t mpls_subdissector_table;
 
 static void mpls_prompt(packet_info *pinfo, gchar* result)
 {
-    g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Data after label %u as",
+    snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Data after label %u as",
         GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, proto_mpls, 0)));
 }
 
@@ -215,7 +213,7 @@ static gpointer mpls_value(packet_info *pinfo)
 
 static void pw_ach_prompt(packet_info *pinfo, gchar* result)
 {
-    g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Channel type 0x%x as",
+    snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Channel type 0x%x as",
         GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, proto_pw_ach, 0)));
 }
 
@@ -473,13 +471,13 @@ dissect_mpls(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
         }
 
         if ((label == MPLS_LABEL_GACH) && bos) {
-            g_strlcpy(PW_ACH, "Generic Associated Channel Header",50);
+            (void) g_strlcpy(PW_ACH, "Generic Associated Channel Header",50);
             next_tvb = tvb_new_subset_remaining(tvb, offset);
             call_dissector(dissector_pw_ach, next_tvb, pinfo, tree );
             return tvb_captured_length(tvb);
         }
         else
-            g_strlcpy(PW_ACH, "PW Associated Channel Header",50);
+            (void) g_strlcpy(PW_ACH, "PW Associated Channel Header",50);
 
         if (bos)
             break;
@@ -557,13 +555,13 @@ proto_register_mpls(void)
         /* MPLS header fields */
         {&hf_mpls_label,
          {"MPLS Label", "mpls.label",
-          FT_UINT32, BASE_DEC, NULL, 0xFFFFF000,
+          FT_UINT32, BASE_DEC_HEX, NULL, 0xFFFFF000,
           NULL, HFILL }
         },
 
         {&hf_mpls_label_special,
          {"MPLS Label", "mpls.label",
-          FT_UINT32, BASE_DEC, VALS(special_labels), 0xFFFFF000,
+          FT_UINT32, BASE_DEC_HEX, VALS(special_labels), 0xFFFFF000,
           NULL, HFILL }
         },
 
@@ -581,7 +579,7 @@ proto_register_mpls(void)
 
         {&hf_mpls_ttl,
          {"MPLS TTL", "mpls.ttl",
-          FT_UINT32, BASE_DEC, NULL, 0x0000000FF,
+          FT_UINT32, BASE_DEC, NULL, 0x000000FF,
           NULL, HFILL }
         },
 
@@ -614,7 +612,7 @@ proto_register_mpls(void)
         /* Generic/Preferred PW MPLS Control Word fields */
         {&hf_mpls_pw_mcw_flags,
          {"Flags", "pwmcw.flags",
-          FT_UINT8, BASE_HEX, NULL, 0x0FC0,
+          FT_UINT16, BASE_HEX, NULL, 0x0FC0,
           "Generic/Preferred PW MPLS Control Word Flags", HFILL }
         },
 
@@ -674,8 +672,9 @@ proto_register_mpls(void)
     expert_register_field_array(expert_mpls, ei, array_length(ei));
 
     mpls_handle = register_dissector("mpls", dissect_mpls, proto_mpls);
-    mpls_mcc_handle = register_dissector("mplsmcc", dissect_pw_ach_mcc,proto_pw_ach_mcc);
-    mpls_pwcw_handle = register_dissector("mplspwcw", dissect_pw_mcw, proto_pw_mcw );
+    mpls_mcc_handle = register_dissector("mplsmcc", dissect_pw_ach_mcc, proto_pw_ach_mcc);
+    mpls_pwcw_handle = register_dissector("mplspwcw", dissect_pw_mcw, proto_pw_mcw);
+    dissector_pw_ach = register_dissector("mplspwach", dissect_pw_ach, proto_pw_ach );
 
     /* FF: mpls subdissector table is indexed by label */
     mpls_subdissector_table = register_dissector_table("mpls.label",
@@ -719,7 +718,7 @@ proto_reg_handoff_mpls(void)
     dissector_add_uint("juniper.proto", JUNIPER_PROTO_CLNP_MPLS, mpls_handle);
     dissector_add_for_decode_as("pwach.channel_type", mpls_handle);
     dissector_add_uint("sflow_245.header_protocol", SFLOW_245_HEADER_MPLS, mpls_handle);
-    dissector_add_uint("l2tp.pw_type", L2TPv3_PROTOCOL_MPLS, mpls_handle);
+    dissector_add_for_decode_as("l2tp.pw_type", mpls_handle);
     dissector_add_uint_with_preference("udp.port", UDP_PORT_MPLS_OVER_UDP, mpls_handle);
     dissector_add_uint("vxlan.next_proto", VXLAN_MPLS, mpls_handle);
     dissector_add_uint("nsh.next_proto", NSH_MPLS, mpls_handle);
@@ -731,9 +730,6 @@ proto_reg_handoff_mpls(void)
     dissector_ipv6                  = find_dissector_add_dependency("ipv6", proto_pw_mcw );
     dissector_ip                    = find_dissector_add_dependency("ip", proto_pw_mcw );
     dissector_pw_eth_heuristic      = find_dissector_add_dependency("pw_eth_heuristic", proto_pw_mcw);
-
-    dissector_pw_ach                = create_dissector_handle(dissect_pw_ach, proto_pw_ach );
-    dissector_pw_ach_mcc            = create_dissector_handle(dissect_pw_ach_mcc, proto_pw_ach_mcc );
 }
 
 /*

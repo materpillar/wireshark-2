@@ -1,4 +1,4 @@
-/* display_filter_edit.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -76,9 +76,11 @@ private:
     StockIconToolButton *apply_button_;
     bool leftAlignActions_;
     QString last_applied_;
+    QString filter_word_preamble_;
+    bool autocomplete_accepts_field_;
 
     void setDefaultPlaceholderText();
-    void buildCompletionList(const QString& field_word);
+    void buildCompletionList(const QString &field_word, const QString &preamble);
 
     void createFilterTextDropMenu(QDropEvent *event, bool prepare, QString filterText = QString());
 
@@ -94,16 +96,3 @@ signals:
 };
 
 #endif // DISPLAYFILTEREDIT_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

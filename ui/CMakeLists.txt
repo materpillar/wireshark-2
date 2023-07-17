@@ -11,18 +11,13 @@ set(NONGENERATED_UI_SRC
 	alert_box.c
 	capture.c
 	capture_ui_utils.c
-	clopts_common.c
-	cmdarg_err.c
 	commandline.c
-	console.c
 	decode_as_utils.c
 	dissect_opts.c
-	export_object_ui.c
 	export_pdu_ui_utils.c
 	help_url.c
 	failure_message.c
 	file_dialog.c
-	filter_files.c
 	firewall_rules.c
 	iface_toolbar.c
 	iface_lists.c
@@ -42,7 +37,6 @@ set(NONGENERATED_UI_SRC
 	service_response_time.c
 	software_update.c
 	ssl_key_export.c
-	summary.c
 	tap_export_pdu.c
 	tap-iax2-analysis.c
 	tap-rtp-analysis.c
@@ -51,8 +45,8 @@ set(NONGENERATED_UI_SRC
 	tap-rlc-graph.c
 	tap-tcp-stream.c
 	text_import.c
+	text_import_regex.c
 	time_shift.c
-	traffic_table_ui.c
 	util.c
 	voip_calls.c
 )
@@ -73,32 +67,49 @@ add_lex_files(LEX_FILES UI_SRC
 )
 
 set_source_files_properties(
-	${UI_SRC}
+	${NONGENERATED_UI_SRC}
 	PROPERTIES
 	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
 
-
 add_library(ui STATIC ${UI_SRC})
 
-set_target_properties(ui PROPERTIES
-	LINK_FLAGS "${WS_LINK_FLAGS}"
-	FOLDER "UI"
+target_link_libraries(ui
+	PRIVATE
+		wsutil
+		wiretap
 )
 
-target_link_libraries(ui wsutil caputils)
-
-if (HTML_HELP_COMPILER)
-	add_definitions(-DHHC_DIR)
-	target_link_libraries(ui Htmlhelp.lib)
-endif()
-
-target_include_directories(ui SYSTEM
-	PRIVATE
+target_include_directories(ui
+	SYSTEM PRIVATE
+		${PCAP_INCLUDE_DIRS}
 		${WINSPARKLE_INCLUDE_DIRS}
 )
 
-add_definitions(-DDOC_DIR="${CMAKE_INSTALL_FULL_DOCDIR}")
+add_library(summary STATIC summary.c)
+
+target_link_libraries(summary
+	PRIVATE
+		wiretap
+		epan
+		wsutil
+		${GCRYPT_LIBRARIES}
+	)
+
+target_include_directories(summary
+	SYSTEM PRIVATE
+		${GCRYPT_INCLUDE_DIRS}
+)
+
+set_target_properties(ui summary PROPERTIES
+	LINK_FLAGS "${WS_LINK_FLAGS}"
+	FOLDER "UI"
+)
+if(MSVC)
+	set_target_properties(ui summary PROPERTIES
+		LINK_FLAGS_DEBUG "${WS_MSVC_DEBUG_LINK_FLAGS}"
+	)
+endif()
 
 CHECKAPI(
 	NAME

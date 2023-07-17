@@ -34,6 +34,9 @@ const value_string etype_vals[] = {
 	{ ETHERTYPE_IP,                   "IPv4" },
 	{ ETHERTYPE_IPv6,                 "IPv6" },
 	{ ETHERTYPE_VLAN,                 "802.1Q Virtual LAN" },
+	{ ETHERTYPE_SLPP,                 "Simple Loop Protection Protocol" },
+	{ ETHERTYPE_VLACP,                "Virtual LACP" }, /* Nortel/Avaya/Extremenetworks */
+	{ ETHERTYPE_OLDSLPP,              "Simple Loop Protection Protocol (old)" },
 	{ ETHERTYPE_ARP,                  "ARP" },
 	{ ETHERTYPE_WLCCP,                "Cisco Wireless Lan Context Control Protocol" },
 	{ ETHERTYPE_MINT,                 "Motorola Media Independent Network Transport" },
@@ -76,7 +79,7 @@ const value_string etype_vals[] = {
 	{ ETHERTYPE_MRP,                  "MRP" },
 	{ ETHERTYPE_IEEE_802_1AD,         "802.1ad Provider Bridge (Q-in-Q)" },
 	{ ETHERTYPE_MACSEC,               "802.1AE (MACsec)" },
-	{ ETHERTYPE_IEEE_1905,		  "1905.1a Convergent Digital Home Network for Heterogenous Technologies" },
+	{ ETHERTYPE_IEEE_1905,            "1905.1a Convergent Digital Home Network for Heterogenous Technologies" },
 	{ ETHERTYPE_IEEE_802_1AH,         "802.1ah Provider Backbone Bridge (mac-in-mac)" },
 	{ ETHERTYPE_IEEE_802_1BR,         "802.1br Bridge Port Extension E-Tag" },
 	{ ETHERTYPE_EAPOL,                "802.1X Authentication" },
@@ -100,7 +103,7 @@ const value_string etype_vals[] = {
 	{ ETHERTYPE_MMRP,                 "802.1ak Multiple Mac Registration Protocol" },
 	{ ETHERTYPE_NSH,                  "Network Service Header" },
 	{ ETHERTYPE_PA_HBBACKUP,          "PA HB Backup" },
-	{ ETHERTYPE_AVBTP,                "IEEE 1722 Audio Video Bridging Transport Protocol" },
+	{ ETHERTYPE_AVTP,                 "IEEE 1722 Audio Video Transport Protocol" },
 	{ ETHERTYPE_ROHC,                 "Robust Header Compression(RoHC)" },
 	{ ETHERTYPE_TRILL,                "Transparent Interconnection of Lots of Links" },
 	{ ETHERTYPE_L2ISIS,               "Intermediate System to Intermediate System" },
@@ -155,7 +158,7 @@ const value_string etype_vals[] = {
 	{ PPP_PAP,                        "PPP Password Authentication Protocol" },
 	{ PPP_CCP,                        "PPP Compression Control Protocol" },
 	{ ETHERTYPE_LLT,                  "Veritas Low Latency Transport (not officially registered)" },
-	{ ETHERTYPE_CFM,                  "IEEE 802.1ag Connectivity Fault Management (CFM) protocol" },
+	{ ETHERTYPE_CFM,                  "IEEE 802.1Q Connectivity Fault Management (CFM) protocol" },
 	{ ETHERTYPE_DCE,                  "Data Center Ethernet (DCE) protocol(Cisco)" },
 	{ ETHERTYPE_FCOE,                 "Fibre Channel over Ethernet" },
 	{ ETHERTYPE_IEEE80211_DATA_ENCAP, "IEEE 802.11 data encapsulation" },
@@ -175,22 +178,25 @@ const value_string etype_vals[] = {
 	{ ETHERTYPE_HSR,                  "High-availability Seamless Redundancy (IEC62439 Part 3)" },
 	{ ETHERTYPE_BPQ,                  "AX.25" },
 	{ ETHERTYPE_CMD,                  "CiscoMetaData" },
-	{ ETHERTYPE_GEONETWORKING,       "GeoNetworking" },
+	{ ETHERTYPE_GEONETWORKING,        "GeoNetworking" },
 	{ ETHERTYPE_XIP,                  "eXpressive Internet Protocol" },
 	{ ETHERTYPE_NWP,                  "Neighborhood Watch Protocol" },
 	{ ETHERTYPE_BLUECOM,              "bluecom Protocol" },
 	{ ETHERTYPE_QINQ_OLD,             "QinQ: old non-standard 802.1ad" },
 	{ ETHERTYPE_TECMP,                "Technically Enhanced Capture Module Protocol (TECMP)" },
 	{ ETHERTYPE_6LOWPAN,              "6LoWPAN" },
-	{ ETHERTYPE_AVSP,                 "Arista Timestamp" },
+	{ ETHERTYPE_AVSP,                 "Arista Vendor Specific Protocol" },
 	{ ETHERTYPE_ECPRI,                "eCPRI" },
 	{ ETHERTYPE_CABLELABS,            "CableLabs Layer-3 Protocol" },
+	{ ETHERTYPE_EXEH,                 "EXos internal Extra Header" },
+	{ ETHERTYPE_ACIGLEAN,             "Cisco ACI ARP gleaning" },
+	{ ETHERTYPE_IEEE_802_1CB,         "802.1CB Frame Replication and Elimination for Reliability" },
 	{ 0, NULL }
 };
 
 static void eth_prompt(packet_info *pinfo, gchar* result)
 {
-	g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Ethertype 0x%04x as",
+	snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Ethertype 0x%04x as",
 		GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, proto_ethertype, pinfo->curr_layer_num)));
 }
 
@@ -230,6 +236,34 @@ dissect_ethertype(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 	captured_length = tvb_captured_length_remaining(tvb, ethertype_data->payload_offset);
 	reported_length = tvb_reported_length_remaining(tvb,
 							ethertype_data->payload_offset);
+
+	/* With Cisco ACI gleaning, the rest of the packet is dissected for informational purposes only */
+	if (ethertype_data->etype == ETHERTYPE_ACIGLEAN) {
+
+		guint gleantype, payload_etype;
+
+		col_add_fstr(pinfo->cinfo, COL_PROTOCOL, "0x%04x", ethertype_data->etype);
+		col_set_writable(pinfo->cinfo, COL_PROTOCOL, FALSE);
+
+		description = try_val_to_str(ethertype_data->etype, etype_vals);
+		col_add_str(pinfo->cinfo, COL_INFO, description);
+		col_set_writable(pinfo->cinfo, COL_INFO, FALSE);
+		if (reported_length >= 1) {
+			gleantype = (tvb_get_guint8(tvb, ethertype_data->payload_offset) & 0xF0) >> 4;
+			switch (gleantype) {
+			case 4: /* IPv4 */
+				payload_etype = 0x0800;
+				break;
+			case 6: /* IPv6 */
+				payload_etype = 0x86BB;
+				break;
+			default: /* ARP */
+				payload_etype = 0x0806;
+			}
+			ethertype_data->etype = payload_etype;
+		// FIXME: Add glean to protocol-stack in frame-header
+		}
+	}
 
 	/* Remember how much data there is after the Ethernet type,
 	   including any trailer and FCS. */

@@ -14,7 +14,7 @@
 #include <ui/qt/models/pref_models.h>
 #include <ui_font_color_preferences_frame.h>
 #include <ui/qt/utils/color_utils.h>
-#include "wireshark_application.h"
+#include "main_application.h"
 
 #include <functional>
 #include <QFontDialog>
@@ -25,8 +25,8 @@
 //: These are pangrams. Feel free to replace with nonsense text that spans your alphabet.
 //: https://en.wikipedia.org/wiki/Pangram
 static const char *font_pangrams_[] = {
-    QT_TR_NOOP("Example GIF query packets have jumbo window sizes"),
-    QT_TR_NOOP("Lazy badgers move unique waxy jellyfish packets")
+    QT_TRANSLATE_NOOP("FontColorPreferencesFrame", "Example GIF query packets have jumbo window sizes"),
+    QT_TRANSLATE_NOOP("FontColorPreferencesFrame", "Lazy badgers move unique waxy jellyfish packets")
 };
 const int num_font_pangrams_ = (sizeof font_pangrams_ / sizeof font_pangrams_[0]);
 
@@ -36,7 +36,7 @@ FontColorPreferencesFrame::FontColorPreferencesFrame(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    pref_qt_gui_font_name_ = prefFromPrefPtr(&prefs.gui_qt_font_name);
+    pref_qt_gui_font_name_ = prefFromPrefPtr(&prefs.gui_font_name);
     pref_active_fg_ = prefFromPrefPtr(&prefs.gui_active_fg);
     pref_active_bg_ = prefFromPrefPtr(&prefs.gui_active_bg);
     pref_active_style_ = prefFromPrefPtr(&prefs.gui_active_style);
@@ -70,7 +70,7 @@ void FontColorPreferencesFrame::showEvent(QShowEvent *)
     QString pangram = QString(font_pangrams_[g_rand_int_range(rand_state, 0, num_font_pangrams_)]) + " 0123456789";
     ui->fontSampleLineEdit->setText(pangram);
     ui->fontSampleLineEdit->setCursorPosition(0);
-    ui->fontSampleLineEdit->setMinimumWidth(wsApp->monospaceTextSize(pangram.toUtf8().constData()) + wsApp->monospaceTextSize(" "));
+    ui->fontSampleLineEdit->setMinimumWidth(mainApp->monospaceTextSize(pangram.toUtf8().constData()) + mainApp->monospaceTextSize(" "));
     g_rand_free(rand_state);
 
     updateWidgets();
@@ -256,32 +256,35 @@ void FontColorPreferencesFrame::updateWidgets()
     //
     // Sample valid filter
     //
+    QColor ss_bg = ColorUtils::fromColorT(prefs_get_color_value(pref_valid_bg_, pref_stashed));
     ui->validFilterBGPushButton->setStyleSheet(color_button_ss.arg(
                                                    ColorUtils::fromColorT(prefs_get_color_value(pref_valid_bg_, pref_stashed)).name())
                                                    .arg(0));
     ui->validFilterSampleLineEdit->setStyleSheet(sample_text_ss.arg(
-                                                     "palette(text)",
-                                                     ColorUtils::fromColorT(prefs_get_color_value(pref_valid_bg_, pref_stashed)).name()));
+                                                     ColorUtils::contrastingTextColor(ss_bg).name(),
+                                                     ss_bg.name()));
 
     //
     // Sample invalid filter
     //
+    ss_bg = ColorUtils::fromColorT(prefs_get_color_value(pref_invalid_bg_, pref_stashed));
     ui->invalidFilterBGPushButton->setStyleSheet(color_button_ss.arg(
                                                      ColorUtils::fromColorT(prefs_get_color_value(pref_invalid_bg_, pref_stashed)).name())
                                                      .arg(0));
     ui->invalidFilterSampleLineEdit->setStyleSheet(sample_text_ss.arg(
-                                                       "palette(text)",
-                                                       ColorUtils::fromColorT(prefs_get_color_value(pref_invalid_bg_, pref_stashed)).name()));
+                                                       ColorUtils::contrastingTextColor(ss_bg).name(),
+                                                       ss_bg.name()));
 
     //
     // Sample warning filter
     //
+    ss_bg = ColorUtils::fromColorT(prefs_get_color_value(pref_deprecated_bg_, pref_stashed));
     ui->deprecatedFilterBGPushButton->setStyleSheet(color_button_ss.arg(
                                                         ColorUtils::fromColorT(prefs_get_color_value(pref_deprecated_bg_, pref_stashed)).name())
                                                         .arg(0));
     ui->deprecatedFilterSampleLineEdit->setStyleSheet(sample_text_ss.arg(
-                                                          "palette(text)",
-                                                          ColorUtils::fromColorT(prefs_get_color_value(pref_deprecated_bg_, pref_stashed)).name()));
+                                                          ColorUtils::contrastingTextColor(ss_bg).name(),
+                                                          ss_bg.name()));
 }
 
 void FontColorPreferencesFrame::changeColor(pref_t *pref)
@@ -314,7 +317,7 @@ void FontColorPreferencesFrame::colorChanged(pref_t *pref, const QColor &cc)
 void FontColorPreferencesFrame::on_fontPushButton_clicked()
 {
     bool ok;
-    QFont new_font = QFontDialog::getFont(&ok, cur_font_, this, wsApp->windowTitleString(tr("Font")));
+    QFont new_font = QFontDialog::getFont(&ok, cur_font_, this, mainApp->windowTitleString(tr("Font")));
     if (ok) {
         prefs_set_string_value(pref_qt_gui_font_name_, new_font.toString().toStdString().c_str(), pref_stashed);
         cur_font_ = new_font;
@@ -409,16 +412,3 @@ void FontColorPreferencesFrame::on_deprecatedFilterBGPushButton_clicked()
 {
     changeColor(pref_deprecated_bg_);
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

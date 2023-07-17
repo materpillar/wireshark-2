@@ -57,12 +57,51 @@ void rtpstream_id_copy_pinfo(const packet_info *pinfo, rtpstream_id_t *dest, gbo
 }
 
 /****************************************************************************/
+/* shallow copy from packet_info to id */
+void rtpstream_id_copy_pinfo_shallow(const packet_info *pinfo, rtpstream_id_t *dest, gboolean swap_src_dst)
+{
+	if (!swap_src_dst)
+	{
+		copy_address_shallow(&(dest->src_addr), &(pinfo->src));
+		dest->src_port=pinfo->srcport;
+		copy_address_shallow(&(dest->dst_addr), &(pinfo->dst));
+		dest->dst_port=pinfo->destport;
+	}
+	else
+	{
+		copy_address_shallow(&(dest->src_addr), &(pinfo->dst));
+		dest->src_port=pinfo->destport;
+		copy_address_shallow(&(dest->dst_addr), &(pinfo->src));
+		dest->dst_port=pinfo->srcport;
+	}
+}
+/****************************************************************************/
 /* free memory allocated for id */
 void rtpstream_id_free(rtpstream_id_t *id)
 {
 	free_address(&(id->src_addr));
 	free_address(&(id->dst_addr));
 	memset(id, 0, sizeof(*id));
+}
+
+/****************************************************************************/
+/* convert rtpstream_id_t to hash */
+guint rtpstream_id_to_hash(const rtpstream_id_t *id)
+{
+	guint hash = 0;
+
+	if (!id) { return 0; }
+	/* XOR of: */
+	/* SRC PORT | DST_PORT */
+	/* SSRC */
+	/* SRC ADDR */
+	/* DST ADDR */
+	hash ^= id->src_port | id->dst_port << 16;
+	hash ^= id->ssrc;
+	hash = add_address_to_hash(hash, &id->src_addr);
+	hash = add_address_to_hash(hash, &id->dst_addr);
+
+	return hash;
 }
 
 /****************************************************************************/
@@ -89,6 +128,30 @@ gboolean rtpstream_id_equal(const rtpstream_id_t *id1, const rtpstream_id_t *id2
 }
 
 /****************************************************************************/
+/* compare an rtpstream id address and ports with pinfo */
+gboolean rtpstream_id_equal_pinfo(const rtpstream_id_t *id, const packet_info *pinfo, bool swap_src_dst)
+{
+        if (!swap_src_dst) {
+                if (addresses_equal(&(id->src_addr), &(pinfo->src))
+                        && id->src_port == pinfo->srcport
+                        && addresses_equal(&(id->dst_addr), &(pinfo->dst))
+                        && id->dst_port == pinfo->destport)
+                {
+                        return TRUE;
+                }
+        } else {
+                if (addresses_equal(&(id->src_addr), &(pinfo->dst))
+                        && id->src_port == pinfo->destport
+                        && addresses_equal(&(id->dst_addr), &(pinfo->src))
+                        && id->dst_port == pinfo->srcport)
+                {
+                        return TRUE;
+                }
+        }
+
+	return FALSE;
+}
+/****************************************************************************/
 /* compare two ids, one in pinfo */
 gboolean rtpstream_id_equal_pinfo_rtp_info(const rtpstream_id_t *id, const packet_info *pinfo, const struct _rtp_info *rtp_info)
 {
@@ -104,15 +167,22 @@ gboolean rtpstream_id_equal_pinfo_rtp_info(const rtpstream_id_t *id, const packe
 	return FALSE;
 }
 
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */
+/****************************************************************************/
+/* convert packet_info and _rtp_info to hash */
+guint pinfo_rtp_info_to_hash(const packet_info *pinfo, const struct _rtp_info *rtp_info)
+{
+	guint hash = 0;
+
+	if (!pinfo || !rtp_info) { return 0; }
+	/* XOR of: */
+	/* SRC PORT | DST_PORT */
+	/* SSRC */
+	/* SRC ADDR */
+	/* DST ADDR */
+	hash ^= pinfo->srcport | pinfo->destport << 16;
+	hash ^= rtp_info->info_sync_src;
+	hash = add_address_to_hash(hash, &pinfo->src);
+	hash = add_address_to_hash(hash, &pinfo->dst);
+
+	return hash;
+}

@@ -17,7 +17,7 @@
 #include "remote_capture_dialog.h"
 #include <ui_remote_capture_dialog.h>
 #include "capture_opts.h"
-#include "caputils/capture-pcap-util.h"
+#include "capture/capture-pcap-util.h"
 #include "ui/capture_ui_utils.h"
 #include "epan/prefs.h"
 #include "epan/to_str.h"
@@ -35,7 +35,7 @@ RemoteCaptureDialog::RemoteCaptureDialog(QWidget *parent) :
     fillComboBox();
     connect(ui->buttonBox, SIGNAL(accepted()), this, SLOT(apply_remote()));
     connect(this, SIGNAL(remoteAdded(GList *, remote_options*)), parent, SIGNAL(remoteAdded(GList *, remote_options*)));
-    connect(ui->hostCombo, SIGNAL(currentIndexChanged(QString)), this, SLOT(hostChanged(QString)));
+    connect(ui->hostCombo, &QComboBox::currentTextChanged, this, &RemoteCaptureDialog::hostChanged);
 }
 
 RemoteCaptureDialog::~RemoteCaptureDialog()
@@ -43,7 +43,7 @@ RemoteCaptureDialog::~RemoteCaptureDialog()
     delete ui;
 }
 
-void RemoteCaptureDialog::hostChanged(QString host)
+void RemoteCaptureDialog::hostChanged(const QString host)
 {
     if (!host.compare(tr("Clear list"))) {
         recent_free_remote_host_list();
@@ -167,16 +167,3 @@ void RemoteCaptureDialog::on_nullAuth_toggled(bool checked)
     }
 }
 #endif /* HAVE_PCAP_REMOTE */
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

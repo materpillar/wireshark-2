@@ -122,6 +122,8 @@ static guint fcip_port         = 3225;
 static gboolean fcip_desegment = TRUE;
 
 static dissector_handle_t fc_handle;
+static dissector_handle_t fcip_handle;
+
 
 /* This routine attempts to locate the position of the next header in the
  * provided segment
@@ -477,7 +479,7 @@ dissect_fcip (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
             /* Special frame bit is not set */
             next_tvb = tvb_new_subset_remaining (tvb, FCIP_ENCAP_HEADER_LEN+4);
             if (fc_handle) {
-                fc_data.ethertype = 0;
+                fc_data.ethertype = ETHERTYPE_UNK;
                 call_dissector_with_data(fc_handle, next_tvb, pinfo, tree, &fc_data);
             }
             else {
@@ -611,6 +613,7 @@ proto_register_fcip (void)
 
     /* Register the protocol name and description */
     proto_fcip = proto_register_protocol("FCIP", "Fibre Channel over IP", "fcip");
+    fcip_handle = register_dissector("fcip", dissect_fcip_handle, proto_fcip);
 
     proto_register_field_array(proto_fcip, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
@@ -634,11 +637,8 @@ proto_register_fcip (void)
 void
 proto_reg_handoff_fcip (void)
 {
-    dissector_handle_t fcip_handle;
-
     heur_dissector_add("tcp", dissect_fcip_heur, "FCIP over TCP", "fcip_tcp", proto_fcip, HEURISTIC_ENABLE);
 
-    fcip_handle = create_dissector_handle(dissect_fcip_handle, proto_fcip);
     dissector_add_for_decode_as_with_preference("tcp.port", fcip_handle);
 
     fc_handle   = find_dissector_add_dependency("fc", proto_fcip);

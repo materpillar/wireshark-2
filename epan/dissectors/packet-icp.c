@@ -19,6 +19,8 @@
 void proto_register_icp(void);
 void proto_reg_handoff_icp(void);
 
+static dissector_handle_t icp_handle;
+
 static int proto_icp = -1;
 static int hf_icp_length = -1;
 static int hf_icp_opcode = -1;
@@ -94,7 +96,7 @@ static void dissect_icp_payload(tvbuff_t *tvb, packet_info *pinfo, int offset,
 
 		/* null terminated URL */
 		stringlength = tvb_strsize(tvb, offset);
-		proto_tree_add_item(pload_tree, hf_icp_url, tvb, offset, stringlength, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(pload_tree, hf_icp_url, tvb, offset, stringlength, ENC_ASCII);
 		break;
 
 	case CODE_ICP_OP_SECHO:
@@ -105,13 +107,13 @@ static void dissect_icp_payload(tvbuff_t *tvb, packet_info *pinfo, int offset,
 	case CODE_ICP_OP_MISS_NOFETCH:
 	case CODE_ICP_OP_DENIED:
 		stringlength = tvb_strsize(tvb, offset);
-		proto_tree_add_item(pload_tree, hf_icp_url, tvb, offset, stringlength, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(pload_tree, hf_icp_url, tvb, offset, stringlength, ENC_ASCII);
 		break;
 
 	case CODE_ICP_OP_HIT_OBJ:
 		/* null terminated URL */
 		stringlength = tvb_strsize(tvb, offset);
-		proto_tree_add_item(pload_tree, hf_icp_url, tvb, offset, stringlength, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(pload_tree, hf_icp_url, tvb, offset, stringlength, ENC_ASCII);
 		offset += stringlength;
 
 		/* 2 byte object size */
@@ -238,14 +240,13 @@ proto_register_icp(void)
 	proto_register_subtree_array(ett, array_length(ett));
 	expert_icp = expert_register_protocol(proto_icp);
 	expert_register_field_array(expert_icp, ei, array_length(ei));
+
+	icp_handle = register_dissector("icp", dissect_icp, proto_icp);
 }
 
 void
 proto_reg_handoff_icp(void)
 {
-	dissector_handle_t icp_handle;
-
-	icp_handle = create_dissector_handle(dissect_icp, proto_icp);
 	dissector_add_uint_with_preference("udp.port", UDP_PORT_ICP, icp_handle);
 }
 

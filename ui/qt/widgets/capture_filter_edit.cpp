@@ -16,14 +16,14 @@
 #include "capture_opts.h"
 
 #include <ui/capture_globals.h>
-#include <ui/filter_files.h>
+#include <wsutil/filter_files.h>
 #include <wsutil/utf8_entities.h>
 
 #include <ui/qt/widgets/capture_filter_edit.h>
 #include "capture_filter_syntax_worker.h"
 #include "filter_dialog.h"
 #include <ui/qt/widgets/stock_icon_tool_button.h>
-#include "wireshark_application.h"
+#include "main_application.h"
 
 #include <QComboBox>
 #include <QCompleter>
@@ -132,6 +132,17 @@ CaptureFilterEdit::CaptureFilterEdit(QWidget *parent, bool plain) :
 
     setConflict(false);
 
+    QString buttonStyle = QString(
+        "QToolButton {"
+        "  border: none;"
+        "  background: transparent;" // Disables platform style on Windows.
+        "  padding: 0 0 0 0;"
+        "}"
+        "QToolButton::menu-indicator {"
+        "  image: none;"
+        "}"
+    );
+
     if (!plain_) {
         bookmark_button_ = new StockIconToolButton(this, "x-capture-filter-bookmark");
         bookmark_button_->setCursor(Qt::ArrowCursor);
@@ -139,28 +150,14 @@ CaptureFilterEdit::CaptureFilterEdit(QWidget *parent, bool plain) :
         bookmark_button_->setPopupMode(QToolButton::InstantPopup);
         bookmark_button_->setToolTip(tr("Manage saved bookmarks."));
         bookmark_button_->setIconSize(QSize(14, 14));
-        bookmark_button_->setStyleSheet(
-                    "QToolButton {"
-                    "  border: none;"
-                    "  background: transparent;" // Disables platform style on Windows.
-                    "  padding: 0 0 0 0;"
-                    "}"
-                    "QToolButton::menu-indicator { image: none; }"
-            );
+        bookmark_button_->setStyleSheet(buttonStyle);
         connect(bookmark_button_, &StockIconToolButton::clicked, this, &CaptureFilterEdit::bookmarkClicked);
 
         clear_button_ = new StockIconToolButton(this, "x-filter-clear");
         clear_button_->setCursor(Qt::ArrowCursor);
         clear_button_->setToolTip(QString());
         clear_button_->setIconSize(QSize(14, 14));
-        clear_button_->setStyleSheet(
-                "QToolButton {"
-                "  border: none;"
-                "  background: transparent;" // Disables platform style on Windows.
-                "  padding: 0 0 0 0;"
-                "  margin-left: 1px;"
-                "}"
-                );
+        clear_button_->setStyleSheet(buttonStyle);
         connect(clear_button_, &StockIconToolButton::clicked, this, &CaptureFilterEdit::clearFilter);
     }
 
@@ -175,24 +172,18 @@ CaptureFilterEdit::CaptureFilterEdit(QWidget *parent, bool plain) :
         apply_button_->setEnabled(false);
         apply_button_->setToolTip(tr("Apply this filter string to the display."));
         apply_button_->setIconSize(QSize(24, 14));
-        apply_button_->setStyleSheet(
-                "QToolButton {"
-                "  border: none;"
-                "  background: transparent;" // Disables platform style on Windows.
-                "  padding: 0 0 0 0;"
-                "}"
-                );
+        apply_button_->setStyleSheet(buttonStyle);
         connect(apply_button_, &StockIconToolButton::clicked, this, &CaptureFilterEdit::applyCaptureFilter);
     }
 #endif
     connect(this, &CaptureFilterEdit::returnPressed, this, &CaptureFilterEdit::applyCaptureFilter);
 
     int frameWidth = style()->pixelMetric(QStyle::PM_DefaultFrameWidth);
-    QSize bksz;
+    QSize bksz(0, 0);
     if (bookmark_button_) bksz = bookmark_button_->sizeHint();
-    QSize cbsz;
+    QSize cbsz(0, 0);
     if (clear_button_) cbsz = clear_button_->sizeHint();
-    QSize apsz;
+    QSize apsz(0, 0);
     if (apply_button_) apsz = apply_button_->sizeHint();
 
     setStyleSheet(QString(
@@ -204,7 +195,7 @@ CaptureFilterEdit::CaptureFilterEdit(QWidget *parent, bool plain) :
             )
             .arg(frameWidth + 1)
             .arg(bksz.width())
-            .arg(cbsz.width() + apsz.width() + frameWidth + 1)
+            .arg(cbsz.width() + apsz.width() + frameWidth + 2)
             );
 
     QComboBox *cf_combo = qobject_cast<QComboBox *>(parent);
@@ -218,26 +209,33 @@ CaptureFilterEdit::CaptureFilterEdit(QWidget *parent, bool plain) :
 #endif
     }
 
-    QThread *syntax_thread = new QThread;
+    syntax_thread_ = new QThread;
     syntax_worker_ = new CaptureFilterSyntaxWorker;
-    syntax_worker_->moveToThread(syntax_thread);
-    connect(wsApp, &WiresharkApplication::appInitialized, this, &CaptureFilterEdit::updateBookmarkMenu);
-    connect(wsApp, &WiresharkApplication::captureFilterListChanged, this, &CaptureFilterEdit::updateBookmarkMenu);
-    connect(syntax_thread, &QThread::started, syntax_worker_, &CaptureFilterSyntaxWorker::start);
-    connect(syntax_thread, &QThread::started, this,
+    syntax_worker_->moveToThread(syntax_thread_);
+    connect(mainApp, &MainApplication::appInitialized, this, &CaptureFilterEdit::updateBookmarkMenu);
+    connect(mainApp, &MainApplication::captureFilterListChanged, this, &CaptureFilterEdit::updateBookmarkMenu);
+    connect(syntax_thread_, &QThread::started, this,
             static_cast<void (CaptureFilterEdit::*)()>(&CaptureFilterEdit::checkFilter));
     connect(syntax_worker_, &CaptureFilterSyntaxWorker::syntaxResult,
             this, &CaptureFilterEdit::setFilterSyntaxState);
-    connect(syntax_thread, &QThread::finished, syntax_worker_, &CaptureFilterSyntaxWorker::deleteLater);
-    syntax_thread->start();
+    connect(this, &CaptureFilterEdit::captureFilterChanged, syntax_worker_, &CaptureFilterSyntaxWorker::checkFilter);
+    syntax_thread_->start();
     updateBookmarkMenu();
+}
+
+CaptureFilterEdit::~CaptureFilterEdit()
+{
+    syntax_thread_->quit();
+    syntax_thread_->wait();
+    delete syntax_thread_;
+    delete syntax_worker_;
 }
 
 void CaptureFilterEdit::paintEvent(QPaintEvent *evt) {
     SyntaxLineEdit::paintEvent(evt);
 
     if (bookmark_button_) {
-        // Draw the right border by hand. We could try to do this in the
+        // Draw the borders by hand. We could try to do this in the
         // style sheet but it's a pain.
 #ifdef Q_OS_MAC
         QColor divider_color = Qt::gray;
@@ -248,15 +246,24 @@ void CaptureFilterEdit::paintEvent(QPaintEvent *evt) {
         painter.setPen(divider_color);
         QRect cr = contentsRect();
         QSize bksz = bookmark_button_->size();
-        painter.drawLine(bksz.width(), cr.top(), bksz.width(), cr.bottom());
+        painter.drawLine(bksz.width(), cr.top(), bksz.width(), cr.bottom() + 1);
+
+        if (!text().isEmpty()) {
+            int xpos = cr.width() - 4;
+            if (clear_button_ && clear_button_->isVisible())
+                xpos -= clear_button_->width();
+            if (apply_button_ && apply_button_->isVisible())
+                xpos -= apply_button_->width();
+            painter.drawLine(xpos, cr.top(), xpos, cr.bottom() + 1);
+        }
     }
 }
 
 void CaptureFilterEdit::resizeEvent(QResizeEvent *)
 {
-    QSize cbsz;
+    QSize cbsz(0, 0);
     if (clear_button_) cbsz = clear_button_->sizeHint();
-    QSize apsz;
+    QSize apsz(0, 0);
     if (apply_button_) apsz = apply_button_->sizeHint();
 
     int frameWidth = style()->pixelMetric(QStyle::PM_DefaultFrameWidth);
@@ -324,7 +331,7 @@ void CaptureFilterEdit::checkFilter(const QString& filter)
         actions_->checkedAction()->setChecked(false);
 
     setSyntaxState(Busy);
-    wsApp->popStatus(WiresharkApplication::FilterSyntax);
+    mainApp->popStatus(MainApplication::FilterSyntax);
     setToolTip(QString());
     bool empty = filter.isEmpty();
 
@@ -366,7 +373,7 @@ void CaptureFilterEdit::checkFilter(const QString& filter)
     if (empty) {
         setFilterSyntaxState(filter, Empty, QString());
     } else {
-        syntax_worker_->checkFilter(filter);
+        emit captureFilterChanged(filter);
     }
 }
 
@@ -425,7 +432,7 @@ void CaptureFilterEdit::setFilterSyntaxState(QString filter, int state, QString 
     if (filter.compare(text()) == 0) { // The user hasn't changed the filter
         setSyntaxState((SyntaxState)state);
         if (!err_msg.isEmpty()) {
-            wsApp->pushStatus(WiresharkApplication::FilterSyntax, err_msg);
+            mainApp->pushStatus(MainApplication::FilterSyntax, err_msg);
             setToolTip(err_msg);
         }
     }
@@ -455,7 +462,7 @@ void CaptureFilterEdit::clearFilter()
     emit textEdited(text());
 }
 
-void CaptureFilterEdit::buildCompletionList(const QString &primitive_word)
+void CaptureFilterEdit::buildCompletionList(const QString &primitive_word, const QString &preamble _U_)
 {
     if (primitive_word.length() < 1) {
         completion_model_->setStringList(QStringList());
@@ -553,16 +560,3 @@ void CaptureFilterEdit::prepareFilter()
 
     emit textEdited(filter);
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

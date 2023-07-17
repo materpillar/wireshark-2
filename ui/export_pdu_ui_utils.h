@@ -1,5 +1,5 @@
-/*
- * export_pdu_ui_utils.h
+/** @file
+ *
  * Routines for exported_pdu dissection
  * Copyright 2013, Anders Broman <anders-broman@ericsson.com>
  *
@@ -19,9 +19,9 @@ extern "C" {
 
 /**
 * Filters the current opened capture file into a temporary file. On success,
-* TRUE is returned and the filtered file is opened into the UI.
+* the filtered file is opened into the UI.
 */
-gboolean do_export_pdu(const char *filter, const gchar *tap_name, exp_pdu_t *data);
+void do_export_pdu(const char *filter, const gchar *temp_dir, const gchar *tap_name);
 
 
 #ifdef __cplusplus

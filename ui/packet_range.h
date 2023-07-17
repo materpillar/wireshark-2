@@ -1,4 +1,5 @@
-/* packet_range.h
+/** @file
+ *
  * Packet range routines (save, print, ...)
  *
  * Dick Gooris <gooris@lucent.com>
@@ -14,16 +15,16 @@
 #ifndef __PACKET_RANGE_H__
 #define __PACKET_RANGE_H__
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include <glib.h>
 
 #include <epan/range.h>
 #include <epan/frame_data.h>
 
 #include "cfile.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 extern guint32  curr_selected_frame;
 
@@ -67,6 +68,8 @@ typedef struct packet_range_tag {
     guint32  displayed_marked_cnt;
     guint32  displayed_mark_range_cnt;
     guint32  displayed_user_range_cnt;
+    guint32  displayed_plus_dependents_mark_range_cnt;
+    guint32  displayed_plus_dependents_user_range_cnt;
     guint32  displayed_selection_range_cnt;
     guint32  displayed_ignored_cnt;
     guint32  displayed_ignored_marked_cnt;

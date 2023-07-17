@@ -5,7 +5,7 @@
 	Pidl is a perl based IDL compiler for DCE/RPC idl files.
 	It is maintained by the Samba team, not the Wireshark team.
 	Instructions on how to download and install Pidl can be
-	found at https://wiki.wireshark.org/Pidl
+	found at https://gitlab.com/wireshark/wireshark/-/wikis/Pidl
 */
 
 
@@ -591,7 +591,7 @@ dnsserver_dissect_struct_DNS_RPC_NAME(tvbuff_t *tvb _U_, int offset _U_, packet_
 	}
 	offset = dissect_ndr_uint8(tvb, offset, pinfo, tree, di, drep, hf_dnsserver_DNS_RPC_NAME_NameLength, &len);
 	proto_tree_add_item(tree, hf_dnsserver_DNS_RPC_NAME_name, tvb,
-		offset, len, ENC_UTF_8|ENC_NA);
+		offset, len, ENC_UTF_8);
 	offset += len;
 	proto_item_set_len(item, offset-old_offset);
 	return offset;

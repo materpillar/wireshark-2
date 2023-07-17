@@ -1,11 +1,8 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-tcap.c                                                              */
-/* asn2wrs.py -b -p tcap -c ./tcap.cnf -s ./packet-tcap-template -D . -O ../.. tcap.asn UnidialoguePDUs.asn DialoguePDUs.asn */
+/* asn2wrs.py -b -L -p tcap -c ./tcap.cnf -s ./packet-tcap-template -D . -O ../.. tcap.asn UnidialoguePDUs.asn DialoguePDUs.asn */
 
-/* Input file: packet-tcap-template.c */
-
-#line 1 "./asn1/tcap/packet-tcap-template.c"
 /* packet-tcap-template.c
  * Routines for  TCAP
  * Copyright 2004 - 2005, Tim Endean <endeant@hotmail.com>
@@ -53,9 +50,6 @@ int hf_tcapsrt_BeginSession=-1;
 int hf_tcapsrt_EndSession=-1;
 int hf_tcapsrt_SessionTime=-1;
 
-
-/*--- Included file: packet-tcap-hf.c ---*/
-#line 1 "./asn1/tcap/packet-tcap-hf.c"
 static int hf_tcap_UniDialoguePDU_PDU = -1;       /* UniDialoguePDU */
 static int hf_tcap_DialoguePDU_PDU = -1;          /* DialoguePDU */
 static int hf_tcap_oid = -1;                      /* OBJECT_IDENTIFIER */
@@ -124,9 +118,6 @@ static int hf_tcap_AUDT_protocol_version_version1 = -1;
 static int hf_tcap_AARQ_protocol_version_version1 = -1;
 static int hf_tcap_AARE_protocol_version_version1 = -1;
 
-/*--- End of included file: packet-tcap-hf.c ---*/
-#line 49 "./asn1/tcap/packet-tcap-template.c"
-
 /* Initialize the subtree pointers */
 static gint ett_tcap = -1;
 static gint ett_param = -1;
@@ -143,9 +134,6 @@ static int ss7pc_address_type = -1;
 
 static struct tcaphash_context_t * gp_tcap_context=NULL;
 
-
-/*--- Included file: packet-tcap-ett.c ---*/
-#line 1 "./asn1/tcap/packet-tcap-ett.c"
 static gint ett_tcap_ExternalPDU_U = -1;
 static gint ett_tcap_TCMessage = -1;
 static gint ett_tcap_Unidirectional = -1;
@@ -180,9 +168,6 @@ static gint ett_tcap_ABRT_apdu_U = -1;
 static gint ett_tcap_ABRT_user_information = -1;
 static gint ett_tcap_Associate_source_diagnostic = -1;
 
-/*--- End of included file: packet-tcap-ett.c ---*/
-#line 67 "./asn1/tcap/packet-tcap-template.c"
-
 /* When several Tcap components are received in a single TCAP message,
    we have to use several buffers for the stored parameters
    because else this data are erased during TAP dissector call */
@@ -194,7 +179,6 @@ static struct tcapsrt_info_t tcapsrt_global_info[MAX_TCAP_INSTANCE];
 static range_t *global_ssn_range;
 static range_t *ssn_range;
 
-gboolean gtcap_HandleSRT=FALSE;
 /* These two timeout (in second) are used when some message are lost,
    or when the same TCAP transcation identifier is reused */
 guint gtcap_RepetitionTimeout = 10;
@@ -223,7 +207,7 @@ static dissector_handle_t data_handle;
 static dissector_handle_t ansi_tcap_handle;
 
 static int dissect_tcap_param(asn1_ctx_t *actx, proto_tree *tree, tvbuff_t *tvb, int offset);
-static int dissect_tcap_ITU_ComponentPDU(gboolean implicit_tag _U_, tvbuff_t *tvb, int offset, asn1_ctx_t *actx, proto_tree *tree, int hf_index _U_);
+static gboolean dissect_tcap_ITU_ComponentPDU(gboolean implicit_tag _U_, tvbuff_t *tvb, int offset, asn1_ctx_t *actx, proto_tree *tree, int hf_index _U_);
 
 static dissector_table_t ansi_sub_dissectors = NULL;
 static dissector_table_t itu_sub_dissectors = NULL;
@@ -258,9 +242,6 @@ dissector_handle_t get_itu_tcap_subdissector(guint32 ssn) {
 }
 
 
-/*--- Included file: packet-tcap-fn.c ---*/
-#line 1 "./asn1/tcap/packet-tcap-fn.c"
-
 
 static int
 dissect_tcap_OBJECT_IDENTIFIER(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
@@ -273,10 +254,8 @@ dissect_tcap_OBJECT_IDENTIFIER(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 static int
 dissect_tcap_Dialog1(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 72 "./asn1/tcap/tcap.cnf"
 
   offset = dissect_tcap_DialoguePDU(TRUE, tvb, offset, actx, tree, -1);
-
 
 
   return offset;
@@ -301,11 +280,9 @@ dissect_tcap_ExternalPDU_U(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
 
 static int
 dissect_tcap_ExternalPDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 67 "./asn1/tcap/tcap.cnf"
 
   offset = dissect_ber_tagged_type(implicit_tag, actx, tree, tvb, offset,
                                       hf_index, BER_CLASS_UNI, 8, TRUE, dissect_tcap_ExternalPDU_U);
-
 
 
 
@@ -316,10 +293,8 @@ dissect_tcap_ExternalPDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offse
 
 static int
 dissect_tcap_DialogueOC(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 62 "./asn1/tcap/tcap.cnf"
 
   offset = dissect_tcap_ExternalPDU(FALSE /*implicit_tag*/, tvb, offset, actx, tree, -1);
-
 
 
   return offset;
@@ -381,10 +356,8 @@ dissect_tcap_OPERATION(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
 
 static int
 dissect_tcap_Parameter(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 77 "./asn1/tcap/tcap.cnf"
 
   offset = dissect_tcap_param(actx,tree,tvb,offset);
-
 
 
   return offset;
@@ -653,7 +626,6 @@ static const ber_choice_t Component_choice[] = {
 
 static int
 dissect_tcap_Component(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 82 "./asn1/tcap/tcap.cnf"
   tvbuff_t *next_tvb;
   gint8 ber_class;
   gboolean pc;
@@ -669,6 +641,9 @@ dissect_tcap_Component(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
 
   if (!next_tvb)
     return comp_offset;
+  if(dissect_tcap_ITU_ComponentPDU(implicit_tag, next_tvb, 0, actx, tcap_top_tree, hf_index)){
+    return comp_offset;
+  }
 
   _offset = offset;
   TRY {
@@ -682,10 +657,7 @@ dissect_tcap_Component(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
   ENDTRY;
   offset = _offset;
 
-  dissect_tcap_ITU_ComponentPDU(implicit_tag, next_tvb, 0, actx, tcap_top_tree, hf_index);
-
 /* return comp_offset+len; or return offset (will be automatically added) */
-
 
 
   return offset;
@@ -743,7 +715,6 @@ dissect_tcap_OCTET_STRING_SIZE_1_4(gboolean implicit_tag _U_, tvbuff_t *tvb _U_,
 
 static int
 dissect_tcap_OrigTransactionID(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 140 "./asn1/tcap/tcap.cnf"
   tvbuff_t *parameter_tvb;
   guint8 len, i;
   proto_tree *subtree;
@@ -794,7 +765,6 @@ dissect_tcap_OrigTransactionID(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
   }
 
 
-
   return offset;
 }
 
@@ -808,7 +778,6 @@ static const ber_sequence_t Begin_sequence[] = {
 
 static int
 dissect_tcap_Begin(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 236 "./asn1/tcap/tcap.cnf"
 gp_tcapsrt_info->ope=TC_BEGIN;
 
 /*  Do not change col_add_str() to col_append_str() here: we _want_ this call
@@ -819,7 +788,6 @@ gp_tcapsrt_info->ope=TC_BEGIN;
  *  put that info there should call col_set_fence() to protect it.
  */
   col_set_str(actx->pinfo->cinfo, COL_INFO, "Begin ");
-
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    Begin_sequence, hf_index, ett_tcap_Begin);
 
@@ -830,7 +798,6 @@ gp_tcapsrt_info->ope=TC_BEGIN;
 
 static int
 dissect_tcap_DestTransactionID(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 189 "./asn1/tcap/tcap.cnf"
   tvbuff_t *parameter_tvb;
   guint8 len , i;
   proto_tree *subtree;
@@ -880,7 +847,6 @@ dissect_tcap_DestTransactionID(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
     }
   }
 
-
   return offset;
 }
 
@@ -894,11 +860,9 @@ static const ber_sequence_t End_sequence[] = {
 
 static int
 dissect_tcap_End(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 250 "./asn1/tcap/tcap.cnf"
 gp_tcapsrt_info->ope=TC_END;
 
   col_set_str(actx->pinfo->cinfo, COL_INFO, "End ");
-
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    End_sequence, hf_index, ett_tcap_End);
 
@@ -916,11 +880,9 @@ static const ber_sequence_t Continue_sequence[] = {
 
 static int
 dissect_tcap_Continue(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 257 "./asn1/tcap/tcap.cnf"
 gp_tcapsrt_info->ope=TC_CONT;
 
   col_set_str(actx->pinfo->cinfo, COL_INFO, "Continue ");
-
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    Continue_sequence, hf_index, ett_tcap_Continue);
 
@@ -987,11 +949,9 @@ static const ber_sequence_t Abort_sequence[] = {
 
 static int
 dissect_tcap_Abort(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 264 "./asn1/tcap/tcap.cnf"
 gp_tcapsrt_info->ope=TC_ABORT;
 
   col_set_str(actx->pinfo->cinfo, COL_INFO, "Abort ");
-
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    Abort_sequence, hf_index, ett_tcap_Abort);
 
@@ -1036,7 +996,6 @@ dissect_tcap_AUDT_protocol_version(gboolean implicit_tag _U_, tvbuff_t *tvb _U_,
 
 static int
 dissect_tcap_AUDT_application_context_name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 116 "./asn1/tcap/tcap.cnf"
   struct tcap_private_t *p_tcap_private = (struct tcap_private_t*)actx->value_ptr;
   offset = dissect_ber_object_identifier_str(implicit_tag, actx, tree, tvb, offset, hf_index, &cur_oid);
 
@@ -1044,7 +1003,6 @@ dissect_tcap_AUDT_application_context_name(gboolean implicit_tag _U_, tvbuff_t *
     p_tcap_private->oid= (const void*) cur_oid;
     p_tcap_private->acv=TRUE;
   }
-
 
   return offset;
 }
@@ -1136,7 +1094,6 @@ dissect_tcap_AARQ_protocol_version(gboolean implicit_tag _U_, tvbuff_t *tvb _U_,
 
 static int
 dissect_tcap_AARQ_application_context_name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 124 "./asn1/tcap/tcap.cnf"
   struct tcap_private_t *p_tcap_private = (struct tcap_private_t*)actx->value_ptr;
   offset = dissect_ber_object_identifier_str(implicit_tag, actx, tree, tvb, offset, hf_index, &cur_oid);
 
@@ -1144,7 +1101,6 @@ dissect_tcap_AARQ_application_context_name(gboolean implicit_tag _U_, tvbuff_t *
     p_tcap_private->oid= (const void*) cur_oid;
     p_tcap_private->acv=TRUE;
   }
-
 
   return offset;
 }
@@ -1207,7 +1163,6 @@ dissect_tcap_AARE_protocol_version(gboolean implicit_tag _U_, tvbuff_t *tvb _U_,
 
 static int
 dissect_tcap_AARE_application_context_name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 132 "./asn1/tcap/tcap.cnf"
   struct tcap_private_t *p_tcap_private = (struct tcap_private_t*)actx->value_ptr;
   offset = dissect_ber_object_identifier_str(implicit_tag, actx, tree, tvb, offset, hf_index, &cur_oid);
 
@@ -1215,7 +1170,6 @@ dissect_tcap_AARE_application_context_name(gboolean implicit_tag _U_, tvbuff_t *
     p_tcap_private->oid= (const void*) cur_oid;
     p_tcap_private->acv=TRUE;
   }
-
 
   return offset;
 }
@@ -1428,9 +1382,6 @@ static int dissect_DialoguePDU_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, pr
   return offset;
 }
 
-
-/*--- End of included file: packet-tcap-fn.c ---*/
-#line 143 "./asn1/tcap/packet-tcap-template.c"
 
 /*
  * DEBUG functions
@@ -2064,7 +2015,7 @@ create_tcaphash_cont(struct tcaphash_cont_info_key_t *p_tcaphash_cont_key,
 
   if (p_tcaphash_contcall1) {
     /* Walk through list of transaction with identical keys */
-    /* go the the end to insert new record */
+    /* go to the end to insert new record */
     do {
       if (!p_tcaphash_contcall1->next_contcall) {
         p_tcaphash_contcall=append_tcaphash_contcall(p_tcaphash_contcall1,
@@ -2093,7 +2044,7 @@ create_tcaphash_end(struct tcaphash_end_info_key_t *p_tcaphash_end_key,
 
   if (p_tcaphash_endcall1) {
     /* Walk through list of transaction with identical keys */
-    /* go the the end to insert new record */
+    /* go to the end to insert new record */
     do {
       if (!p_tcaphash_endcall1->next_endcall) {
         p_tcaphash_endcall=append_tcaphash_endcall(p_tcaphash_endcall1,
@@ -2130,7 +2081,7 @@ tcaphash_begin_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   proto_tree *stat_tree=NULL;
 
 #ifdef DEBUG_TCAPSRT
-  dbg(51,"src %s srcTid %lx dst %s ", address_to_str(wmem_packet_scope(), &pinfo->src), p_tcapsrt_info->src_tid, address_to_str(wmem_packet_scope(), &pinfo->dst));
+  dbg(51,"src %s srcTid %lx dst %s ", address_to_str(pinfo->pool, &pinfo->src), p_tcapsrt_info->src_tid, address_to_str(pinfo->pool, &pinfo->dst));
 #endif
 
   /* prepare the key data */
@@ -2141,7 +2092,7 @@ tcaphash_begin_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     tcaphash_begin_key.pc_hash = mtp3_pc_hash((const mtp3_addr_pc_t *)pinfo->src.data);
   } else {
     /* Don't have MTP3 PCs (have SCCP GT ?) */
-    tcaphash_begin_key.pc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->src));
+    tcaphash_begin_key.pc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->src));
   }
   tcaphash_begin_key.hashKey=tcaphash_begin_calchash(&tcaphash_begin_key);
 
@@ -2149,7 +2100,7 @@ tcaphash_begin_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 #ifdef DEBUG_TCAPSRT
   dbg(10,"\n Hbegin #%u ", pinfo->num);
   dbg(11,"key %lx ",tcaphash_begin_key.hashKey);
-  dbg(51,"addr %s ", address_to_str(wmem_packet_scope(), &pinfo->src));
+  dbg(51,"addr %s ", address_to_str(pinfo->pool, &pinfo->src));
   dbg(51,"Tid %lx \n",tcaphash_begin_key.tid);
 #endif
 
@@ -2321,7 +2272,7 @@ tcaphash_cont_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   gboolean use_dst = FALSE;
 
 #ifdef DEBUG_TCAPSRT
-  dbg(51,"src %s srcTid %lx dst %s dstTid %lx ", address_to_str(wmem_packet_scope(), &pinfo->src), p_tcapsrt_info->src_tid, address_to_str(wmem_packet_scope(), &pinfo->dst), p_tcapsrt_info->dst_tid);
+  dbg(51,"src %s srcTid %lx dst %s dstTid %lx ", address_to_str(pinfo->pool, &pinfo->src), p_tcapsrt_info->src_tid, address_to_str(pinfo->pool, &pinfo->dst), p_tcapsrt_info->dst_tid);
   dbg(10,"\n Hcont #%u ", pinfo->num);
 #endif
 
@@ -2335,14 +2286,14 @@ tcaphash_cont_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     tcaphash_cont_key.dpc_hash = mtp3_pc_hash((const mtp3_addr_pc_t *)pinfo->dst.data);
   } else {
     /* Don't have MTP3 PCs (have SCCP GT ?) */
-    tcaphash_cont_key.opc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->src));
-    tcaphash_cont_key.dpc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->dst));
+    tcaphash_cont_key.opc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->src));
+    tcaphash_cont_key.dpc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->dst));
   }
   tcaphash_cont_key.hashKey=tcaphash_cont_calchash(&tcaphash_cont_key);
 
 #ifdef DEBUG_TCAPSRT
   dbg(11,"Ckey %lx ", tcaphash_cont_key.hashKey);
-  dbg(51,"addr %s %s ", address_to_str(wmem_packet_scope(), &pinfo->src), address_to_str(wmem_packet_scope(), &pinfo->dst));
+  dbg(51,"addr %s %s ", address_to_str(pinfo->pool, &pinfo->src), address_to_str(pinfo->pool, &pinfo->dst));
   dbg(51,"Tid %lx %lx \n",tcaphash_cont_key.src_tid, tcaphash_cont_key.dst_tid);
 #endif
   p_tcaphash_contcall = find_tcaphash_cont(&tcaphash_cont_key, pinfo);
@@ -2363,13 +2314,13 @@ tcaphash_cont_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
       tcaphash_begin_key.pc_hash = mtp3_pc_hash((const mtp3_addr_pc_t *)pinfo->dst.data);
     } else {
       /* Don't have MTP3 PCs (have SCCP GT ?) */
-      tcaphash_begin_key.pc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->dst));
+      tcaphash_begin_key.pc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->dst));
     }
     tcaphash_begin_key.hashKey=tcaphash_begin_calchash(&tcaphash_begin_key);
 
 #ifdef DEBUG_TCAPSRT
     dbg(11,"Bkey %lx ", tcaphash_begin_key.hashKey);
-    dbg(51,"addr %s ", address_to_str(wmem_packet_scope(), &pinfo->dst));
+    dbg(51,"addr %s ", address_to_str(pinfo->pool, &pinfo->dst));
     dbg(51,"Tid %lx \n",tcaphash_begin_key.tid);
 #endif
     p_tcaphash_begincall = find_tcaphash_begin(&tcaphash_begin_key, pinfo, FALSE);
@@ -2388,12 +2339,12 @@ tcaphash_cont_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
           tcaphash_begin_key.pc_hash = mtp3_pc_hash((const mtp3_addr_pc_t *)pinfo->src.data);
         } else {
           /* Don't have MTP3 PCs (have SCCP GT ?) */
-          tcaphash_begin_key.pc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->src));
+          tcaphash_begin_key.pc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->src));
         }
         tcaphash_begin_key.hashKey=tcaphash_begin_calchash(&tcaphash_begin_key);
 #ifdef DEBUG_TCAPSRT
         dbg(11,"Bkey %lx ", tcaphash_begin_key.hashKey);
-        dbg(51,"addr %s ", address_to_str(wmem_packet_scope(), &pinfo->src));
+        dbg(51,"addr %s ", address_to_str(pinfo->pool, &pinfo->src));
         dbg(51,"Tid %lx \n",tcaphash_begin_key.tid);
 #endif
         p_tcaphash_begincall = find_tcaphash_begin(&tcaphash_begin_key, pinfo,FALSE);
@@ -2422,14 +2373,14 @@ tcaphash_cont_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         tcaphash_end_key.opc_hash = mtp3_pc_hash((const mtp3_addr_pc_t *)(use_dst ? pinfo->src.data : pinfo->dst.data));
     } else {
         /* Don't have MTP3 PCs (have SCCP GT ?) */
-        tcaphash_end_key.dpc_hash = g_str_hash(address_to_str(wmem_packet_scope(), use_dst ? &pinfo->dst : &pinfo->src));
-        tcaphash_end_key.opc_hash = g_str_hash(address_to_str(wmem_packet_scope(), use_dst ? &pinfo->src : &pinfo->dst));
+        tcaphash_end_key.dpc_hash = g_str_hash(address_to_str(pinfo->pool, use_dst ? &pinfo->dst : &pinfo->src));
+        tcaphash_end_key.opc_hash = g_str_hash(address_to_str(pinfo->pool, use_dst ? &pinfo->src : &pinfo->dst));
     }
       tcaphash_end_key.hashKey=tcaphash_end_calchash(&tcaphash_end_key);
 
 #ifdef DEBUG_TCAPSRT
       dbg(10,"New Ekey %lx ",tcaphash_end_key.hashKey);
-      dbg(51,"addr %s ", address_to_str(wmem_packet_scope(), use_dst ? &pinfo->dst : &pinfo->src));
+      dbg(51,"addr %s ", address_to_str(pinfo->pool, use_dst ? &pinfo->dst : &pinfo->src));
       dbg(51,"Tid %lx ",tcaphash_end_key.tid);
       dbg(11,"Frame reqlink #%u ", pinfo->num);
 #endif
@@ -2487,7 +2438,7 @@ tcaphash_end_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   proto_tree *stat_tree=NULL;
 
 #ifdef DEBUG_TCAPSRT
-  dbg(51,"src %s dst %s dstTid %lx ", address_to_str(wmem_packet_scope(), &pinfo->src), address_to_str(wmem_packet_scope(), &pinfo->dst), p_tcapsrt_info->dst_tid);
+  dbg(51,"src %s dst %s dstTid %lx ", address_to_str(pinfo->pool, &pinfo->src), address_to_str(pinfo->pool, &pinfo->dst), p_tcapsrt_info->dst_tid);
   dbg(10,"\n Hend #%u ", pinfo->num);
 #endif
   /* look only for matching request, if matching conversation is available. */
@@ -2499,14 +2450,14 @@ tcaphash_end_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     tcaphash_end_key.dpc_hash = mtp3_pc_hash((const mtp3_addr_pc_t *)pinfo->dst.data);
   } else {
     /* Don't have MTP3 PCs (have SCCP GT ?) */
-    tcaphash_end_key.opc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->src));
-    tcaphash_end_key.dpc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->dst));
+    tcaphash_end_key.opc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->src));
+    tcaphash_end_key.dpc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->dst));
 }
   tcaphash_end_key.hashKey=tcaphash_end_calchash(&tcaphash_end_key);
 
 #ifdef DEBUG_TCAPSRT
   dbg(11,"Ekey %lx ",tcaphash_end_key.hashKey);
-  dbg(11,"addr %s ", address_to_str(wmem_packet_scope(), &pinfo->dst));
+  dbg(11,"addr %s ", address_to_str(pinfo->pool, &pinfo->dst));
   dbg(51,"Tid %lx ",tcaphash_end_key.tid);
 #endif
   p_tcaphash_endcall = find_tcaphash_end(&tcaphash_end_key, pinfo,TRUE);
@@ -2522,13 +2473,13 @@ tcaphash_end_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
       tcaphash_begin_key.pc_hash = mtp3_pc_hash((const mtp3_addr_pc_t *)pinfo->dst.data);
     } else {
       /* Don't have MTP3 PCs (have SCCP GT ?) */
-      tcaphash_begin_key.pc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->dst));
+      tcaphash_begin_key.pc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->dst));
     }
     tcaphash_begin_key.hashKey=tcaphash_begin_calchash(&tcaphash_begin_key);
 
 #ifdef DEBUG_TCAPSRT
     dbg(11,"Bkey %lx ", tcaphash_begin_key.hashKey);
-    dbg(51,"addr %s ", address_to_str(wmem_packet_scope(), &pinfo->dst));
+    dbg(51,"addr %s ", address_to_str(pinfo->pool, &pinfo->dst));
     dbg(51,"Tid %lx ",tcaphash_begin_key.tid);
 #endif
     p_tcaphash_begincall = find_tcaphash_begin(&tcaphash_begin_key, pinfo,FALSE);
@@ -2619,8 +2570,8 @@ tcaphash_ansi_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     tcaphash_ansi_key.dpc_hash = mtp3_pc_hash((const mtp3_addr_pc_t *)pinfo->dst.data);
   } else {
     /* Don't have MTP3 PCs (have SCCP GT ?) */
-    tcaphash_ansi_key.opc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->src));
-    tcaphash_ansi_key.dpc_hash = g_str_hash(address_to_str(wmem_packet_scope(), &pinfo->dst));
+    tcaphash_ansi_key.opc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->src));
+    tcaphash_ansi_key.dpc_hash = g_str_hash(address_to_str(pinfo->pool, &pinfo->dst));
   }
   tcaphash_ansi_key.hashKey=tcaphash_ansi_calchash(&tcaphash_ansi_key);
 
@@ -2628,7 +2579,7 @@ tcaphash_ansi_matching(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 #ifdef DEBUG_TCAPSRT
   dbg(10,"\n Hansi #%u ", pinfo->num);
   dbg(11,"key %lx ",tcaphash_ansi_key.hashKey);
-  dbg(51,"PC %s %s ",address_to_str(wmem_packet_scope(), &pinfo->src), address_to_str(wmem_packet_scope(), &pinfo->dst));
+  dbg(51,"PC %s %s ",address_to_str(pinfo->pool, &pinfo->src), address_to_str(pinfo->pool, &pinfo->dst));
   dbg(51,"Tid %lx ",tcaphash_ansi_key.tid);
 #endif
   p_tcaphash_ansicall = (struct tcaphash_ansicall_t *)
@@ -3167,14 +3118,14 @@ dissect_tcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* d
   cur_oid = NULL;
   tcapext_oid = NULL;
 
-  p_tcap_private = wmem_new0(wmem_packet_scope(), struct tcap_private_t);
+  p_tcap_private = wmem_new0(pinfo->pool, struct tcap_private_t);
   asn1_ctx.value_ptr = p_tcap_private;
   gp_tcapsrt_info=tcapsrt_razinfo();
   tcap_subdissector_used=FALSE;
   gp_tcap_context=NULL;
   dissect_tcap_TCMessage(FALSE, tvb, 0, &asn1_ctx, tree, -1);
 
-  if (gtcap_HandleSRT && !tcap_subdissector_used ) {
+  if (!tcap_subdissector_used ) {
     p_tcap_context=tcapsrt_call_matching(tvb, pinfo, tcap_stat_tree, gp_tcapsrt_info);
     p_tcap_private->context=p_tcap_context;
 
@@ -3183,14 +3134,14 @@ dissect_tcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* d
      */
     if ( p_tcap_context && cur_oid && !p_tcap_context->oid_present ) {
       /* Save the application context and the sub dissector */
-      g_strlcpy(p_tcap_context->oid, cur_oid, sizeof(p_tcap_context->oid));
+      (void) g_strlcpy(p_tcap_context->oid, cur_oid, sizeof(p_tcap_context->oid));
       p_tcap_context->oid_present=TRUE;
       if ( (subdissector_handle = dissector_get_string_handle(ber_oid_dissector_table, cur_oid)) ) {
         p_tcap_context->subdissector_handle=subdissector_handle;
         p_tcap_context->subdissector_present=TRUE;
       }
     }
-    if (gtcap_HandleSRT && p_tcap_context && p_tcap_context->callback) {
+    if (p_tcap_context && p_tcap_context->callback) {
       /* Callback fonction for the upper layer */
       (p_tcap_context->callback)(tvb, pinfo, tcap_stat_tree, p_tcap_context);
     }
@@ -3208,15 +3159,9 @@ proto_reg_handoff_tcap(void)
 
   ss7pc_address_type = address_type_get_by_name("AT_SS7PC");
 
-
-/*--- Included file: packet-tcap-dis-tab.c ---*/
-#line 1 "./asn1/tcap/packet-tcap-dis-tab.c"
   register_ber_oid_dissector("0.0.17.773.1.1.1", dissect_DialoguePDU_PDU, proto_tcap, "id-as-dialogue");
   register_ber_oid_dissector("0.0.17.773.1.2.1", dissect_UniDialoguePDU_PDU, proto_tcap, "id-as-uniDialogue");
 
-
-/*--- End of included file: packet-tcap-dis-tab.c ---*/
-#line 1921 "./asn1/tcap/packet-tcap-template.c"
 }
 
 static void init_tcap(void);
@@ -3289,9 +3234,6 @@ proto_register_tcap(void)
         FT_FRAMENUM, BASE_NONE, NULL, 0x0,
         "SRT Duplicated with Session", HFILL }
     },
-
-/*--- Included file: packet-tcap-hfarr.c ---*/
-#line 1 "./asn1/tcap/packet-tcap-hfarr.c"
     { &hf_tcap_UniDialoguePDU_PDU,
       { "UniDialoguePDU", "tcap.UniDialoguePDU",
         FT_UINT32, BASE_DEC, VALS(tcap_UniDialoguePDU_vals), 0,
@@ -3556,9 +3498,6 @@ proto_register_tcap(void)
       { "version1", "tcap.AARE.protocol.version.version1",
         FT_BOOLEAN, 8, NULL, 0x80,
         NULL, HFILL }},
-
-/*--- End of included file: packet-tcap-hfarr.c ---*/
-#line 1994 "./asn1/tcap/packet-tcap-template.c"
   };
 
 /* Setup protocol subtree array */
@@ -3568,9 +3507,6 @@ proto_register_tcap(void)
     &ett_otid,
     &ett_dtid,
     &ett_tcap_stat,
-
-/*--- Included file: packet-tcap-ettarr.c ---*/
-#line 1 "./asn1/tcap/packet-tcap-ettarr.c"
     &ett_tcap_ExternalPDU_U,
     &ett_tcap_TCMessage,
     &ett_tcap_Unidirectional,
@@ -3604,9 +3540,6 @@ proto_register_tcap(void)
     &ett_tcap_ABRT_apdu_U,
     &ett_tcap_ABRT_user_information,
     &ett_tcap_Associate_source_diagnostic,
-
-/*--- End of included file: packet-tcap-ettarr.c ---*/
-#line 2004 "./asn1/tcap/packet-tcap-template.c"
   };
 
   /*static enum_val_t tcap_options[] = {
@@ -3652,10 +3585,7 @@ proto_register_tcap(void)
                                   "SCCP (and SUA) SSNs to decode as TCAP",
                                   &global_ssn_range, MAX_SSN);
 
-  prefs_register_bool_preference(tcap_module, "srt",
-                                 "Service Response Time Analyse",
-                                 "Activate the analyse for Response Time",
-                                 &gtcap_HandleSRT);
+  prefs_register_obsolete_preference(tcap_module, "srt");
 
   prefs_register_bool_preference(tcap_module, "persistentsrt",
                                  "Persistent stats for SRT",
@@ -3673,9 +3603,7 @@ proto_register_tcap(void)
                                  10, &gtcap_LostTimeout);
 
   /* 'globally' register dissector */
-  register_dissector("tcap", dissect_tcap, proto_tcap);
-
-  tcap_handle = create_dissector_handle(dissect_tcap, proto_tcap);
+  tcap_handle = register_dissector("tcap", dissect_tcap, proto_tcap);
 
   /* hash-tables for SRT */
   tcaphash_context = wmem_map_new_autoreset(wmem_epan_scope(), wmem_file_scope(), tcaphash_context_calchash, tcaphash_context_equal);
@@ -3712,8 +3640,11 @@ static void init_tcap(void)
   /* Reset the session counter */
   tcapsrt_global_SessionId=1;
 
-  /* Display of SRT only if Persistent Stat */
-  gtcap_DisplaySRT=gtcap_PersistentSRT || gtcap_HandleSRT&gtcap_StatSRT;
+  /* Display of SRT is enabled
+   * 1) For wireshark only if Persistent Stat is enabled
+   * 2) For tshark, if the CLI SRT tap is registered
+   */
+  gtcap_DisplaySRT=gtcap_PersistentSRT || gtcap_StatSRT;
 }
 
 static void cleanup_tcap(void)
@@ -3801,8 +3732,8 @@ dissect_tcap_param(asn1_ctx_t *actx, proto_tree *tree, tvbuff_t *tvb, int offset
 /*
  * Call ITU Subdissector to decode the Tcap Component
  */
-static int
-dissect_tcap_ITU_ComponentPDU(gboolean implicit_tag _U_, tvbuff_t *tvb, int offset, asn1_ctx_t *actx, proto_tree *tree, int hf_index _U_)
+static gboolean
+dissect_tcap_ITU_ComponentPDU(gboolean implicit_tag _U_, tvbuff_t *tvb, int offset _U_, asn1_ctx_t *actx, proto_tree *tree, int hf_index _U_)
 {
   dissector_handle_t subdissector_handle=NULL;
   gboolean is_subdissector=FALSE;
@@ -3816,120 +3747,120 @@ dissect_tcap_ITU_ComponentPDU(gboolean implicit_tag _U_, tvbuff_t *tvb, int offs
   /*
    * Handle The TCAP Service Response Time
    */
-  if ( gtcap_HandleSRT ) {
-    if (!tcap_subdissector_used) {
-      p_tcap_context=tcapsrt_call_matching(tvb, actx->pinfo, tcap_stat_tree, gp_tcapsrt_info);
-      tcap_subdissector_used=TRUE;
-      gp_tcap_context=p_tcap_context;
-      p_tcap_private->context=p_tcap_context;
-    } else {
-      /* Take the last TCAP context */
-      p_tcap_context = gp_tcap_context;
-      p_tcap_private->context=p_tcap_context;
-    }
+  if (!tcap_subdissector_used) {
+    p_tcap_context=tcapsrt_call_matching(tvb, actx->pinfo, tcap_stat_tree, gp_tcapsrt_info);
+    tcap_subdissector_used=TRUE;
+    gp_tcap_context=p_tcap_context;
+    p_tcap_private->context=p_tcap_context;
+  } else {
+    /* Take the last TCAP context */
+    p_tcap_context = gp_tcap_context;
+    p_tcap_private->context=p_tcap_context;
   }
   if (p_tcap_context) {
-    if (cur_oid) {
-      if (p_tcap_context->oid_present) {
-        /* We have already an Application Context, check if we have
-           to fallback to a lower version */
-        if ( strncmp(p_tcap_context->oid, cur_oid, sizeof(p_tcap_context->oid))!=0) {
-          /* ACN, changed, Fallback to lower version
-           * and update the subdissector (purely formal)
-           */
-          g_strlcpy(p_tcap_context->oid,cur_oid, sizeof(p_tcap_context->oid));
-          if ( (subdissector_handle = dissector_get_string_handle(ber_oid_dissector_table, cur_oid)) ) {
-            p_tcap_context->subdissector_handle=subdissector_handle;
-            p_tcap_context->subdissector_present=TRUE;
-          }
-        }
+      if (cur_oid) {
+          if (p_tcap_context->oid_present) {
+              /* We have already an Application Context, check if we have
+                 to fallback to a lower version */
+              if (strncmp(p_tcap_context->oid, cur_oid, sizeof(p_tcap_context->oid)) != 0) {
+                  /* ACN, changed, Fallback to lower version
+                   * and update the subdissector (purely formal)
+                   */
+                  (void) g_strlcpy(p_tcap_context->oid, cur_oid, sizeof(p_tcap_context->oid));
+                  if ((subdissector_handle = dissector_get_string_handle(ber_oid_dissector_table, cur_oid))) {
+                      p_tcap_context->subdissector_handle = subdissector_handle;
+                      p_tcap_context->subdissector_present = TRUE;
+                  }
+              }
+          } else {
+              /* We do not have the OID in the TCAP context, so store it */
+              (void) g_strlcpy(p_tcap_context->oid, cur_oid, sizeof(p_tcap_context->oid));
+              p_tcap_context->oid_present = TRUE;
+              /* Try to find a subdissector according to OID */
+              if ((subdissector_handle
+                  = dissector_get_string_handle(ber_oid_dissector_table, cur_oid))) {
+                  p_tcap_context->subdissector_handle = subdissector_handle;
+                  p_tcap_context->subdissector_present = TRUE;
+              } else {
+                  /* Not found, so try to find a subdissector according to SSN */
+                  if ((subdissector_handle = get_itu_tcap_subdissector(actx->pinfo->match_uint))) {
+                      /* Found according to SSN */
+                      p_tcap_context->subdissector_handle = subdissector_handle;
+                      p_tcap_context->subdissector_present = TRUE;
+                  }
+              }
+          } /* context OID */
       } else {
-        /* We do not have the OID in the TCAP context, so store it */
-        g_strlcpy(p_tcap_context->oid, cur_oid, sizeof(p_tcap_context->oid));
-        p_tcap_context->oid_present=TRUE;
-        /* Try to find a subdissector according to OID */
-        if ( (subdissector_handle
-          = dissector_get_string_handle(ber_oid_dissector_table, cur_oid)) ) {
-          p_tcap_context->subdissector_handle=subdissector_handle;
-          p_tcap_context->subdissector_present=TRUE;
-        } else {
-          /* Not found, so try to find a subdissector according to SSN */
-          if ( (subdissector_handle = get_itu_tcap_subdissector(actx->pinfo->match_uint))) {
-            /* Found according to SSN */
-            p_tcap_context->subdissector_handle=subdissector_handle;
-            p_tcap_context->subdissector_present=TRUE;
+          /* Copy the OID from the TCAP context to the current oid */
+          if (p_tcap_context->oid_present) {
+              p_tcap_private->oid = (void*)p_tcap_context->oid;
+              p_tcap_private->acv = TRUE;
           }
-        }
-      } /* context OID */
-    } else {
-      /* Copy the OID from the TCAP context to the current oid */
-      if (p_tcap_context->oid_present) {
-        p_tcap_private->oid= (void*) p_tcap_context->oid;
-        p_tcap_private->acv=TRUE;
-      }
-    } /* no OID */
+      } /* no OID */
   } /* no TCAP context */
 
 
-  if ( p_tcap_context
-       && p_tcap_context->subdissector_present) {
-    /* Take the subdissector from the context */
-    subdissector_handle=p_tcap_context->subdissector_handle;
-    is_subdissector=TRUE;
+  if (p_tcap_context
+      && p_tcap_context->subdissector_present) {
+      /* Take the subdissector from the context */
+      subdissector_handle = p_tcap_context->subdissector_handle;
+      is_subdissector = TRUE;
   }
 
   /* Have SccpUsersTable protocol taking precedence over sccp.ssn table */
   if (!is_subdissector && requested_subdissector_handle) {
-    is_subdissector = TRUE;
-    subdissector_handle = requested_subdissector_handle;
+      is_subdissector = TRUE;
+      subdissector_handle = requested_subdissector_handle;
   }
 
   if (!is_subdissector) {
-    /*
-     * If we do not currently know the subdissector, we have to find it
-     * - first, according to the OID
-     * - then according to the SSN
-     * - and at least, take the default Data handler
-     */
-    if (ber_oid_dissector_table && cur_oid) {
-      /* Search if we can find the sub protocol according to the A.C.N */
-      if ( (subdissector_handle
-        = dissector_get_string_handle(ber_oid_dissector_table, cur_oid)) ) {
-        /* found */
-        is_subdissector=TRUE;
+      /*
+       * If we do not currently know the subdissector, we have to find it
+       * - first, according to the OID
+       * - then according to the SSN
+       * - and at least, take the default Data handler
+       */
+      if (ber_oid_dissector_table && cur_oid) {
+          /* Search if we can find the sub protocol according to the A.C.N */
+          if ((subdissector_handle
+              = dissector_get_string_handle(ber_oid_dissector_table, cur_oid))) {
+              /* found */
+              is_subdissector = TRUE;
+          } else {
+              /* Search if we can found the sub protocol according to the SSN table */
+              if ((subdissector_handle
+                  = get_itu_tcap_subdissector(actx->pinfo->match_uint))) {
+                  /* Found according to SSN */
+                  is_subdissector = TRUE;
+              } else {
+                  /* Nothing found, take the Data handler */
+                  subdissector_handle = data_handle;
+                  is_subdissector = TRUE;
+              } /* SSN */
+          } /* ACN */
       } else {
-        /* Search if we can found the sub protocol according to the SSN table */
-        if ( (subdissector_handle
-          = get_itu_tcap_subdissector(actx->pinfo->match_uint))) {
-          /* Found according to SSN */
-          is_subdissector=TRUE;
-        } else {
-          /* Nothing found, take the Data handler */
-          subdissector_handle = data_handle;
-          is_subdissector=TRUE;
-        } /* SSN */
-      } /* ACN */
-    } else {
-      /* There is no A.C.N for this transaction, so search in the SSN table */
-      if ( (subdissector_handle = get_itu_tcap_subdissector(actx->pinfo->match_uint))) {
-        /* Found according to SSN */
-        is_subdissector=TRUE;
-      } else {
-        subdissector_handle = data_handle;
-        is_subdissector=TRUE;
-      }
-    } /* OID */
+          /* There is no A.C.N for this transaction, so search in the SSN table */
+          if ((subdissector_handle = get_itu_tcap_subdissector(actx->pinfo->match_uint))) {
+              /* Found according to SSN */
+              is_subdissector = TRUE;
+          } else {
+              subdissector_handle = data_handle;
+              is_subdissector = TRUE;
+          }
+      } /* OID */
   } else {
-    /* We have it already */
+      /* We have it already */
   }
 
   /* Call the sub dissector if present, and not already called */
   if (is_subdissector) {
-    call_dissector_with_data(subdissector_handle, tvb, actx->pinfo, tree, actx->value_ptr);
-    col_set_fence(actx->pinfo->cinfo, COL_INFO);
+      gboolean is_active = call_dissector_only(subdissector_handle, tvb, actx->pinfo, tree, actx->value_ptr);
+      col_set_fence(actx->pinfo->cinfo, COL_INFO);
+      if(!is_active){
+          return FALSE;
+    }
   }
-
-  return offset;
+  return TRUE;
 }
 
 void

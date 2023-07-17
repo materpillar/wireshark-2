@@ -126,7 +126,7 @@ void proto_register_uftp(void);
 void proto_reg_handoff_uftp(void);
 
 static int proto_uftp = -1;
-#define UTFP_PORT   1044 /* Not IANA registered */
+#define UFTP_PORT   1044 /* Not IANA registered */
 
 /* main header and common fields */
 static int hf_uftp_version = -1;
@@ -711,7 +711,7 @@ static void dissect_uftp_fileinfo_30(tvbuff_t *tvb, packet_info *pinfo, proto_tr
     offset += 2;
     proto_tree_add_item(fileinfo_tree, hf_uftp_fileinfo_fsize, tvb, offset, 8, ENC_BIG_ENDIAN);
     offset += 8;
-    proto_tree_add_item(fileinfo_tree, hf_uftp_fileinfo_name, tvb, offset, MAXPATHNAME, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(fileinfo_tree, hf_uftp_fileinfo_name, tvb, offset, MAXPATHNAME, ENC_ASCII);
     offset += MAXPATHNAME;
     if (destcount > 0) {
         destlist = proto_tree_add_item(fileinfo_tree, hf_uftp_destlist, tvb, offset, destcount * 4, ENC_NA);
@@ -767,7 +767,7 @@ static void dissect_uftp_fileinfo(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
     offset += 8;
     proto_tree_add_item(fileinfo_tree, hf_uftp_fileinfo_ftstamp, tvb, offset, 4, ENC_BIG_ENDIAN);
     offset += 4;
-    proto_tree_add_item(fileinfo_tree, hf_uftp_fileinfo_name, tvb, offset, MAXPATHNAME, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(fileinfo_tree, hf_uftp_fileinfo_name, tvb, offset, MAXPATHNAME, ENC_ASCII);
     offset += MAXPATHNAME;
     if (destcount > 0) {
         destlist = proto_tree_add_item(fileinfo_tree, hf_uftp_destlist, tvb, offset, destcount * 4, ENC_NA);
@@ -814,7 +814,7 @@ static void dissect_uftp_keyinfo(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tr
     offset += 1;
     proto_tree_add_item(keyinfo_tree, hf_uftp_keyinfo_groupmaster_len, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset += 1;
-    proto_tree_add_item(keyinfo_tree, hf_uftp_keyinfo_tstamp, tvb, offset, 8, FALSE);
+    proto_tree_add_item(keyinfo_tree, hf_uftp_keyinfo_tstamp, tvb, offset, 8, ENC_NA);
     offset += 8;
     if (destcount > 0) {
         destlist = proto_tree_add_item(keyinfo_tree, hf_uftp_destlist, tvb, offset, destcount * DESTKEY_LEN, ENC_NA);
@@ -1337,7 +1337,7 @@ static void dissect_uftp_encrypted(tvbuff_t *tvb, packet_info *pinfo _U_, proto_
 
     ti = proto_tree_add_item(tree, hf_uftp_encrypted, tvb, offset, -1, ENC_NA);
     encrypted_tree = proto_item_add_subtree(ti, ett_uftp_encrypted);
-    proto_tree_add_item(encrypted_tree, hf_uftp_encrypted_tstamp, tvb, offset, 8, FALSE);
+    proto_tree_add_item(encrypted_tree, hf_uftp_encrypted_tstamp, tvb, offset, 8, ENC_NA);
     offset += 8;
     proto_tree_add_item(encrypted_tree, hf_uftp_encrypted_sig_len, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
@@ -1370,7 +1370,7 @@ static void dissect_uftp_abort(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree
     offset += 2;
     proto_tree_add_item(abort_tree, hf_uftp_abort_host, tvb, offset, 4, ENC_BIG_ENDIAN);
     offset += 4;
-    proto_tree_add_item(abort_tree, hf_uftp_abort_message, tvb, offset, -1, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(abort_tree, hf_uftp_abort_message, tvb, offset, -1, ENC_ASCII);
 }
 
 static int dissect_uftp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
@@ -1855,7 +1855,7 @@ void proto_register_uftp(void)
         },
         { &hf_uftp_fileseg_seq_num,
             { "Sequence Number", "uftp.fileseg.seq_num",
-            FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }
+            FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }
         },
         { &hf_uftp_fileseg_data,
             { "Data", "uftp.fileseg.data",
@@ -2218,7 +2218,7 @@ void proto_reg_handoff_uftp(void)
     uftp4_handle = find_dissector("uftp4");
     uftp5_handle = find_dissector("uftp5");
     uftp_handle = create_dissector_handle(dissect_uftp, proto_uftp);
-    dissector_add_uint_with_preference("udp.port", UTFP_PORT, uftp_handle);
+    dissector_add_uint_with_preference("udp.port", UFTP_PORT, uftp_handle);
 }
 
 /*

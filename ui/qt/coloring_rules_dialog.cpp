@@ -20,7 +20,8 @@
 #include "wsutil/filesystem.h"
 #include "epan/dfilter/dfilter.h"
 
-#include "wireshark_application.h"
+#include "main_application.h"
+
 #include "ui/qt/utils/qt_ui_utils.h"
 #include "ui/qt/widgets/copy_from_profile_button.h"
 #include "ui/qt/widgets/wireshark_file_dialog.h"
@@ -50,7 +51,7 @@ ColoringRulesDialog::ColoringRulesDialog(QWidget *parent, QString add_filter) :
     ui->setupUi(this);
     if (parent) loadGeometry(parent->width() * 2 / 3, parent->height() * 4 / 5);
 
-    setWindowTitle(wsApp->windowTitleString(tr("Coloring Rules %1").arg(get_profile_name())));
+    setWindowTitle(mainApp->windowTitleString(tr("Coloring Rules %1").arg(get_profile_name())));
 
     ui->coloringRulesTreeView->setModel(&colorRuleModel_);
     ui->coloringRulesTreeView->setItemDelegate(&colorRuleDelegate_);
@@ -115,30 +116,12 @@ ColoringRulesDialog::ColoringRulesDialog(QWidget *parent, QString add_filter) :
         ui->coloringRulesTreeView->setCurrentIndex(QModelIndex());
     }
 
-    checkUnknownColorfilters();
-
     updateHint();
 }
 
 ColoringRulesDialog::~ColoringRulesDialog()
 {
     delete ui;
-}
-
-void ColoringRulesDialog::checkUnknownColorfilters()
-{
-    if (prefs.unknown_colorfilters) {
-        QMessageBox *mb = new QMessageBox();
-        mb->setText(tr("Your coloring rules file contains unknown rules"));
-        mb->setInformativeText(tr("Wireshark doesn't recognize one or more of your coloring rules. "
-                                 "They have been disabled."));
-        mb->setStandardButtons(QMessageBox::Ok);
-
-        mb->setWindowModality(Qt::ApplicationModal);
-        mb->setAttribute(Qt::WA_DeleteOnClose);
-        mb->show();
-        prefs.unknown_colorfilters = FALSE;
-    }
 }
 
 void ColoringRulesDialog::copyFromProfile(QString filename)
@@ -152,8 +135,6 @@ void ColoringRulesDialog::copyFromProfile(QString filename)
     for (int i = 0; i < colorRuleModel_.columnCount(); i++) {
         ui->coloringRulesTreeView->resizeColumnToContents(i);
     }
-
-    checkUnknownColorfilters();
 }
 
 void ColoringRulesDialog::showEvent(QShowEvent *)
@@ -173,22 +154,17 @@ void ColoringRulesDialog::rowCountChanged()
 bool ColoringRulesDialog::isValidFilter(QString filter, QString * error)
 {
     dfilter_t *dfp = NULL;
-    gchar *err_msg;
-    if (dfilter_compile(filter.toUtf8().constData(), &dfp, &err_msg)) {
-        GPtrArray *depr = NULL;
-        if (dfp) {
-            depr = dfilter_deprecated_tokens(dfp);
-        }
-        if (! depr) {
-            return true;
-        }
-    }
-    dfilter_free(dfp);
+    df_error_t *df_err = NULL;
 
-    if (err_msg)
+    if (dfilter_compile(filter.toUtf8().constData(), &dfp, &df_err)) {
+        dfilter_free(dfp);
+        return true;
+    }
+
+    if (df_err)
     {
-        error->append(err_msg);
-        g_free(err_msg);
+        error->append(df_err->msg);
+        df_error_free(&df_err);
     }
 
     return false;
@@ -321,7 +297,7 @@ void ColoringRulesDialog::colorRuleSelectionChanged(const QItemSelection&, const
         selectedRows.insert(index.row(), index);
     }
 
-    int num_selected = selectedRows.count();
+    qsizetype num_selected = selectedRows.count();
     if (num_selected == 1) {
         setColorButtons(selectedList[0]);
     }
@@ -405,7 +381,7 @@ void ColoringRulesDialog::on_newToolButton_clicked()
 void ColoringRulesDialog::on_deleteToolButton_clicked()
 {
     QModelIndexList selectedList = ui->coloringRulesTreeView->selectionModel()->selectedIndexes();
-    int num_selected = selectedList.count()/colorRuleModel_.columnCount();
+    qsizetype num_selected = selectedList.count() / colorRuleModel_.columnCount();
     if (num_selected > 0) {
         //list is not guaranteed to be sorted, so force it
         std::sort(selectedList.begin(), selectedList.end());
@@ -413,7 +389,7 @@ void ColoringRulesDialog::on_deleteToolButton_clicked()
         //walk the list from the back because deleting a value in
         //the middle will leave the selectedList out of sync and
         //delete the wrong elements
-        for (int i = selectedList.count()-1; i >= 0; i--) {
+        for (int i = static_cast<int>(selectedList.count()) - 1; i >= 0; i--) {
             QModelIndex deleteIndex = selectedList[i];
             //selectedList includes all cells, use first column as key to remove row
             if (deleteIndex.isValid() && (deleteIndex.column() == 0)) {
@@ -438,17 +414,15 @@ void ColoringRulesDialog::on_buttonBox_clicked(QAbstractButton *button)
     QString err;
 
     if (button == import_button_) {
-        QString file_name = WiresharkFileDialog::getOpenFileName(this, wsApp->windowTitleString(tr("Import Coloring Rules")),
-                                                         wsApp->lastOpenDir().path());
+        QString file_name = WiresharkFileDialog::getOpenFileName(this, mainApp->windowTitleString(tr("Import Coloring Rules")),
+                                                         mainApp->lastOpenDir().path());
         if (!file_name.isEmpty()) {
             if (!colorRuleModel_.importColors(file_name, err)) {
                 simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err.toUtf8().constData());
             }
-
-            checkUnknownColorfilters();
         }
     } else if (button == export_button_) {
-        int num_items = ui->coloringRulesTreeView->selectionModel()->selectedIndexes().count()/colorRuleModel_.columnCount();
+        int num_items = static_cast<int>(ui->coloringRulesTreeView->selectionModel()->selectedIndexes().count()) / colorRuleModel_.columnCount();
 
         if (num_items < 1) {
             num_items = colorRuleModel_.rowCount();
@@ -457,9 +431,9 @@ void ColoringRulesDialog::on_buttonBox_clicked(QAbstractButton *button)
         if (num_items < 1)
             return;
 
-        QString caption = wsApp->windowTitleString(tr("Export %1 Coloring Rules").arg(num_items));
+        QString caption = mainApp->windowTitleString(tr("Export %1 Coloring Rules").arg(num_items));
         QString file_name = WiresharkFileDialog::getSaveFileName(this, caption,
-                                                         wsApp->lastOpenDir().path());
+                                                         mainApp->lastOpenDir().path());
         if (!file_name.isEmpty()) {
             if (!colorRuleModel_.exportColors(file_name, err)) {
                 simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err.toUtf8().constData());
@@ -471,25 +445,15 @@ void ColoringRulesDialog::on_buttonBox_clicked(QAbstractButton *button)
 void ColoringRulesDialog::on_buttonBox_accepted()
 {
     QString err;
+    int ret = QDialog::Accepted;
     if (!colorRuleModel_.writeColors(err)) {
         simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err.toUtf8().constData());
+        ret = QDialog::Rejected;
     }
+    done(ret);
 }
 
 void ColoringRulesDialog::on_buttonBox_helpRequested()
 {
-    wsApp->helpTopicAction(HELP_COLORING_RULES_DIALOG);
+    mainApp->helpTopicAction(HELP_COLORING_RULES_DIALOG);
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

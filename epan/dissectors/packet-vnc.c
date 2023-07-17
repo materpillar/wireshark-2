@@ -91,8 +91,17 @@ typedef enum {
 	VNC_SECURITY_TYPE_MD5_HASH_AUTH = 21,
 	VNC_SECURITY_TYPE_XVP           = 22,
 	VNC_SECURITY_TYPE_ARD           = 30,
-	VNC_TIGHT_AUTH_TGHT_ULGNAUTH	= 119,
-	VNC_TIGHT_AUTH_TGHT_XTRNAUTH	= 130
+	VNC_TIGHT_AUTH_TGHT_ULGNAUTH    = 119,
+	VNC_TIGHT_AUTH_TGHT_XTRNAUTH    = 130,
+	VNC_VENCRYPT_AUTH_PLAIN         = 256,
+	VNC_VENCRYPT_AUTH_TLSNONE       = 257,
+	VNC_VENCRYPT_AUTH_TLSVNC        = 258,
+	VNC_VENCRYPT_AUTH_TLSPLAIN      = 259,
+	VNC_VENCRYPT_AUTH_X509_NONE     = 260,
+	VNC_VENCRYPT_AUTH_X509_VNC      = 261,
+	VNC_VENCRYPT_AUTH_X509_PLAIN    = 262,
+	VNC_VENCRYPT_AUTH_TLSSASL       = 263,
+	VNC_VENCRYPT_AUTH_X509_SASL     = 264
 } vnc_security_types_e;
 
 static const value_string vnc_security_types_vs[] = {
@@ -110,15 +119,24 @@ static const value_string vnc_security_types_vs[] = {
 	{ 0,  NULL                     }
 };
 
+static const value_string vnc_vencrypt_auth_types_vs[] = {
+	{ VNC_SECURITY_TYPE_NONE,       "None"        },
+	{ VNC_SECURITY_TYPE_VNC,        "VNC"         },
+	{ VNC_VENCRYPT_AUTH_PLAIN,      "Plain"       },
+	{ VNC_VENCRYPT_AUTH_TLSNONE,    "TLS None"    },
+	{ VNC_VENCRYPT_AUTH_TLSVNC,     "TLS VNC"     },
+	{ VNC_VENCRYPT_AUTH_TLSPLAIN,   "TLS Plain"   },
+	{ VNC_VENCRYPT_AUTH_X509_NONE,  "X.509 None"  },
+	{ VNC_VENCRYPT_AUTH_X509_VNC,   "X.509 VNC"   },
+	{ VNC_VENCRYPT_AUTH_X509_PLAIN, "X.509 Plain" },
+	{ VNC_VENCRYPT_AUTH_TLSSASL,    "TLS SASL"    },
+	{ VNC_VENCRYPT_AUTH_X509_SASL,  "X.509 SASL"  },
+	{ 0,  NULL                     }
+};
+
 static const true_false_string auth_result_tfs = {
 	"Failed",
 	"OK"
-};
-
-static const value_string yes_no_vs[] = {
-	{ 0, "No"  },
-	{ 1, "Yes" },
-	{ 0,  NULL }
 };
 
 typedef enum {
@@ -433,6 +451,12 @@ typedef enum {
 
 	VNC_SESSION_STATE_SECURITY_RESULT,
 
+	VNC_SESSION_STATE_VENCRYPT_SERVER_VERSION,
+	VNC_SESSION_STATE_VENCRYPT_CLIENT_VERSION,
+	VNC_SESSION_STATE_VENCRYPT_AUTH_CAPABILITIES,
+	VNC_SESSION_STATE_VENCRYPT_AUTH_TYPE_REPLY,
+	VNC_SESSION_STATE_VENCRYPT_AUTH_ACK,
+
 	VNC_SESSION_STATE_CLIENT_INIT,
 	VNC_SESSION_STATE_SERVER_INIT,
 
@@ -649,7 +673,9 @@ static int hf_vnc_server_message_type = -1; /* Subtree */
 
 /* Tunneling capabilities (TightVNC extension) */
 static int hf_vnc_tight_num_tunnel_types = -1;
-static int hf_vnc_tight_tunnel_type = -1;
+static int hf_vnc_tight_tunnel_type_code = -1;
+static int hf_vnc_tight_tunnel_type_vendor = -1;
+static int hf_vnc_tight_tunnel_type_signature = -1;
 
 /* Authentication capabilities (TightVNC extension) */
 static int hf_vnc_tight_num_auth_types = -1;
@@ -667,6 +693,16 @@ static int hf_vnc_tight_client_name = -1;
 static int hf_vnc_tight_encoding_type = -1;
 static int hf_vnc_tight_encoding_vendor = -1;
 static int hf_vnc_tight_encoding_name = -1;
+
+/* VeNCrypt capabilities */
+static int hf_vnc_vencrypt_server_major_ver = -1;
+static int hf_vnc_vencrypt_server_minor_ver = -1;
+static int hf_vnc_vencrypt_client_major_ver = -1;
+static int hf_vnc_vencrypt_client_minor_ver = -1;
+static int hf_vnc_vencrypt_version_ack = -1;
+static int hf_vnc_vencrypt_num_auth_types = -1;
+static int hf_vnc_vencrypt_auth_type = -1;
+static int hf_vnc_vencrypt_auth_type_ack = -1;
 
 /* Tight compression parameters */
 static int hf_vnc_tight_reset_stream0 = -1;
@@ -896,6 +932,7 @@ guint8 vnc_depth;
 
 static range_t *vnc_tcp_range = NULL;
 static dissector_handle_t vnc_handle;
+static dissector_handle_t tls_handle;
 
 /* Code to dissect the packets */
 static int
@@ -946,6 +983,11 @@ dissect_vnc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 
 	if (ret) {
 		return tvb_captured_length(tvb);  /* We're in a "startup" state; Cannot yet do "normal" processing */
+	}
+
+	if (per_conversation_info->security_type_selected == VNC_SECURITY_TYPE_VENCRYPT) {
+		call_dissector_with_data(tls_handle, tvb, pinfo, vnc_tree, GUINT_TO_POINTER(offset));
+		return tvb_captured_length(tvb);
 	}
 
 	if(value_is_in_range(vnc_tcp_range, pinfo->destport) || per_conversation_info->server_port == pinfo->destport) {
@@ -1053,7 +1095,7 @@ static gboolean test_vnc_protocol(tvbuff_t *tvb, packet_info *pinfo,
 
 	if (vnc_is_client_or_server_version_message(tvb, NULL, NULL)) {
 		conversation = conversation_new(pinfo->num, &pinfo->src,
-						&pinfo->dst, conversation_pt_to_endpoint_type(pinfo->ptype),
+						&pinfo->dst, conversation_pt_to_conversation_type(pinfo->ptype),
 						pinfo->srcport,
 						pinfo->destport, 0);
 		conversation_set_dissector(conversation, vnc_handle);
@@ -1095,14 +1137,14 @@ vnc_startup_messages(tvbuff_t *tvb, packet_info *pinfo, gint offset,
 			return TRUE; /* we still hope to get a SERVER_VERSION message some day. Do not proceed yet */
 
 		proto_tree_add_item(tree, hf_vnc_server_proto_ver, tvb, 4,
-				    7, ENC_ASCII|ENC_NA);
+				    7, ENC_ASCII);
 		per_conversation_info->server_proto_ver =
 			g_ascii_strtod((char *)tvb_get_string_enc(wmem_packet_scope(), tvb, 4, 7, ENC_ASCII), NULL);
 		per_conversation_info->server_port = pinfo->srcport;
 
 		col_add_fstr(pinfo->cinfo, COL_INFO,
 				     "Server protocol version: %s",
-				     tvb_format_text(tvb, 4, 7));
+				     tvb_format_text(pinfo->pool, tvb, 4, 7));
 
 		per_conversation_info->vnc_next_state = VNC_SESSION_STATE_CLIENT_VERSION;
 		break;
@@ -1112,13 +1154,13 @@ vnc_startup_messages(tvbuff_t *tvb, packet_info *pinfo, gint offset,
 			return TRUE; /* we still hope to get a CLIENT_VERSION message some day. Do not proceed yet */
 
 		proto_tree_add_item(tree, hf_vnc_client_proto_ver, tvb,
-				    4, 7, ENC_ASCII|ENC_NA);
+				    4, 7, ENC_ASCII);
 		per_conversation_info->client_proto_ver =
 			g_ascii_strtod((char *)tvb_get_string_enc(wmem_packet_scope(), tvb, 4, 7, ENC_ASCII), NULL);
 
 		col_add_fstr(pinfo->cinfo, COL_INFO,
 				     "Client protocol version: %s",
-				     tvb_format_text(tvb, 4, 7));
+				     tvb_format_text(pinfo->pool, tvb, 4, 7));
 
 		per_conversation_info->vnc_next_state = VNC_SESSION_STATE_SECURITY;
 		break;
@@ -1180,10 +1222,12 @@ vnc_startup_messages(tvbuff_t *tvb, packet_info *pinfo, gint offset,
 		break;
 
 	case VNC_SESSION_STATE_SECURITY_TYPES :
-		col_set_str(pinfo->cinfo, COL_INFO, "Authentication type selected by client");
 		proto_tree_add_item(tree, hf_vnc_client_security_type, tvb, offset, 1, ENC_BIG_ENDIAN);
 		per_conversation_info->security_type_selected =
 			tvb_get_guint8(tvb, offset);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "Security type %s (%d) selected by client",
+			     val_to_str_const(per_conversation_info->security_type_selected, vnc_security_types_vs, "Unknown"),
+			     per_conversation_info->security_type_selected);
 
 		switch(per_conversation_info->security_type_selected) {
 
@@ -1212,6 +1256,9 @@ vnc_startup_messages(tvbuff_t *tvb, packet_info *pinfo, gint offset,
 			per_conversation_info->vnc_next_state = VNC_SESSION_STATE_ARD_AUTHENTICATION_CHALLENGE;
 			break;
 
+		case VNC_SECURITY_TYPE_VENCRYPT:
+			per_conversation_info->vnc_next_state = VNC_SESSION_STATE_VENCRYPT_SERVER_VERSION;
+			break;
 		default :
 			/* Security type not supported by this dissector */
 			break;
@@ -1235,7 +1282,9 @@ vnc_startup_messages(tvbuff_t *tvb, packet_info *pinfo, gint offset,
 			 * is 16 bytes, so skip them.
 			 */
 
-			proto_tree_add_item(tree, hf_vnc_tight_tunnel_type, tvb, offset, 16, ENC_BIG_ENDIAN);
+			proto_tree_add_item(tree, hf_vnc_tight_tunnel_type_code, tvb, offset, 4, ENC_BIG_ENDIAN);
+			proto_tree_add_item(tree, hf_vnc_tight_tunnel_type_vendor, tvb, offset + 4, 4, ENC_ASCII);
+			proto_tree_add_item(tree, hf_vnc_tight_tunnel_type_signature, tvb, offset + 8, 8, ENC_ASCII);
 			offset += 16;
 		}
 
@@ -1436,7 +1485,7 @@ vnc_startup_messages(tvbuff_t *tvb, packet_info *pinfo, gint offset,
 				offset += 4;
 
 				proto_tree_add_item(tree, hf_vnc_auth_error, tvb,
-						    offset, text_len, ENC_ASCII|ENC_NA);
+						    offset, text_len, ENC_ASCII);
 			}
 
 			return TRUE; /* All versions: Do not continue
@@ -1446,6 +1495,69 @@ vnc_startup_messages(tvbuff_t *tvb, packet_info *pinfo, gint offset,
 			break;
 		}
 
+		break;
+	case VNC_SESSION_STATE_VENCRYPT_SERVER_VERSION:
+	{
+		proto_tree_add_item(tree, hf_vnc_vencrypt_server_major_ver, tvb, offset, 1, ENC_BIG_ENDIAN);
+		gint major = tvb_get_guint8(tvb, offset++);
+		proto_tree_add_item(tree, hf_vnc_vencrypt_server_minor_ver, tvb, offset, 1, ENC_BIG_ENDIAN);
+		gint minor = tvb_get_guint8(tvb, offset++);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "VeNCrypt server version %d.%d", major, minor);
+		per_conversation_info->vnc_next_state = VNC_SESSION_STATE_VENCRYPT_CLIENT_VERSION;
+		break;
+	}
+	case VNC_SESSION_STATE_VENCRYPT_CLIENT_VERSION:
+	{
+		proto_tree_add_item(tree, hf_vnc_vencrypt_client_major_ver, tvb, offset, 1, ENC_BIG_ENDIAN);
+		gint major = tvb_get_guint8(tvb, offset++);
+		proto_tree_add_item(tree, hf_vnc_vencrypt_client_minor_ver, tvb, offset, 1, ENC_BIG_ENDIAN);
+		gint minor = tvb_get_guint8(tvb, offset++);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "VeNCrypt client version %d.%d", major, minor);
+		per_conversation_info->vnc_next_state = VNC_SESSION_STATE_VENCRYPT_AUTH_CAPABILITIES;
+		break;
+	}
+	case VNC_SESSION_STATE_VENCRYPT_AUTH_CAPABILITIES:
+	{
+		gint i;
+		col_set_str(pinfo->cinfo, COL_INFO, "VeNCrypt authentication types supported");
+		proto_tree_add_item(tree, hf_vnc_vencrypt_version_ack, tvb, offset, 1, ENC_BIG_ENDIAN);
+		offset += 1;
+		proto_tree_add_item(tree, hf_vnc_vencrypt_num_auth_types, tvb, offset, 1, ENC_BIG_ENDIAN);
+		num_tunnel_types = tvb_get_guint8(tvb, offset);
+		offset += 1;
+
+		for(i = 0; i < num_tunnel_types; i++) {
+			proto_tree_add_item(tree, hf_vnc_vencrypt_auth_type, tvb, offset, 4, ENC_BIG_ENDIAN);
+			offset += 4;
+		}
+
+		per_conversation_info->vnc_next_state = VNC_SESSION_STATE_VENCRYPT_AUTH_TYPE_REPLY;
+		break;
+	}
+	case VNC_SESSION_STATE_VENCRYPT_AUTH_TYPE_REPLY:
+	{
+		guint32 authtype = tvb_get_ntohl(tvb, offset);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "VeNCrypt authentication type %s (%d) selected by client",
+			val_to_str_const(authtype, vnc_vencrypt_auth_types_vs, "Unknown"),
+			authtype);
+		proto_tree_add_item(tree, hf_vnc_vencrypt_auth_type, tvb, offset, 4, ENC_BIG_ENDIAN);
+		/* offset+=4; */
+		if (authtype == VNC_SECURITY_TYPE_NONE) {
+			per_conversation_info->vnc_next_state = VNC_SESSION_STATE_CLIENT_INIT;
+			per_conversation_info->security_type_selected = VNC_SECURITY_TYPE_NONE;
+		} else if (authtype == VNC_SECURITY_TYPE_VNC) {
+			per_conversation_info->vnc_next_state = VNC_SESSION_STATE_VNC_AUTHENTICATION_CHALLENGE;
+			per_conversation_info->security_type_selected = VNC_SECURITY_TYPE_VNC;
+		} else {
+			per_conversation_info->vnc_next_state = VNC_SESSION_STATE_VENCRYPT_AUTH_ACK;
+		}
+		break;
+	}
+	case VNC_SESSION_STATE_VENCRYPT_AUTH_ACK:
+		col_set_str(pinfo->cinfo, COL_INFO, "VeNCrypt server ack");
+		proto_tree_add_item(tree, hf_vnc_vencrypt_auth_type_ack, tvb, offset, 1, ENC_BIG_ENDIAN);
+		tls_handle = find_dissector("tls");
+		per_conversation_info->vnc_next_state = VNC_SESSION_STATE_NORMAL_TRAFFIC;
 		break;
 
 	case VNC_SESSION_STATE_CLIENT_INIT :
@@ -1524,7 +1636,7 @@ vnc_startup_messages(tvbuff_t *tvb, packet_info *pinfo, gint offset,
 
 			proto_tree_add_item(tree, hf_vnc_desktop_name,
 					    tvb, offset, desktop_name_len,
-					    ENC_ASCII|ENC_NA);
+					    ENC_ASCII);
 		}
 
 		if(per_conversation_info->tight_enabled == TRUE)
@@ -1937,7 +2049,7 @@ vnc_client_cut_text(tvbuff_t *tvb, packet_info *pinfo, gint *offset,
 	*offset += 4;
 
 	proto_tree_add_item(tree, hf_vnc_client_cut_text, tvb, *offset,
-			    text_len, ENC_ASCII|ENC_NA);
+			    text_len, ENC_ASCII);
 	*offset += text_len;
 
 }
@@ -2240,7 +2352,6 @@ vnc_rre_encoding(tvbuff_t *tvb, packet_info *pinfo, gint *offset,
 		return(0);
 	}
 
-	*offset += 2;
 	VNC_BYTES_NEEDED(bytes_per_pixel);
 	proto_tree_add_item(tree, hf_vnc_rre_bg_pixel, tvb, *offset,
 			    bytes_per_pixel, ENC_NA);
@@ -2457,7 +2568,7 @@ vnc_server_identity(tvbuff_t *tvb, gint *offset, proto_tree *tree,
 {
 	VNC_BYTES_NEEDED(width);
 	proto_tree_add_item(tree, hf_vnc_server_identity,
-			    tvb, *offset, width, ENC_ASCII|ENC_NA);
+			    tvb, *offset, width, ENC_ASCII);
 	*offset += width;
 
 	return 0; /* bytes_needed */
@@ -2554,16 +2665,16 @@ vnc_mirrorlink(tvbuff_t *tvb, packet_info *pinfo, gint *offset,
 	case VNC_ML_EXT_CLIENT_EVENT_CONFIGURATION :
 		VNC_BYTES_NEEDED(28);
 		proto_tree_add_item(tree, hf_vnc_mirrorlink_keyboard_language,
-				    tvb, *offset, 2, ENC_ASCII|ENC_NA);
+				    tvb, *offset, 2, ENC_ASCII);
 		*offset += 2;
 		proto_tree_add_item(tree, hf_vnc_mirrorlink_keyboard_country,
-				    tvb, *offset, 2, ENC_ASCII|ENC_NA);
+				    tvb, *offset, 2, ENC_ASCII);
 		*offset += 2;
 		proto_tree_add_item(tree, hf_vnc_mirrorlink_ui_language,
-				    tvb, *offset, 2, ENC_ASCII|ENC_NA);
+				    tvb, *offset, 2, ENC_ASCII);
 		*offset += 2;
 		proto_tree_add_item(tree, hf_vnc_mirrorlink_ui_country,
-				    tvb, *offset, 2, ENC_ASCII|ENC_NA);
+				    tvb, *offset, 2, ENC_ASCII);
 		*offset += 2;
 		proto_tree_add_item(tree, hf_vnc_mirrorlink_knob_keys,
 				    tvb, *offset, 4, ENC_BIG_ENDIAN);
@@ -2746,7 +2857,7 @@ vnc_mirrorlink(tvbuff_t *tvb, packet_info *pinfo, gint *offset,
 		*offset += 2;
 		VNC_BYTES_NEEDED(num);
 		proto_tree_add_item(tree, hf_vnc_mirrorlink_text,
-				    tvb, *offset, num, ENC_ASCII|ENC_NA);
+				    tvb, *offset, num, ENC_ASCII);
 		*offset += num;
 		break;
 
@@ -3379,7 +3490,7 @@ vnc_server_cut_text(tvbuff_t *tvb, packet_info *pinfo, gint *offset,
 	VNC_BYTES_NEEDED(text_len);
 
 	proto_tree_add_item(tree, hf_vnc_server_cut_text, tvb, *offset,
-			    text_len, ENC_ASCII|ENC_NA);
+			    text_len, ENC_ASCII);
 	*offset += text_len;
 
 	return *offset;
@@ -3493,10 +3604,20 @@ proto_register_vnc(void)
 		    FT_UINT32, BASE_DEC, NULL, 0x0,
 		    "Number of tunnel types for TightVNC", HFILL }
 		},
-		{ &hf_vnc_tight_tunnel_type,
-		  { "Tunnel type", "vnc.tunnel_type",
-		    FT_UINT8, BASE_DEC, NULL, 0x0,
-		    "Tunnel type specific to TightVNC", HFILL }
+		{ &hf_vnc_tight_tunnel_type_code,
+		  { "Tunnel type code", "vnc.tunnel_type_code",
+		    FT_UINT32, BASE_DEC, NULL, 0x0,
+		    "Tunnel type code specific to TightVNC", HFILL }
+		},
+		{ &hf_vnc_tight_tunnel_type_vendor,
+		  { "Tunnel type vendor", "vnc.tunnel_type_vendor",
+		    FT_STRING, BASE_NONE, NULL, 0x0,
+		    "Tunnel type vendor specific to TightVNC", HFILL }
+		},
+		{ &hf_vnc_tight_tunnel_type_signature,
+		  { "Tunnel type signature", "vnc.tunnel_type_signature",
+		    FT_STRING, BASE_NONE, NULL, 0x0,
+		    "Tunnel type signature specific to TightVNC", HFILL }
 		},
 		{ &hf_vnc_tight_num_auth_types,
 		  { "Number of supported authentication types", "vnc.num_auth_types",
@@ -3672,6 +3793,46 @@ proto_register_vnc(void)
 		  { "Client public key", "vnc.ard_auth_client_key",
 		    FT_BYTES, BASE_NONE, NULL, 0x0,
 			"Client's public Diffie-Hellman key", HFILL }
+		},
+		{ &hf_vnc_vencrypt_server_major_ver,
+		  { "VeNCrypt server major version", "vnc.vencrypt_server_major_ver",
+		    FT_UINT8, BASE_DEC, NULL, 0x0,
+		    NULL, HFILL }
+		},
+		{ &hf_vnc_vencrypt_server_minor_ver,
+		  { "VeNCrypt server minor version", "vnc.vencrypt_server_minor_ver",
+		    FT_UINT8, BASE_DEC, NULL, 0x0,
+		    NULL, HFILL }
+		},
+		{ &hf_vnc_vencrypt_client_major_ver,
+		  { "VeNCrypt client major version", "vnc.vencrypt_client_major_ver",
+		    FT_UINT8, BASE_DEC, NULL, 0x0,
+		    NULL, HFILL }
+		},
+		{ &hf_vnc_vencrypt_client_minor_ver,
+		  { "VeNCrypt client minor version", "vnc.vencrypt_client_minor_ver",
+		    FT_UINT8, BASE_DEC, NULL, 0x0,
+		    NULL, HFILL }
+		},
+		{ &hf_vnc_vencrypt_version_ack,
+		  { "VeNCrypt version ack", "vnc.vencrypt_version_ack",
+		    FT_BOOLEAN, 8, TFS(&tfs_error_ok), 0xFF,
+		    NULL, HFILL }
+		},
+		{ &hf_vnc_vencrypt_auth_type,
+		  { "VeNCrypt authentication type", "vnc.vencrypt_auth_type",
+		    FT_UINT32, BASE_DEC, VALS(vnc_vencrypt_auth_types_vs), 0x0,
+		    "Authentication type specific to VeNCrypt", HFILL }
+		},
+		{ &hf_vnc_vencrypt_num_auth_types,
+		  { "VeNCrypt Number of supported authentication types", "vnc.vencrypt_num_auth_types",
+		    FT_UINT32, BASE_DEC, NULL, 0x0,
+		    NULL, HFILL }
+		},
+		{ &hf_vnc_vencrypt_auth_type_ack,
+		  { "VeNCrypt Authorization type ack", "vnc.vencrypt_auth_type_ack",
+		    FT_BOOLEAN, 8, TFS(&tfs_ok_error), 0xFF,
+		    NULL, HFILL }
 		},
 		{ &hf_vnc_share_desktop_flag,
 		  { "Share desktop flag", "vnc.share_desktop_flag",
@@ -4199,7 +4360,7 @@ proto_register_vnc(void)
 
 		{ &hf_vnc_zrle_rle,
 		  { "RLE", "vnc.zrle_rle",
-		    FT_UINT8, BASE_DEC, VALS(yes_no_vs), 0x80, /* Upper bit */
+		    FT_BOOLEAN, 8, TFS(&tfs_yes_no), 0x80, /* Upper bit */
 		    "Specifies that data is run-length encoded", HFILL }
 		},
 
@@ -4339,7 +4500,7 @@ proto_register_vnc(void)
 		},
 		{ &hf_vnc_mirrorlink_pixel_format,
 		  { "Pixel Format", "vnc.mirrorlink_pixel_format",
-		    FT_UINT16, BASE_HEX, NULL, 0x0,
+		    FT_UINT32, BASE_HEX, NULL, 0x0,
 		    "Pixel format support", HFILL }
 		},
 		{ &hf_vnc_mirrorlink_display_width,
@@ -4720,6 +4881,7 @@ proto_register_vnc(void)
 
 	/* Register the protocol name and description */
 	proto_vnc = proto_register_protocol("Virtual Network Computing", "VNC", "vnc");
+	vnc_handle = register_dissector("vnc", dissect_vnc, proto_vnc);
 
 	/* Required function calls to register the header fields and subtrees */
 	proto_register_field_array(proto_vnc, hf, array_length(hf));
@@ -4741,8 +4903,6 @@ proto_register_vnc(void)
 void
 proto_reg_handoff_vnc(void)
 {
-	vnc_handle = create_dissector_handle(dissect_vnc, proto_vnc);
-
 	dissector_add_uint_range_with_preference("tcp.port", VNC_PORT_RANGE, vnc_handle);
 	heur_dissector_add("tcp", test_vnc_protocol, "VNC over TCP", "vnc_tcp", proto_vnc, HEURISTIC_ENABLE);
 	/* We don't register a port for the VNC HTTP server because

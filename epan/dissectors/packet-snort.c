@@ -29,18 +29,12 @@
 
 #include "config.h"
 
-#include <errno.h>
-#include <ctype.h>
-
-#include <epan/epan.h>
-#include <epan/proto.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
-#include <epan/wmem/wmem.h>
 #include <wsutil/file_util.h>
 #include <wsutil/report_message.h>
-#include <wiretap/wtap-int.h>
+#include <wiretap/wtap.h>
 
 #include "packet-snort-config.h"
 
@@ -133,6 +127,10 @@ static gboolean snort_show_alert_expert_info = FALSE;
 /* Should we try to attach the alert to the tcp.reassembled_in frame instead of current one? */
 static gboolean snort_alert_in_reassembled_frame = FALSE;
 
+/* Should Snort ignore checksum errors (as will likely be seen because of check offloading or
+ * possibly if trying to capture live in a container)? */
+static gboolean snort_ignore_checksum_errors = TRUE;
+
 
 /********************************************************/
 /* Global variable with single parsed snort config      */
@@ -207,7 +205,7 @@ static void add_alert_to_session_tree(guint frame_number, Alert_t *alert)
     Alerts_t *alerts = (Alerts_t*)wmem_tree_lookup32(current_session.alerts_tree, frame_number);
     if (alerts == NULL) {
         /* Create a new entry for the table */
-        alerts = (Alerts_t*)g_malloc(sizeof(Alerts_t));
+        alerts = g_new(Alerts_t, 1);
         /* Deep copy of alert */
         alerts->alerts[0] = *alert;
         alerts->num_alerts = 1;
@@ -413,7 +411,7 @@ static void snort_reaper(GPid pid, gint status _U_, gpointer data)
         session->working = session->running = FALSE;
         /* XXX, cleanup */
     } else {
-        g_print("Errrrmm snort_reaper() %d != %d\n", session->pid, pid);
+        g_print("Errrrmm snort_reaper() %"PRIdMAX" != %"PRIdMAX"\n", (intmax_t)session->pid, (intmax_t)pid);
     }
 
     /* Close the snort pid (may only make a difference on Windows?) */
@@ -508,7 +506,7 @@ static gboolean snort_parse_fast_line(const char *line, Alert_t *alert)
             return FALSE;
         }
 
-        if (!(line = strstr(line, "] "))) {
+        if (!strstr(line, "] ")) {
             return FALSE;
         }
     } else {
@@ -688,7 +686,7 @@ static guint get_reassembled_in_frame(proto_tree *tree)
             for (i=0; i< items->len; i++) {
                 field_info *field = (field_info *)g_ptr_array_index(items,i);
                 if (strcmp(field->hfinfo->abbrev, "tcp.reassembled_in") == 0) {
-                    value = field->value.value.uinteger;
+                    value = fvalue_get_uinteger(field->value);
                     break;
                 }
             }
@@ -794,7 +792,7 @@ static void snort_show_alert(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo
             /* Write 6 figures to position after decimal place in timestamp. Must have managed to
                parse out fields already, so will definitely be long enough for memcpy() to succeed. */
             char digits[7];
-            g_snprintf(digits, 7, "%06u", pinfo->abs_ts.nsecs / 1000);
+            snprintf(digits, 7, "%06d", pinfo->abs_ts.nsecs / 1000);
             memcpy(alert->raw_alert+18, digits, 6);
             alert->raw_alert_ts_fixed = TRUE;
         }
@@ -1085,7 +1083,7 @@ static const char *get_user_comment_string(proto_tree *tree)
             for (i=0; i< items->len; i++) {
                 field_info *field = (field_info *)g_ptr_array_index(items,i);
                 if (strcmp(field->hfinfo->abbrev, "frame.comment") == 0) {
-                    value = field->value.value.string;
+                    value = fvalue_get_string(field->value);
                     break;
                 }
                 /* This is the only item that can come before "frame.comment", so otherwise break out */
@@ -1145,6 +1143,7 @@ snort_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
             if (!current_session.pdh) {
                 wtap_dump_params params = WTAP_DUMP_PARAMS_INIT;
                 int open_err;
+                gchar *open_err_info;
 
                 /* Older versions of Snort don't support capture file with several encapsulations (like pcapng),
                  * so write in pcap format and hope we have just one encap.
@@ -1160,11 +1159,14 @@ snort_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
                 params.encap = pinfo->rec->rec_header.packet_header.pkt_encap;
                 params.snaplen = WTAP_MAX_PACKET_SIZE_STANDARD;
                 current_session.pdh = wtap_dump_fdopen(current_session.in,
-                                                       WTAP_FILE_TYPE_SUBTYPE_PCAP,
+                                                       wtap_pcap_file_type_subtype(),
                                                        WTAP_UNCOMPRESSED,
                                                        &params,
-                                                       &open_err);
+                                                       &open_err,
+                                                       &open_err_info);
                 if (!current_session.pdh) {
+                    /* XXX - report the error somehow? */
+                    g_free(open_err_info);
                     current_session.working = FALSE;
                     return 0;
                 }
@@ -1183,16 +1185,16 @@ snort_dissector(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
 
             rec.rec_header.packet_header.caplen = tvb_captured_length(tvb);
             rec.rec_header.packet_header.len = tvb_reported_length(tvb);
-            if (current_session.pdh->encap != rec.rec_header.packet_header.pkt_encap) {
-                /* XXX, warning! convert? */
-            }
 
             /* Dump frame into snort's stdin */
             if (!wtap_dump(current_session.pdh, &rec, tvb_get_ptr(tvb, 0, tvb_reported_length(tvb)), &write_err, &err_info)) {
+                /* XXX - report the error somehow? */
+                g_free(err_info);
                 current_session.working = FALSE;
                 return 0;
             }
             if (!wtap_dump_flush(current_session.pdh, &write_err)) {
+                /* XXX - report the error somehow? */
                 current_session.working = FALSE;
                 return 0;
             }
@@ -1236,8 +1238,15 @@ static void snort_start(void)
         "-A", "console", "-q",
         /* normalize time */
         "-y", /* -U", */
+        /* Optionally ignore checksum errors */
+        "-k", "none",
         NULL
     };
+
+    /* Truncate command to before -k if this pref off */
+    if (!snort_ignore_checksum_errors) {
+        argv[10] = NULL;
+    }
 
     /* Enable field priming if required. */
     if (snort_alert_in_reassembled_frame) {
@@ -1308,6 +1317,12 @@ static void snort_start(void)
     }
 #endif
 
+#ifdef _WIN32
+    report_failure("Snort dissector: not yet able to launch Snort process under Windows");
+    current_session.working = FALSE;
+    return;
+#endif
+
     /* Create snort process and set up pipes */
     snort_debug_printf("\nRunning %s with config file %s\n", pref_snort_binary_filename, pref_snort_config_filename);
     if (!g_spawn_async_with_pipes(NULL,          /* working_directory */
@@ -1375,8 +1390,10 @@ static void snort_cleanup(void)
     /* Close dumper writing into snort's stdin.  This will cause snort to exit! */
     if (current_session.pdh) {
         int write_err;
-        if (!wtap_dump_close(current_session.pdh, &write_err)) {
-
+        gchar *write_err_info;
+        if (!wtap_dump_close(current_session.pdh, NULL, &write_err, &write_err_info)) {
+            /* XXX - somehow report the error? */
+            g_free(write_err_info);
         }
         current_session.pdh = NULL;
     }
@@ -1497,9 +1514,9 @@ proto_register_snort(void)
     };
 
     static const enum_val_t alerts_source_vals[] = {
-        {"from-nowhere",            "Not looking for Snort alerts", FromNowhere},
-        {"from-running-snort",      "From running Snort",           FromRunningSnort},
-        {"from-user-comments",      "From user comments",           FromUserComments},
+        {"from-nowhere",            "Not looking for Snort alerts",        FromNowhere},
+        {"from-running-snort",      "From running Snort",                  FromRunningSnort},
+        {"from-user-comments",      "From user packet comments",           FromUserComments},
         {NULL, NULL, -1}
     };
 
@@ -1527,7 +1544,7 @@ proto_register_snort(void)
 
     prefs_register_enum_preference(snort_module, "alerts_source",
         "Source of Snort alerts",
-        "Set whether dissector should run Snort itself or use user packet comments",
+        "Set whether dissector should run Snort and pass frames into it, or read alerts from user packet comments",
         &pref_snort_alerts_source, alerts_source_vals, FALSE);
 
     prefs_register_filename_preference(snort_module, "binary",
@@ -1550,8 +1567,13 @@ proto_register_snort(void)
                                    &snort_show_alert_expert_info);
     prefs_register_bool_preference(snort_module, "show_alert_in_reassembled_frame",
                                    "Try to show alerts in reassembled frame",
-                                   "Attempt to show alert in reassembled frame where possible",
+                                   "Attempt to show alert in reassembled frame where possible.  Note that this won't work during live capture",
                                    &snort_alert_in_reassembled_frame);
+    prefs_register_bool_preference(snort_module, "ignore_checksum_errors",
+                                   "Tell Snort to ignore checksum errors",
+                                   "When enabled, will run Snort with '-k none'",
+                                   &snort_ignore_checksum_errors);
+
 
     snort_handle = create_dissector_handle(snort_dissector, proto_snort);
 

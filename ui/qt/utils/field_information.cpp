@@ -18,12 +18,12 @@ FieldInformation::FieldInformation(field_info *fi, QObject * parent)
     parent_fi_ = NULL;
 }
 
-FieldInformation::FieldInformation(proto_node *node, QObject * parent)
+FieldInformation::FieldInformation(ProtoNode *node, QObject * parent)
 :QObject(parent)
 {
     fi_ = NULL;
-    if (node) {
-        fi_ = node->finfo;
+    if (node && node->isValid()) {
+        fi_ = node->protoNode()->finfo;
     }
     parent_fi_ = NULL;
 }
@@ -48,7 +48,7 @@ bool FieldInformation::isLink() const
 {
     if (fi_ && fi_->hfinfo) {
         if ((fi_->hfinfo->type == FT_FRAMENUM) ||
-                (FI_GET_FLAG(fi_, FI_URL) && IS_FT_STRING(fi_->hfinfo->type))) {
+                (FI_GET_FLAG(fi_, FI_URL) && FT_IS_STRING(fi_->hfinfo->type))) {
             return true;
         }
     }
@@ -138,24 +138,22 @@ const QString FieldInformation::moduleName()
 
 QString FieldInformation::toString()
 {
-    QString repr;
-    gchar *repr_str;
-    repr_str = fvalue_to_string_repr(NULL, &fi_->value, FTREPR_DISPLAY, fi_->hfinfo->display);
-    if (repr_str) {
-        repr = repr_str;
-    }
-    wmem_free(NULL, repr_str);
+    QByteArray display_label;
 
-    if (repr.isEmpty()) {
+    display_label.resize(80); // Arbitrary.
+    int label_len = proto_item_fill_display_label(fi_, display_label.data(), static_cast<int>(display_label.size())-1);
+    display_label.resize(label_len);
+
+    if (display_label.isEmpty()) {
         return "[no value for field]";
     }
-    return repr;
+    return QString(display_label);
 }
 
 QString FieldInformation::url()
 {
     QString url;
-    if (flag(FI_URL) && headerInfo().isValid && IS_FT_STRING(fi_->hfinfo->type)) {
+    if (flag(FI_URL) && headerInfo().isValid && FT_IS_STRING(fi_->hfinfo->type)) {
         url = toString();
     }
     return url;
@@ -214,15 +212,3 @@ const QByteArray FieldInformation::printableData()
 
     return data;
 }
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

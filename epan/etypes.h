@@ -1,4 +1,4 @@
-/* etypes.h
+/** @file
  * Defines ethernet packet types, similar to tcpdump's ethertype.h
  *
  * Wireshark - Network traffic analyzer
@@ -13,11 +13,11 @@
 
 #include "ws_symbol_export.h"
 
+#include <epan/value_string.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-#include <epan/value_string.h>
 
 /*
  * Maximum length of an IEEE 802.3 frame; Ethernet type/length values
@@ -111,8 +111,8 @@ extern "C" {
 #define ETHERTYPE_MSRP			0x22EA
 #endif
 
-#ifndef ETHERTYPE_AVBTP
-#define ETHERTYPE_AVBTP			0x22F0
+#ifndef ETHERTYPE_AVTP
+#define ETHERTYPE_AVTP			0x22F0
 #endif
 
 #ifndef ETHERTYPE_ROHC				/* ROHC (Robust Header Compression) is an IP header compression protocol specified in */
@@ -215,6 +215,18 @@ extern "C" {
 
 #ifndef ETHERTYPE_VLAN
 #define ETHERTYPE_VLAN			0x8100	/* 802.1Q Virtual LAN */
+#endif
+
+#ifndef ETHERTYPE_SLPP
+#define ETHERTYPE_SLPP			0x8102	/* Nortel/Avaya/Extremenetworks Simple Loop Protection Protocol */
+#endif
+
+#ifndef ETHERTYPE_VLACP
+#define ETHERTYPE_VLACP			0x8103	/* Nortel/Avaya/Extremenetworks virtual LACP */
+#endif
+
+#ifndef ETHERTYPE_OLDSLPP
+#define ETHERTYPE_OLDSLPP		0x8104	/* Nortel/Avaya/Extremenetworks Simple Loop Protection Protocol */
 #endif
 
 #ifndef ETHERTYPE_NSRP
@@ -365,6 +377,10 @@ extern "C" {
 #define ETHERTYPE_IEEE_802_1AD		0x88A8	/* IEEE 802.1ad Provider Bridge, Q-in-Q */
 #endif
 
+#ifndef ETHERTYPE_IEEE_EXTREME_MESH
+#define ETHERTYPE_IEEE_EXTREME_MESH     0x88A9  /* Ethernet type for Extreme Mesh */
+#endif
+
 #ifndef ETHERTYPE_EPL_V2
 #define ETHERTYPE_EPL_V2		0x88AB	/* communication profile for Real-Time Ethernet */
 #endif
@@ -503,7 +519,7 @@ extern "C" {
 #endif
 
 #ifndef ETHERTYPE_CFM
-#define ETHERTYPE_CFM			0x8902	/* IEEE 802.1ag Connectivity Fault Management(CFM) protocol */
+#define ETHERTYPE_CFM			0x8902	/* IEEE 802.1Q Connectivity Fault Management(CFM) protocol */
 #endif
 
 #ifndef ETHERTYPE_DCE
@@ -602,12 +618,12 @@ extern "C" {
 #define ETHERTYPE_QINQ_OLD		0x9100	/* QinQ: old non-standard 802.1ad */
 #endif
 
-#ifndef ETHERTYPE_TECMP
-#define ETHERTYPE_TECMP			0x99FE	/* Technically Enhanced Capture Module Protocol (TECMP) */
-#endif
-
 #ifndef ETHERTYPE_EERO
 #define ETHERTYPE_EERO			0x9104	/* EERO: broadcast packets sent by EERO MESH AP's (not officially registered) */
+#endif
+
+#ifndef ETHERTYPE_TECMP
+#define ETHERTYPE_TECMP			0x99FE	/* Technically Enhanced Capture Module Protocol (TECMP) */
 #endif
 
 #ifndef ETHERTYPE_6LOWPAN
@@ -618,8 +634,8 @@ extern "C" {
 #define ETHERTYPE_ECPRI			0xAEFE /* Ethernet type of eCPRI */
 #endif
 
-#ifndef ETHERTYPE_LLT
-#define ETHERTYPE_LLT			0xCAFE	/* Veritas Low Latency Transport (not officially registered) */
+#ifndef ETHERTYPE_CABLELABS
+#define ETHERTYPE_CABLELABS		0xB4E3 /* Ethernet type for CableLabs layer-3 protocol */
 #endif
 
 #ifndef ETHERTYPE_XIP
@@ -630,20 +646,32 @@ extern "C" {
 #define ETHERTYPE_NWP			0xC0DF	/* Neighborhood Watch Protocol (not officially registered) */
 #endif
 
-#ifndef ETHERTYPE_TDMOE
-#define ETHERTYPE_TDMOE			0xD00D	/* Digium TDMoE packets (not officially registered) */
+#ifndef ETHERTYPE_LLT
+#define ETHERTYPE_LLT			0xCAFE	/* Veritas Low Latency Transport (not officially registered) */
 #endif
 
-#ifndef ETHERTYPE_FCFT
-#define ETHERTYPE_FCFT			0xFCFC	/* used to transport FC frames+MDS hdr internal to Cisco's MDS switch */
+#ifndef ETHERTYPE_TDMOE
+#define ETHERTYPE_TDMOE			0xD00D	/* Digium TDMoE packets (not officially registered) */
 #endif
 
 #ifndef ETHERTYPE_AVSP
 #define ETHERTYPE_AVSP			0xD28B /* Ethernet type for Arista vendor specific packet frames */
 #endif
 
-#ifndef ETHERTYPE_CABLELABS
-#define ETHERTYPE_CABLELABS		0xB4E3 /* Ethernet type for CableLabs layer-3 protocol */
+#ifndef ETHERTYPE_EXEH
+#define ETHERTYPE_EXEH			0xE555	/* EXos internal Extra Header */
+#endif
+
+#ifndef ETHERTYPE_FCFT
+#define ETHERTYPE_FCFT			0xFCFC	/* used to transport FC frames+MDS hdr internal to Cisco's MDS switch */
+#endif
+
+#ifndef ETHERTYPE_ACIGLEAN
+#define ETHERTYPE_ACIGLEAN		0xFFF2	/* Used to transport Cisco ACI internal frames for ARP gleaning (not registered) */
+#endif
+
+#ifndef ETHERTYPE_IEEE_802_1CB
+#define ETHERTYPE_IEEE_802_1CB		0xF1C1	/* IEEE 802.1CB Frame Replication and Elimination for Reliability */
 #endif
 
 WS_DLL_PUBLIC const value_string etype_vals[];

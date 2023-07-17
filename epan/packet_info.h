@@ -15,7 +15,7 @@
 #include "tvbuff.h"
 #include "address.h"
 
-struct endpoint;
+struct conversation_element;
 
 /** @file
  * Dissected packet data and metadata.
@@ -48,6 +48,8 @@ typedef struct _packet_info {
   guint32 num;                      /**< Frame number */
   nstime_t abs_ts;                  /**< Packet absolute time stamp */
   nstime_t rel_ts;                  /**< Relative timestamp (yes, it can be negative) */
+  nstime_t rel_cap_ts;              /**< Relative timestamp from capture start (might be negative for broken files) */
+  gboolean rel_cap_ts_present;      /**< Relative timestamp from capture start valid */
   frame_data *fd;
   union wtap_pseudo_header *pseudo_header;
   wtap_rec *rec;                    /**< Record metadata */
@@ -70,8 +72,9 @@ typedef struct _packet_info {
   guint32 destport;                 /**< destination port */
   guint32 match_uint;               /**< matched uint for calling subdissector from table */
   const char *match_string;         /**< matched string for calling subdissector from table */
-  gboolean use_endpoint;            /**< TRUE if endpoint member should be used for conversations */
-  struct endpoint* conv_endpoint;   /**< Data that can be used for conversations */
+  gboolean use_conv_addr_port_endpoints; /**< TRUE if address/port endpoints member should be used for conversations */
+  struct conversation_addr_port_endpoints* conv_addr_port_endpoints; /**< Data that can be used for address+port conversations, including wildcarding */
+  struct conversation_element *conv_elements; /**< Arbritrary conversation identifier; can't be wildcarded */
   guint16 can_desegment;            /**< >0 if this segment could be desegmented.
                                          A dissector that can offer this API (e.g.
                                          TCP) sets can_desegment=2, then
@@ -132,8 +135,10 @@ typedef struct _packet_info {
 
   GHashTable *private_table;    /**< a hash table passed from one dissector to another */
 
-  wmem_list_t *layers;      /**< layers of each protocol */
-  guint8 curr_layer_num;       /**< The current "depth" or layer number in the current frame */
+  wmem_list_t *layers;          /**< layers of each protocol */
+  wmem_map_t *proto_layers;     /** map of proto_id to curr_proto_layer_num. */
+  guint8 curr_layer_num;        /**< The current "depth" or layer number in the current frame */
+  guint8 curr_proto_layer_num;  /**< The current "depth" or layer number for this dissector in the current frame */
   guint16 link_number;
 
   guint16 clnp_srcref;          /**< clnp/cotp source reference (can't use srcport, this would confuse tpkt) */
@@ -141,9 +146,10 @@ typedef struct _packet_info {
 
   int link_dir;                 /**< 3GPP messages are sometime different UP link(UL) or Downlink(DL) */
 
-  GSList* proto_data;          /**< Per packet proto data */
+  gint16 src_win_scale;        /**< Rcv.Wind.Shift src applies when sending segments; -1 unknown; -2 disabled */
+  gint16 dst_win_scale;        /**< Rcv.Wind.Shift dst applies when sending segments; -1 unknown; -2 disabled */
 
-  GSList* dependent_frames;     /**< A list of frames which this one depends on */
+  GSList* proto_data;          /**< Per packet proto data */
 
   GSList* frame_end_routines;
 

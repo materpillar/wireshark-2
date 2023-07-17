@@ -25,7 +25,7 @@
 #include <wsutil/filesystem.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
-#include <epan/garrayfix.h>
+#include <epan/iana_charsets.h>
 #include <wsutil/str_util.h>
 #include <wsutil/report_message.h>
 
@@ -71,6 +71,7 @@ static xml_ns_t unknown_ns = {"unknown", "?", -1, -1, -1, NULL, NULL, NULL};
 static xml_ns_t *root_ns;
 
 static gboolean pref_heuristic_unicode    = FALSE;
+static gint pref_default_encoding = IANA_CS_UTF_8;
 
 
 #define XML_CDATA       -1000
@@ -79,6 +80,7 @@ static gboolean pref_heuristic_unicode    = FALSE;
 
 static wmem_array_t *hf_arr;
 static GArray *ett_arr;
+static GRegex* encoding_pattern;
 
 static const gchar *default_media_types[] = {
     "text/xml",
@@ -174,6 +176,33 @@ static const gchar *default_media_types[] = {
     "application/vnd.3gpp.cw+xml",
     "application/vnd.3gpp.iut+xml",             /*3GPP TS 24.337*/
     "application/vnc.3gpp.iut-config+xml",      /*3GPP TS 24.337*/
+    "application/vnd.3gpp.mcptt-info+xml",                 /*3GPP TS 24.379 version 17.6.0*/
+    "application/vnd.3gpp.mcptt-mbms-usage-info+xml",      /*3GPP TS 24.379 version 17.6.0*/
+    "application/vnd.3gpp.mcptt-location-info+xml",        /*3GPP TS 24.379 version 17.6.0*/
+    "application/vnd.3gpp.mcptt-affiliation-command+xml",  /*3GPP TS 24.379 version 17.6.0*/
+    "application/vnd.3gpp.mcptt-floor-request+xml",        /*3GPP TS 24.379 version 17.6.0*/
+    "application/vnd.3gpp.mcptt-signed+xml",               /*3GPP TS 24.379 version 17.6.0*/
+    "application/vnd.3gpp.mcptt-regroup+xml",              /*3GPP TS 24.379 version 17.6.0*/
+    "application/vnd.3gpp.mcdata-info+xml",                /*3GPP TS 24.282 version 17.6.2*/
+    "application/vnd.3gpp.mcdata-mbms-usage-info+xml",     /*3GPP TS 24.282 version 17.6.2*/
+    "application/vnd.3gpp.mcdata-location-info+xml",       /*3GPP TS 24.282 version 17.6.2*/
+    "application/vnd.3gpp.mcdata-affiliation-command+xml", /*3GPP TS 24.282 version 17.6.2*/
+    "application/vnd.3gpp.mcdata-regroup+xml",             /*3GPP TS 24.282 version 17.6.2*/
+    "application/vnd.3gpp.mcvideo-info+xml",               /*3GPP TS 24.281 version 17.6.0*/
+    "application/vnd.3gpp.mcvideo-mbms-usage-info+xml",    /*3GPP TS 24.281 version 17.6.0*/
+    "application/vnd.3gpp.mcvideo-location-info+xml",      /*3GPP TS 24.281 version 17.6.0*/
+    "application/vnd.3gpp.mcvideo-affiliation-command+xml",/*3GPP TS 24.281 version 17.6.0*/
+    "application/vnd.3gpp.transmission-request+xml",       /*3GPP TS 24.281 version 17.6.0*/
+    "application/vnd.3gpp.mcptt-ue-init-config+xml",       /*3GPP TS 24.484 version 17.5.0*/
+    "application/vnd.3gpp.mcptt-ue-config+xml",            /*3GPP TS 24.484 version 17.5.0*/
+    "application/vnd.3gpp.mcptt-user-profile+xml",         /*3GPP TS 24.484 version 17.5.0*/
+    "application/vnd.3gpp.mcptt-service-config+xml",       /*3GPP TS 24.484 version 17.5.0*/
+    "application/vnd.3gpp.mcdata-service-config+xml",      /*3GPP TS 24.484 version 17.5.0*/
+    "application/vnd.3gpp.mcvideo-service-config+xml",     /*3GPP TS 24.484 version 17.5.0*/
+    "application/vnd.3gpp.mcvideo-ue-config+xml",          /*3GPP TS 24.484 version 17.5.0*/
+    "application/vnd.3gpp.mcvideo-user-profile+xml",       /*3GPP TS 24.484 version 17.5.0*/
+    "application/vnd.3gpp.mcdata-ue-config+xml",           /*3GPP TS 24.484 version 17.5.0*/
+    "application/vnd.3gpp.mcdata-user-profile+xml",        /*3GPP TS 24.484 version 17.5.0*/
     "application/vnd.3gpp.mid-call+xml",
     "application/vnd.3gpp-prose-pc3ch+xml",
     "application/vnd.3gpp-prose+xml",
@@ -224,6 +253,47 @@ static void insert_xml_frame(xml_frame_t *parent, xml_frame_t *new_child)
     parent->last_child = new_child;
 }
 
+/* Try to get the 'encoding' attribute from XML declaration, and convert it to
+ * Wireshark character encoding.
+ */
+static guint
+get_char_encoding(tvbuff_t* tvb, packet_info* pinfo, gchar** ret_encoding_name) {
+    guint32 iana_charset_id;
+    guint ws_encoding_id;
+    gchar* encoding_str;
+    GMatchInfo* match_info;
+    const gchar* xmldecl = (gchar*)tvb_get_string_enc(pinfo->pool, tvb, 0,
+        MIN(100, tvb_captured_length(tvb)), ENC_UTF_8);
+
+    g_regex_match(encoding_pattern, xmldecl, 0, &match_info);
+    if (g_match_info_matches(match_info)) {
+        gchar* match_ret = g_match_info_fetch(match_info, 1);
+        encoding_str = ascii_strup_inplace(wmem_strdup(pinfo->pool, match_ret));
+        g_free(match_ret);
+        /* Get the iana charset enum number by the name of the charset. */
+        iana_charset_id = str_to_val(encoding_str,
+            VALUE_STRING_EXT_VS_P(&mibenum_vals_character_sets_ext), IANA_CS_US_ASCII);
+    } else {
+        /* Use default encoding preference if this xml does not contains 'encoding' attribute. */
+        iana_charset_id = pref_default_encoding;
+        encoding_str = val_to_str_ext_wmem(pinfo->pool, iana_charset_id,
+            &mibenum_vals_character_sets_ext, "UNKNOWN");
+    }
+    g_match_info_free(match_info);
+
+    ws_encoding_id = mibenum_charset_to_encoding((guint)iana_charset_id);
+
+    /* UTF-8 compatible with ASCII */
+    if (ws_encoding_id == (ENC_NA | ENC_ASCII)) {
+        ws_encoding_id = ENC_UTF_8;
+        *ret_encoding_name = wmem_strdup(pinfo->pool, "UTF-8");
+    } else {
+        *ret_encoding_name = encoding_str;
+    }
+
+    return ws_encoding_id;
+}
+
 static int
 dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
@@ -233,7 +303,6 @@ dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
     const char       *colinfo_str;
     tvbuff_t         *decoded;
     guint16           try_bom;
-    int               start_offset   = 0;
 
     if (stack != NULL)
         g_ptr_array_free(stack, TRUE);
@@ -249,7 +318,7 @@ dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
     g_ptr_array_add(stack, current_frame);
 
     /* Detect and act on possible byte-order mark (BOM) */
-    try_bom = tvb_get_ntohs(tvb, start_offset);
+    try_bom = tvb_get_ntohs(tvb, 0);
     if (try_bom == 0xFEFF) {
         /* UTF-16BE */
         const guint8 *data_str = tvb_get_string_enc(pinfo->pool, tvb, 0, tvb_captured_length(tvb), ENC_UTF_16|ENC_BIG_ENDIAN);
@@ -265,19 +334,21 @@ dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         add_new_data_source(pinfo, decoded, "Decoded UTF-16LE text");
     }
     /* Could also test if try_bom is 0xnn00 or 0x00nn to guess endianness if we wanted */
-    else if(tvb_get_ntoh24(tvb, start_offset) == 0xEFBBBF) {
-        /* UTF-8 BOM; just skip over it */
-        decoded = tvb;
-        start_offset += 3;
-    }
     else {
-        /* Assume it's UTF-8 */
-        decoded = tvb;
+        /* Get character encoding according to XML declaration or preference. */
+        gchar* encoding_name;
+        guint encoding = get_char_encoding(tvb, pinfo, &encoding_name);
+
+        /* Encoding string with encoding, either with or without BOM */
+        const guint8 *data_str = tvb_get_string_enc(pinfo->pool, tvb, 0, tvb_captured_length(tvb), encoding);
+        size_t l = strlen(data_str);
+        decoded = tvb_new_child_real_data(tvb, data_str, (guint)l, (gint)l);
+        add_new_data_source(pinfo, decoded, wmem_strdup_printf(pinfo->pool, "Decoded %s text", encoding_name));
     }
 
-    tt = tvbparse_init(decoded, start_offset, -1, stack, want_ignore);
+    tt = tvbparse_init(pinfo->pool, decoded, 0, -1, stack, want_ignore);
     current_frame->start_offset = 0;
-    current_frame->length = tvb_captured_length(decoded) - start_offset;
+    current_frame->length = tvb_captured_length(decoded);
 
     root_ns = NULL;
 
@@ -298,13 +369,13 @@ dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 
     current_frame->ns = root_ns;
 
-    current_frame->item = proto_tree_add_item(tree, current_frame->ns->hf_tag, decoded, start_offset, -1, ENC_UTF_8|ENC_NA);
+    current_frame->item = proto_tree_add_item(tree, current_frame->ns->hf_tag, decoded, 0, -1, ENC_UTF_8|ENC_NA);
     current_frame->tree = proto_item_add_subtree(current_frame->item, current_frame->ns->ett);
     current_frame->last_item = current_frame->item;
 
     while(tvbparse_get(tt, want)) ;
 
-    /* Save XML structure in case it is useful for the caller (only XMPP for now) */
+    /* Save XML structure in case it is useful for the caller */
     p_add_proto_data(pinfo->pool, pinfo, xml_ns.hf_tag, 0, current_frame);
 
     return tvb_captured_length(tvb);
@@ -312,7 +383,7 @@ dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 
 static gboolean dissect_xml_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-    if (tvbparse_peek(tvbparse_init(tvb, 0, -1, NULL, want_ignore), want_heur)) {
+    if (tvbparse_peek(tvbparse_init(pinfo->pool, tvb, 0, -1, NULL, want_ignore), want_heur)) {
         dissect_xml(tvb, pinfo, tree, data);
         return TRUE;
     } else if (pref_heuristic_unicode) {
@@ -334,7 +405,7 @@ static gboolean dissect_xml_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
         data_str    = tvb_get_string_enc(pinfo->pool, tvb, 0, tvb_captured_length(tvb), enc);
         l           = strlen(data_str);
         unicode_tvb = tvb_new_child_real_data(tvb, data_str, (guint)l, (gint)l);
-        if (tvbparse_peek(tvbparse_init(unicode_tvb, 0, -1, NULL, want_ignore), want_heur)) {
+        if (tvbparse_peek(tvbparse_init(pinfo->pool, unicode_tvb, 0, -1, NULL, want_ignore), want_heur)) {
             add_new_data_source(pinfo, unicode_tvb, "UTF8");
             dissect_xml(unicode_tvb, pinfo, tree, data);
             return TRUE;
@@ -418,7 +489,7 @@ static void after_token(void *tvbparse_data, const void *wanted_data _U_, tvbpar
     pi = proto_tree_add_item(current_frame->tree, hfid, tok->tvb, tok->offset, tok->len, ENC_UTF_8|ENC_NA);
 
     proto_item_set_text(pi, "%s",
-                        tvb_format_text(tok->tvb, tok->offset, tok->len));
+                        tvb_format_text(wmem_packet_scope(), tok->tvb, tok->offset, tok->len));
 
     if (is_cdata) {
         new_frame                 = wmem_new(wmem_packet_scope(), xml_frame_t);
@@ -462,7 +533,7 @@ static void before_xmpli(void *tvbparse_data, const void *wanted_data _U_, tvbpa
 
     pi = proto_tree_add_item(current_frame->tree, hf_tag, tok->tvb, tok->offset, tok->len, ENC_UTF_8|ENC_NA);
 
-    proto_item_set_text(pi, "%s", tvb_format_text(tok->tvb, tok->offset, (name_tok->offset - tok->offset) + name_tok->len));
+    proto_item_set_text(pi, "%s", tvb_format_text(wmem_packet_scope(), tok->tvb, tok->offset, (name_tok->offset - tok->offset) + name_tok->len));
 
     pt = proto_item_add_subtree(pi, ett);
 
@@ -550,7 +621,7 @@ static void before_tag(void *tvbparse_data, const void *wanted_data _U_, tvbpars
     }
 
     pi = proto_tree_add_item(current_frame->tree, ns->hf_tag, tok->tvb, tok->offset, tok->len, ENC_UTF_8|ENC_NA);
-    proto_item_set_text(pi, "%s", tvb_format_text(tok->tvb,
+    proto_item_set_text(pi, "%s", tvb_format_text(wmem_packet_scope(), tok->tvb,
                                                   tok->offset,
                                                   (name_tok->offset - tok->offset) + name_tok->len));
 
@@ -623,9 +694,9 @@ static void before_dtd_doctype(void *tvbparse_data, const void *wanted_data _U_,
     tvbparse_elem_t *name_tok      = tok->sub->next->next->next->sub->sub;
     proto_tree      *dtd_item      = proto_tree_add_item(current_frame->tree, hf_doctype,
                                                          name_tok->tvb, name_tok->offset,
-                                                         name_tok->len, ENC_ASCII|ENC_NA);
+                                                         name_tok->len, ENC_ASCII);
 
-    proto_item_set_text(dtd_item, "%s", tvb_format_text(tok->tvb, tok->offset, tok->len));
+    proto_item_set_text(dtd_item, "%s", tvb_format_text(wmem_packet_scope(), tok->tvb, tok->offset, tok->len));
 
     new_frame = wmem_new(wmem_packet_scope(), xml_frame_t);
     new_frame->type           = XML_FRAME_DTD_DOCTYPE;
@@ -703,7 +774,7 @@ static void after_attrib(void *tvbparse_data, const void *wanted_data _U_, tvbpa
     }
 
     pi = proto_tree_add_item(current_frame->tree, hfid, value->tvb, value->offset, value->len, ENC_UTF_8|ENC_NA);
-    proto_item_set_text(pi, "%s", tvb_format_text(tok->tvb, tok->offset, tok->len));
+    proto_item_set_text(pi, "%s", tvb_format_text(wmem_packet_scope(), tok->tvb, tok->offset, tok->len));
 
     current_frame->last_item = pi;
 
@@ -1326,7 +1397,7 @@ static void register_dtd(dtd_build_data_t *dtd_data, GString *errors)
 
         root_element->hf_tag = proto_register_protocol(full_name, short_name, short_name);
         proto_register_field_array(root_element->hf_tag, (hf_register_info*)wmem_array_get_raw(hfs), wmem_array_get_count(hfs));
-        proto_register_subtree_array((gint **)g_array_data(etts), etts->len);
+        proto_register_subtree_array((gint **)etts->data, etts->len);
 
         if (dtd_data->media_type) {
             gchar* media_type = wmem_strdup(wmem_epan_scope(), dtd_data->media_type);
@@ -1438,6 +1509,17 @@ static void init_xml_names(void)
     wmem_free(wmem_epan_scope(), dummy);
 }
 
+static void
+xml_init_protocol(void)
+{
+    encoding_pattern = g_regex_new("^<[?]xml\\s+version\\s*=\\s*[\"']\\s*.+\\s*[\"']\\s+encoding\\s*=\\s*[\"']\\s*(.+)\\s*[\"']", G_REGEX_CASELESS, 0, 0);
+}
+
+static void
+xml_cleanup_protocol(void) {
+    g_regex_unref(encoding_pattern);
+}
+
 void
 proto_register_xml(void)
 {
@@ -1516,7 +1598,7 @@ proto_register_xml(void)
     xml_ns.hf_tag = proto_register_protocol("eXtensible Markup Language", "XML", xml_ns.name);
 
     proto_register_field_array(xml_ns.hf_tag, (hf_register_info*)wmem_array_get_raw(hf_arr), wmem_array_get_count(hf_arr));
-    proto_register_subtree_array((gint **)g_array_data(ett_arr), ett_arr->len);
+    proto_register_subtree_array((gint **)ett_arr->data, ett_arr->len);
     expert_xml = expert_register_protocol(xml_ns.hf_tag);
     expert_register_field_array(expert_xml, ei, array_length(ei));
 
@@ -1529,7 +1611,15 @@ proto_register_xml(void)
                                    "Try to recognize XML encoded in Unicode (UCS-2BE)",
                                    &pref_heuristic_unicode);
 
+    prefs_register_enum_preference(xml_module, "default_encoding", "Default character encoding",
+                                   "Use this charset if the 'encoding' attribute of XML declaration is missing."
+                                   "Unsupported encoding will be replaced by the default UTF-8.",
+                                   &pref_default_encoding, ws_supported_mibenum_vals_character_sets_ev_array, FALSE);
+
     g_array_free(ett_arr, TRUE);
+
+    register_init_routine(&xml_init_protocol);
+    register_cleanup_routine(&xml_cleanup_protocol);
 
     xml_handle = register_dissector("xml", dissect_xml, xml_ns.hf_tag);
 

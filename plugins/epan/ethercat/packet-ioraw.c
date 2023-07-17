@@ -26,6 +26,8 @@ int proto_ioraw  = -1;
 
 static int ett_ioraw = -1;
 
+static dissector_handle_t ioraw_handle;
+
 /* static int hf_ioraw_summary = -1; */
 static int hf_ioraw_header = -1;
 static int hf_ioraw_data = -1;
@@ -33,7 +35,7 @@ static int hf_ioraw_data = -1;
 /*ioraw*/
 static void IoRawSummaryFormater( char *szText, int nMax)
 {
-   g_snprintf ( szText, nMax, "Raw IO Data" );
+   snprintf ( szText, nMax, "Raw IO Data" );
 }
 
 static int dissect_ioraw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
@@ -95,14 +97,11 @@ void proto_register_ioraw(void)
                                          "IO-RAW","ioraw");
    proto_register_field_array(proto_ioraw,hf,array_length(hf));
    proto_register_subtree_array(ett,array_length(ett));
+   ioraw_handle = register_dissector("ioraw", dissect_ioraw, proto_ioraw);
 }
 
 void proto_reg_handoff_ioraw(void)
 {
-   dissector_handle_t ioraw_handle;
-
-   ioraw_handle = create_dissector_handle(dissect_ioraw, proto_ioraw);
-
    dissector_add_uint("ecatf.type", 3, ioraw_handle);
 }
 

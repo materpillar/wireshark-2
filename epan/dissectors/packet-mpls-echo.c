@@ -31,6 +31,8 @@
 void proto_register_mpls_echo(void);
 void proto_reg_handoff_mpls_echo(void);
 
+static dissector_handle_t mpls_echo_handle;
+
 #define UDP_PORT_MPLS_ECHO 3503
 
 static int proto_mpls_echo = -1;
@@ -448,7 +450,7 @@ static const value_string mpls_echo_multipathtlv_type[] = {
 #define SUB_TLV_FEC_PUSH     1
 #define SUB_TLV_FEC_POP      2
 
-const value_string mpls_echo_subtlv_op_types[] = {
+static const value_string mpls_echo_subtlv_op_types[] = {
     { SUB_TLV_FEC_PUSH,    "Push"},
     { SUB_TLV_FEC_POP,     "Pop"},
     { 0, NULL}
@@ -459,7 +461,7 @@ const value_string mpls_echo_subtlv_op_types[] = {
 #define SUB_TLV_FEC_IPV4            1
 #define SUB_TLV_FEC_IPV6            2
 
-const value_string mpls_echo_subtlv_addr_types[] = {
+static const value_string mpls_echo_subtlv_addr_types[] = {
     { SUB_TLV_FEC_UNSPECIFIED,    "Unspecified"},
     { SUB_TLV_FEC_IPV4,           "IPv4"},
     { SUB_TLV_FEC_IPV6,           "IPv6"},
@@ -471,7 +473,7 @@ const value_string mpls_echo_subtlv_addr_types[] = {
 #define SUB_TLV_FEC_SR_PROTO_OSPF    1
 #define SUB_TLV_FEC_SR_PROTO_ISIS    2
 
-const value_string mpls_echo_subtlv_sr_protocol_types[] = {
+static const value_string mpls_echo_subtlv_sr_protocol_types[] = {
     { SUB_TLV_FEC_SR_PROTO_ANY,  "Any IGP protocol"},
     { SUB_TLV_FEC_SR_PROTO_OSPF, "OSPF"},
     { SUB_TLV_FEC_SR_PROTO_ISIS, "IS-IS"},
@@ -484,7 +486,7 @@ const value_string mpls_echo_subtlv_sr_protocol_types[] = {
 #define SUB_TLV_FEC_SR_IGP_ADJ_IPv4          4
 #define SUB_TLV_FEC_SR_IGP_ADJ_IPv6          6
 
-const value_string mpls_echo_subtlv_igp_adjacency_types[] = {
+static const value_string mpls_echo_subtlv_igp_adjacency_types[] = {
     { SUB_TLV_FEC_SR_IGP_ADJ_UNNUMBERED, "Unnumbered Interface Adjacency"},
     { SUB_TLV_FEC_SR_IGP_ADJ_PARALLEL,   "Parallel Adjacency"},
     { SUB_TLV_FEC_SR_IGP_ADJ_IPv4,       "IPv4, Non-parallel Adjacency"},
@@ -1441,23 +1443,23 @@ dissect_mpls_echo_tlv_dd_map(tvbuff_t *tvb, packet_info *pinfo, guint offset, pr
             switch (addr_type) {
             case SUB_TLV_FEC_UNSPECIFIED:
                 proto_tree_add_item(tlv_dd_map_tree, hf_mpls_echo_sub_tlv_remote_peer_unspecified, tvb, offset + 4, 0, ENC_NA);
-                rem    += 4;
-                offset -= 4;
                 break;
             case SUB_TLV_FEC_IPV4:
                 proto_tree_add_item(tlv_dd_map_tree, hf_mpls_echo_sub_tlv_remote_peer_ip, tvb, offset + 4, 4, ENC_BIG_ENDIAN);
+                rem    -= 4;
+                offset += 4;
                 break;
             case SUB_TLV_FEC_IPV6:
                 proto_tree_add_item(tlv_dd_map_tree, hf_mpls_echo_sub_tlv_remore_peer_ipv6, tvb, offset + 4, 16, ENC_NA);
-                rem    -= 12;
-                offset += 12;
+                rem    -= 16;
+                offset += 16;
                 break;
             }
 
-            offset -= 8;
+            offset += 4;
             dissect_mpls_echo_tlv_fec(tvb, pinfo, offset, tlv_dd_map_tree, fec_tlv_length);
 
-            rem -= (fec_tlv_length + 8);
+            rem -= (fec_tlv_length + 4);
             break;
         }
 
@@ -2794,15 +2796,14 @@ proto_register_mpls_echo(void)
     proto_register_subtree_array(ett, array_length(ett));
     expert_mpls_echo = expert_register_protocol(proto_mpls_echo);
     expert_register_field_array(expert_mpls_echo, ei, array_length(ei));
+
+    mpls_echo_handle = register_dissector("mpls-echo", dissect_mpls_echo, proto_mpls_echo);
 }
 
 
 void
 proto_reg_handoff_mpls_echo(void)
 {
-    dissector_handle_t mpls_echo_handle;
-
-    mpls_echo_handle = create_dissector_handle(dissect_mpls_echo, proto_mpls_echo);
     dissector_add_uint_with_preference("udp.port", UDP_PORT_MPLS_ECHO, mpls_echo_handle);
 
     dissector_add_uint("pwach.channel_type", PW_ACH_TYPE_ONDEMAND_CV, mpls_echo_handle);

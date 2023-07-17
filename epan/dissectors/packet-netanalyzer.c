@@ -52,6 +52,9 @@
 void proto_register_netanalyzer(void);
 void proto_reg_handoff_netanalyzer(void);
 
+static dissector_handle_t netana_handle;
+static dissector_handle_t netana_handle_transparent;
+
 #define HEADER_SIZE  4
 #define INFO_TYPE_OFFSET    18
 
@@ -237,7 +240,7 @@ dissect_netanalyzer_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
           proto_tree_add_bitmask(netanalyzer_header_tree, tvb, 0, hf_netanalyzer_status, ett_netanalyzer_status, hfx_netanalyzer_status, ENC_LITTLE_ENDIAN);
 
-          strbuf = wmem_strbuf_new_label(wmem_packet_scope());
+          strbuf = wmem_strbuf_create(pinfo->pool);
           for (idx = 0; idx < 8; idx++)
           {
             if (packet_status & (1 << idx))
@@ -348,7 +351,7 @@ dissect_netanalyzer_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         ti = proto_tree_add_item (netanalyzer_header_tree, hf_netanalyzer_gpio_edge, tvb, offset, 1, ENC_LITTLE_ENDIAN);
         gpio_edge = (tvb_get_guint8(tvb, offset) & 0x01);
 
-        g_snprintf(szTemp, MAX_BUFFER,
+        snprintf(szTemp, MAX_BUFFER,
                    "GPIO event on GPIO %d (%sing edge)", gpio_num, (gpio_edge == 0x00) ? "ris" : "fall");
 
         col_add_fstr(pinfo->cinfo, COL_INFO, "%s", szTemp);
@@ -556,18 +559,14 @@ void proto_register_netanalyzer(void)
   expert_netanalyzer = expert_register_protocol(proto_netanalyzer);
   expert_register_field_array(expert_netanalyzer, ei, array_length(ei));
 
+  netana_handle             = register_dissector("netanalyzer",             dissect_netanalyzer,             proto_netanalyzer);
+  netana_handle_transparent = register_dissector("netanalyzer_transparent", dissect_netanalyzer_transparent, proto_netanalyzer);
 }
 
 
 void proto_reg_handoff_netanalyzer(void)
 {
-  dissector_handle_t netana_handle;
-  dissector_handle_t netana_handle_transparent;
-
   eth_dissector_handle  = find_dissector_add_dependency("eth_withfcs", proto_netanalyzer);
-
-  netana_handle             = create_dissector_handle(dissect_netanalyzer,             proto_netanalyzer);
-  netana_handle_transparent = create_dissector_handle(dissect_netanalyzer_transparent, proto_netanalyzer);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_NETANALYZER,             netana_handle);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_NETANALYZER_TRANSPARENT, netana_handle_transparent);
 }

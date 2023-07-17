@@ -31,6 +31,8 @@
 void proto_register_msnip(void);
 void proto_reg_handoff_msnip(void);
 
+static dissector_handle_t msnip_handle;
+
 static int proto_msnip = -1;
 static int hf_checksum = -1;
 static int hf_checksum_status = -1;
@@ -107,7 +109,7 @@ dissect_msnip_rmr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, in
 
 		if (item) {
 			proto_item_set_text(item,"Group: %s %s",
-				tvb_ip_to_str(tvb, offset-4),
+				tvb_ip_to_str(pinfo->pool, tvb, offset-4),
 				val_to_str(rec_type, msnip_rec_types,
 					"Unknown Type:0x%02x"));
 
@@ -184,7 +186,7 @@ dissect_msnip_gm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int
 
 		if (item) {
 			proto_item_set_text(item,"Group: %s/%d",
-				tvb_ip_to_str(tvb, offset - 8), masklen);
+				tvb_ip_to_str(pinfo->pool, tvb, offset - 8), masklen);
 
 			proto_item_set_len(item, offset-old_offset);
 		}
@@ -308,14 +310,13 @@ proto_register_msnip(void)
 	proto_register_subtree_array(ett, array_length(ett));
 	expert_msnip = expert_register_protocol(proto_msnip);
 	expert_register_field_array(expert_msnip, ei, array_length(ei));
+
+	msnip_handle = register_dissector("msnip", dissect_msnip, proto_msnip);
 }
 
 void
 proto_reg_handoff_msnip(void)
 {
-	dissector_handle_t msnip_handle;
-
-	msnip_handle = create_dissector_handle(dissect_msnip, proto_msnip);
 	dissector_add_uint("igmp.type", IGMP_TYPE_0x23, msnip_handle);
 	dissector_add_uint("igmp.type", IGMP_TYPE_0x24, msnip_handle);
 	dissector_add_uint("igmp.type", IGMP_TYPE_0x25, msnip_handle);

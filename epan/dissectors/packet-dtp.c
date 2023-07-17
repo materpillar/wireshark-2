@@ -33,6 +33,8 @@
 void proto_register_dtp(void);
 void proto_reg_handoff_dtp(void);
 
+static dissector_handle_t dtp_handle;
+
 static int proto_dtp = -1;
 static int hf_dtp_version = -1;
 static int hf_dtp_domain = -1;
@@ -205,8 +207,8 @@ dissect_dtp_tlv(packet_info *pinfo, tvbuff_t *tvb, int offset, int length,
 
 	case DTP_TLV_DOMAIN:
 		if (length <= 33) { /* VTP domain name is at most 32 bytes long and is null-terminated */
-			proto_item_append_text(ti, ": %s", tvb_format_text(tvb, offset, length - 1));
-			proto_tree_add_item(tree, hf_dtp_domain, tvb, offset, length, ENC_ASCII|ENC_NA);
+			proto_item_append_text(ti, ": %s", tvb_format_text(pinfo->pool, tvb, offset, length - 1));
+			proto_tree_add_item(tree, hf_dtp_domain, tvb, offset, length, ENC_ASCII);
 		}
 		else
 			expert_add_info(pinfo, tlv_length_item, &ei_dtp_tlv_length_invalid);
@@ -259,7 +261,7 @@ dissect_dtp_tlv(packet_info *pinfo, tvbuff_t *tvb, int offset, int length,
 	case DTP_TLV_SENDERID:
 		if (length == 6) { /* Value length must be 6 bytes for a MAC address */
 			proto_item_append_text(ti, ": %s",
-				tvb_ether_to_str(tvb, offset));	/* XXX - resolve? */
+				tvb_ether_to_str(pinfo->pool, tvb, offset));	/* XXX - resolve? */
 			proto_tree_add_item(tree, hf_dtp_senderid, tvb, offset, length, ENC_NA);
 		}
 		else
@@ -348,14 +350,13 @@ proto_register_dtp(void)
 
 	expert_dtp = expert_register_protocol(proto_dtp);
 	expert_register_field_array(expert_dtp, ei, array_length(ei));
+
+	dtp_handle = register_dissector("dtp", dissect_dtp, proto_dtp);
 }
 
 void
 proto_reg_handoff_dtp(void)
 {
-	dissector_handle_t dtp_handle;
-
-	dtp_handle = create_dissector_handle(dissect_dtp, proto_dtp);
 	dissector_add_uint("llc.cisco_pid", CISCO_PID_DTP, dtp_handle);
 }
 

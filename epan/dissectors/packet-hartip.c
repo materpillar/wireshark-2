@@ -336,7 +336,7 @@ hartip_stats_tree_init(stats_tree* st)
 
 static tap_packet_status
 hartip_stats_tree_packet(stats_tree* st, packet_info* pinfo _U_,
-                         epan_dissect_t* edt _U_, const void* p)
+                         epan_dissect_t* edt _U_, const void* p, tap_flags_t flags _U_)
 {
   const hartip_tap_info *tapinfo = (const hartip_tap_info *)p;
   const gchar           *message_type_node_str, *message_id_node_str;
@@ -1271,12 +1271,12 @@ hartip_set_conversation(packet_info *pinfo)
      * for this protocol.
      */
     conversation = find_conversation(pinfo->num,
-                                     &pinfo->src, &pinfo->dst, conversation_pt_to_endpoint_type(pinfo->ptype),
+                                     &pinfo->src, &pinfo->dst, conversation_pt_to_conversation_type(pinfo->ptype),
                                      pinfo->srcport, 0, NO_PORT_B);
     if( (conversation == NULL) ||
         (conversation_get_dissector(conversation, pinfo->num) != hartip_udp_handle) ) {
       conversation = conversation_new(pinfo->num,
-                                      &pinfo->src, &pinfo->dst, conversation_pt_to_endpoint_type(pinfo->ptype),
+                                      &pinfo->src, &pinfo->dst, conversation_pt_to_conversation_type(pinfo->ptype),
                                       pinfo->srcport, 0, NO_PORT2);
       conversation_set_dissector(conversation, hartip_udp_handle);
     }
@@ -1484,7 +1484,7 @@ proto_register_hartip(void)
     },
     { &hf_hartip_master_type,
       { "Host Type",           "hart_ip.session_init.master_type",
-        FT_UINT8, BASE_DEC, VALS(hartip_master_type_values), 0xFF,
+        FT_UINT8, BASE_DEC, VALS(hartip_master_type_values), 0x0,
         "Session Host Type", HFILL }
     },
     { &hf_hartip_inactivity_close_timer,
@@ -1494,7 +1494,7 @@ proto_register_hartip(void)
     },
     { &hf_hartip_error_code,
       { "Error",           "hart_ip.error.error_code",
-        FT_UINT8, BASE_DEC, VALS(hartip_error_code_values), 0xFF,
+        FT_UINT8, BASE_DEC, VALS(hartip_error_code_values), 0x0,
         "Error Code", HFILL }
     },
 
@@ -2099,7 +2099,7 @@ proto_register_hartip(void)
         NULL, HFILL }
     },
     { &hf_hartip_pt_rsp_embedded_cmd_delimiter,
-      { "Embedded Command Delimiter",  "hart_ip.pt.rsp.embedded_command_delimter",
+      { "Embedded Command Delimiter",  "hart_ip.pt.rsp.embedded_command_delimiter",
         FT_UINT8, BASE_HEX, NULL, 0x0,
         NULL, HFILL }
     },
@@ -2248,13 +2248,14 @@ proto_register_hartip(void)
                                   &hartip_desegment);
 
   hartip_tap = register_tap("hart_ip");
+
+  hartip_udp_handle = register_dissector_with_description("hart_ip", "HART-IP over UDP", dissect_hartip_udp, proto_hartip);
+  hartip_tcp_handle = register_dissector_with_description("hart_ip.tcp", "HART-IP over TCP", dissect_hartip_tcp, proto_hartip);
 }
 
 void
 proto_reg_handoff_hartip(void)
 {
-  hartip_tcp_handle = create_dissector_handle(dissect_hartip_tcp, proto_hartip);
-  hartip_udp_handle = create_dissector_handle(dissect_hartip_udp, proto_hartip);
   dissector_add_uint_with_preference("udp.port", HARTIP_PORT, hartip_udp_handle);
   dissector_add_uint_with_preference("tcp.port", HARTIP_PORT, hartip_tcp_handle);
 

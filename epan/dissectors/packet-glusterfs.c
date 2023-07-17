@@ -227,8 +227,7 @@ static gint ett_gluster_dict_items = -1;
 static int
 glusterfs_rpc_dissect_gfid(proto_tree *tree, tvbuff_t *tvb, int hfindex, int offset)
 {
-	if (tree)
-		proto_tree_add_item(tree, hfindex, tvb, offset, 16, ENC_NA);
+	proto_tree_add_item(tree, hfindex, tvb, offset, 16, ENC_NA);
 	offset += 16;
 
 	return offset;
@@ -255,8 +254,7 @@ glusterfs_rpc_dissect_mode(proto_tree *tree, tvbuff_t *tvb, int hfindex,
 		NULL
 	};
 
-	if (tree)
-		proto_tree_add_bitmask(tree, tvb, offset, hfindex,
+	proto_tree_add_bitmask(tree, tvb, offset, hfindex,
 			ett_glusterfs_mode, mode_bits, ENC_BIG_ENDIAN);
 
 	offset += 4;
@@ -272,7 +270,6 @@ glusterfs_rpc_dissect_gf_iatt(proto_tree *tree, tvbuff_t *tvb, int hfindex,
 {
 	proto_item *iatt_item;
 	proto_tree *iatt_tree;
-	nstime_t timestamp;
 	int start_offset = offset;
 
 	iatt_item = proto_tree_add_item(tree, hfindex, tvb, offset, -1,
@@ -302,25 +299,16 @@ glusterfs_rpc_dissect_gf_iatt(proto_tree *tree, tvbuff_t *tvb, int hfindex,
 	offset = dissect_rpc_uint64(tvb, iatt_tree, hf_glusterfs_ia_blocks,
 								offset);
 
-	timestamp.secs = tvb_get_ntohl(tvb, offset);
-	timestamp.nsecs = tvb_get_ntohl(tvb, offset + 4);
-	if (tree)
-		proto_tree_add_time(iatt_tree, hf_glusterfs_ia_atime, tvb,
-							offset, 8, &timestamp);
+	proto_tree_add_item(iatt_tree, hf_glusterfs_ia_atime, tvb,
+			offset, 8, ENC_TIME_SECS_NSECS|ENC_BIG_ENDIAN);
 	offset += 8;
 
-	timestamp.secs = tvb_get_ntohl(tvb, offset);
-	timestamp.nsecs = tvb_get_ntohl(tvb, offset + 4);
-	if (tree)
-		proto_tree_add_time(iatt_tree, hf_glusterfs_ia_mtime, tvb,
-							offset, 8, &timestamp);
+	proto_tree_add_item(iatt_tree, hf_glusterfs_ia_mtime, tvb,
+			offset, 8, ENC_TIME_SECS_NSECS|ENC_BIG_ENDIAN);
 	offset += 8;
 
-	timestamp.secs = tvb_get_ntohl(tvb, offset);
-	timestamp.nsecs = tvb_get_ntohl(tvb, offset + 4);
-	if (tree)
-		proto_tree_add_time(iatt_tree, hf_glusterfs_ia_ctime, tvb,
-							offset, 8, &timestamp);
+	proto_tree_add_item(iatt_tree, hf_glusterfs_ia_ctime, tvb,
+			offset, 8, ENC_TIME_SECS_NSECS|ENC_BIG_ENDIAN);
 	offset += 8;
 
 	proto_item_set_len (iatt_item, offset - start_offset);
@@ -337,9 +325,7 @@ glusterfs_rpc_dissect_gf_flock(proto_tree *tree, tvbuff_t *tvb, int offset)
 	offset = dissect_rpc_uint64(tvb, tree, hf_glusterfs_flock_len, offset);
 	offset = dissect_rpc_uint32(tvb, tree, hf_glusterfs_flock_pid, offset);
 
-	if (tree)
-		proto_tree_add_item(tree, hf_glusterfs_flock_owner, tvb,
-							offset, 8, ENC_NA);
+	proto_tree_add_item(tree, hf_glusterfs_flock_owner, tvb, offset, 8, ENC_NA);
 	offset += 8;
 
 	return offset;
@@ -369,9 +355,7 @@ glusterfs_rpc_dissect_gf_2_flock(proto_tree *tree, tvbuff_t *tvb, int offset)
 	len = tvb_get_ntohl(tvb, offset);
 	offset += 4;
 
-	if (tree)
-		proto_tree_add_item(flock_tree, hf_glusterfs_flock_owner, tvb,
-							offset, len, ENC_NA);
+	proto_tree_add_item(flock_tree, hf_glusterfs_flock_owner, tvb, offset, len, ENC_NA);
 	offset += len;
 
 	proto_item_set_len (flock_item, offset - start_offset);
@@ -422,25 +406,23 @@ glusterfs_rpc_dissect_flags(proto_tree *tree, tvbuff_t *tvb, int offset)
 		NULL
 	};
 
-	if (tree) {
-		flag_tree = proto_tree_add_bitmask(tree, tvb, offset, hf_glusterfs_flags, ett_glusterfs_flags, flag_bits, ENC_BIG_ENDIAN);
+	flag_tree = proto_tree_add_bitmask(tree, tvb, offset, hf_glusterfs_flags, ett_glusterfs_flags, flag_bits, ENC_BIG_ENDIAN);
 
-		/* rdonly is TRUE only when no flags are set */
-		rdonly = (tvb_get_ntohl(tvb, offset) == 0);
-		proto_tree_add_item(flag_tree, hf_glusterfs_flags_rdonly, tvb, offset, 4, ENC_BIG_ENDIAN);
-		if (rdonly) {
-			rdonly_hf = proto_registrar_get_nth(hf_glusterfs_flags_rdonly);
-			proto_item_append_text(flag_tree, ", %s", rdonly_hf->name);
-		}
-
-		/* hf_glusterfs_flags_accmode is TRUE if bits 0 and 1 are set */
-		accmode_hf = proto_registrar_get_nth(hf_glusterfs_flags_accmode);
-		accmode = tvb_get_ntohl(tvb, offset);
-		proto_tree_add_uint_format_value(flag_tree, hf_glusterfs_flags_accmode, tvb, offset, 4, accmode,
-						 "%s", val_to_str_const((accmode & (guint32)(accmode_hf->bitmask)), glusterfs_accmode_vals, "Unknown"));
-		if ((accmode & accmode_hf->bitmask) == accmode_hf->bitmask)
-			proto_item_append_text(flag_tree, ", %s", proto_registrar_get_nth(hf_glusterfs_flags_accmode)->name);
+	/* rdonly is TRUE only when no flags are set */
+	rdonly = (tvb_get_ntohl(tvb, offset) == 0);
+	proto_tree_add_item(flag_tree, hf_glusterfs_flags_rdonly, tvb, offset, 4, ENC_BIG_ENDIAN);
+	if (rdonly) {
+		rdonly_hf = proto_registrar_get_nth(hf_glusterfs_flags_rdonly);
+		proto_item_append_text(flag_tree, ", %s", rdonly_hf->name);
 	}
+
+	/* hf_glusterfs_flags_accmode is TRUE if bits 0 and 1 are set */
+	accmode_hf = proto_registrar_get_nth(hf_glusterfs_flags_accmode);
+	accmode = tvb_get_ntohl(tvb, offset);
+	proto_tree_add_uint_format_value(flag_tree, hf_glusterfs_flags_accmode, tvb, offset, 4, accmode,
+			"%s", val_to_str_const((accmode & (guint32)(accmode_hf->bitmask)), glusterfs_accmode_vals, "Unknown"));
+	if ((accmode & accmode_hf->bitmask) == accmode_hf->bitmask)
+		proto_item_append_text(flag_tree, ", %s", proto_registrar_get_nth(hf_glusterfs_flags_accmode)->name);
 
 	offset += 4;
 	return offset;
@@ -475,8 +457,7 @@ glusterfs_rpc_dissect_statfs(proto_tree *tree, tvbuff_t *tvb, int offset)
 	offset = dissect_rpc_uint64(tvb, tree, hf_glusterfs_favail, offset);
 	offset = dissect_rpc_uint64(tvb, tree, hf_glusterfs_id, offset);
 
-	if (tree)
-		proto_tree_add_bitmask(tree, tvb, offset,
+	proto_tree_add_bitmask(tree, tvb, offset,
 			hf_glusterfs_mnt_flags, ett_glusterfs_mnt_flags,
 			flag_bits, ENC_BIG_ENDIAN);
 	offset += 8;
@@ -544,37 +525,36 @@ gluster_rpc_dissect_dict(proto_tree *tree, tvbuff_t *tvb, int hfindex, int offse
 		offset += key_len;
 
 		/* read the value, possibly '\0' terminated */
-		if (tree) {
-			/* keys named "gfid-req" contain a GFID in hex */
-			if (value_len == 16 && (
+
+		/* keys named "gfid-req" contain a GFID in hex */
+		if (value_len == 16 && (
 					!strncmp("gfid-req", key, 8) ||
 					!strncmp("transaction_id", key, 14) ||
 					!strncmp("originator_uuid", key, 15))) {
-				char *gfid_s;
-				e_guid_t gfid;
+			char *gfid_s;
+			e_guid_t gfid;
 
-				tvb_get_ntohguid(tvb, offset, &gfid);
+			tvb_get_ntohguid(tvb, offset, &gfid);
 
-				gfid_s = guid_to_str(wmem_packet_scope(), &gfid);
-				dict_item = proto_tree_add_guid_format(subtree, hf_glusterfs_gfid,
-								tvb, offset, 16, &gfid,
-								"%s: %s", key, gfid_s);
+			gfid_s = guid_to_str(wmem_packet_scope(), &gfid);
+			dict_item = proto_tree_add_guid_format(subtree, hf_glusterfs_gfid,
+					tvb, offset, 16, &gfid,
+					"%s: %s", key, gfid_s);
 			/* this is a changelog in binary format */
-			} else if (value_len == 12 && !strncmp("trusted.afr.", key, 12)) {
-				dict_item = proto_tree_add_bytes_format(subtree, hf_gluster_trusted_afr_key, tvb, offset, 12,
-								NULL, "%s: 0x%.8x%.8x%.8x", key,
-								tvb_get_letohl(tvb, offset + 0),
-								tvb_get_letohl(tvb, offset + 4),
-								tvb_get_letohl(tvb, offset + 8));
-			} else {
-				value = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, value_len, ENC_ASCII);
-				dict_item = proto_tree_add_string_format(subtree, hf_gluster_dict_value, tvb, offset, value_len, value, "%s: %s",
-								key, value);
-			}
+		} else if (value_len == 12 && !strncmp("trusted.afr.", key, 12)) {
+			dict_item = proto_tree_add_bytes_format(subtree, hf_gluster_trusted_afr_key, tvb, offset, 12,
+					NULL, "%s: 0x%.8x%.8x%.8x", key,
+					tvb_get_letohl(tvb, offset + 0),
+					tvb_get_letohl(tvb, offset + 4),
+					tvb_get_letohl(tvb, offset + 8));
+		} else {
+			value = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, value_len, ENC_ASCII);
+			dict_item = proto_tree_add_string_format(subtree, hf_gluster_dict_value, tvb, offset, value_len, value, "%s: %s",
+					key, value);
 		}
+
 		offset += value_len;
-		if (tree)
-			proto_item_set_len (dict_item, offset - start_offset2);
+		proto_item_set_len (dict_item, offset - start_offset2);
 	}
 
 	if (roundup) {
@@ -710,12 +690,12 @@ gluster_rpc4_0_dissect_dict(proto_tree *tree, tvbuff_t *tvb, int hfindex, int of
 		if (val_type == 2) {
 			val_len = 8;
 			dict_item = proto_tree_add_string_format(subtree, hf_gluster_dict_value, tvb, offset, val_len,
-								NULL, "%s: %"G_GINT64_FORMAT, key,
+								NULL, "%s: %"PRId64, key,
 								tvb_get_gint64(tvb, offset, ENC_BIG_ENDIAN));
 		} else if (val_type == 3) {
 			val_len = 8;
 			dict_item = proto_tree_add_string_format(subtree, hf_gluster_dict_value, tvb, offset, val_len,
-								NULL, "%s: %"G_GUINT64_FORMAT, key,
+								NULL, "%s: %"PRIu64, key,
 								tvb_get_guint64(tvb, offset, ENC_BIG_ENDIAN));
 		} else if (val_type == 4) {
 			val_len = 8;
@@ -744,41 +724,255 @@ gluster_rpc4_0_dissect_dict(proto_tree *tree, tvbuff_t *tvb, int hfindex, int of
 			offset += 4;
 
 			/* read the value, possibly '\0' terminated */
-			if (tree) {
-				/* keys named "gfid-req" contain a GFID in hex */
-				if (val_len == 16 && (
-							!strncmp("gfid-req", key, 8) ||
-							!strncmp("transaction_id", key, 14) ||
-							!strncmp("originator_uuid", key, 15))) {
-					tvb_get_ntohguid(tvb, offset, &gfid);
 
-					gfid_s = guid_to_str(wmem_packet_scope(), &gfid);
-					dict_item = proto_tree_add_guid_format(subtree, hf_glusterfs_gfid,
-							tvb, offset, 16, &gfid,
-							"%s: %s", key, gfid_s);
-					/* this is a changelog in binary format */
-				} else if (val_len == 12 && !strncmp("trusted.afr.", key, 12)) {
-					dict_item = proto_tree_add_bytes_format(subtree, hf_gluster_trusted_afr_key, tvb, offset, 12,
-							NULL, "%s: 0x%.8x%.8x%.8x", key,
-							tvb_get_letohl(tvb, offset + 0),
-							tvb_get_letohl(tvb, offset + 4),
-							tvb_get_letohl(tvb, offset + 8));
-				} else {
-					value = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, val_len, ENC_ASCII);
-					dict_item = proto_tree_add_string_format(subtree, hf_gluster_dict_value, tvb, offset, val_len, value, "%s: %s",
-							key, value);
-				}
+			/* keys named "gfid-req" contain a GFID in hex */
+			if (val_len == 16 && (
+						!strncmp("gfid-req", key, 8) ||
+						!strncmp("transaction_id", key, 14) ||
+						!strncmp("originator_uuid", key, 15))) {
+				tvb_get_ntohguid(tvb, offset, &gfid);
+
+				gfid_s = guid_to_str(wmem_packet_scope(), &gfid);
+				dict_item = proto_tree_add_guid_format(subtree, hf_glusterfs_gfid,
+						tvb, offset, 16, &gfid,
+						"%s: %s", key, gfid_s);
+				/* this is a changelog in binary format */
+			} else if (val_len == 12 && !strncmp("trusted.afr.", key, 12)) {
+				dict_item = proto_tree_add_bytes_format(subtree, hf_gluster_trusted_afr_key, tvb, offset, 12,
+						NULL, "%s: 0x%.8x%.8x%.8x", key,
+						tvb_get_letohl(tvb, offset + 0),
+						tvb_get_letohl(tvb, offset + 4),
+						tvb_get_letohl(tvb, offset + 8));
+			} else {
+				value = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, val_len, ENC_ASCII);
+				dict_item = proto_tree_add_string_format(subtree, hf_gluster_dict_value, tvb, offset, val_len, value, "%s: %s",
+						key, value);
 			}
 		}
+
 		offset += val_len;
-		if (tree)
-			proto_item_set_len (dict_item, offset - start_offset2);
+		proto_item_set_len (dict_item, offset - start_offset2);
 	}
 
 	proto_item_set_len (subtree_item, offset - start_offset);
 
 	return offset;
 }
+
+/*
+  GlusterFS protocol error codes, from the GlusterFS source.
+
+  The GlusterFS server maps system errno values to these codes,
+  which is a Good Thing, because not only are some errno values
+  different on different platforms, some errno values on some
+  Linux platforms differ from the equivalent values on most
+  Linux platforms, meaning that if a server sends one of its
+  errno values to a client with a different operating system -
+  or if a Linux server sends one of its errno values to a Linux
+  client with different errno values - the errno might not be
+  interpreted correctly.
+
+  Copyright notice from the GlusterFS code's compat-errno.h,
+  from which these codes, CF_ERROR_CODE_ names, and error
+  message strings are taken:
+
+  Copyright (c) 2008-2012 Red Hat, Inc. <http://www.redhat.com>
+  This file is part of GlusterFS.
+
+  This file is licensed to you under your choice of the GNU Lesser
+  General Public License, version 3 or any later version (LGPLv3 or
+  later), or the GNU General Public License, version 2 (GPLv2), in all
+  cases as published by the Free Software Foundation.
+*/
+
+static const value_string glusterfs_error_codes[] = {
+	{0, "Success"},				/* GF_ERROR_CODE_SUCCESS  */
+	{1, "Operation not permitted"},		/* GF_ERROR_CODE_PERM */
+	{2, "No such file or directory"},	/* GF_ERROR_CODE_NOENT */
+	{3, "No such process"},			/* GF_ERROR_CODE_SRCH */
+	{4, "Interrupted system call"},		/* GF_ERROR_CODE_INTR */
+	{5, "I/O error"},			/* GF_ERROR_CODE_IO */
+	{6, "No such device or address"},	/* GF_ERROR_CODE_NXIO */
+	{7, "Argument list too long"},		/* GF_ERROR_CODE_2BIG */
+	{8, "Exec format error"},		/* GF_ERROR_CODE_NOEXEC */
+	{9, "Bad file number"},			/* GF_ERROR_CODE_BADF */
+	{10, "No child processes"},		/* GF_ERROR_CODE_CHILD */
+	{11, "Try again"},			/* GF_ERROR_CODE_AGAIN */
+	{12, "Out of memory"},			/* GF_ERROR_CODE_NOMEM */
+	{13, "Permission denied"},		/* GF_ERROR_CODE_ACCES */
+	{14, "Bad address"},			/* GF_ERROR_CODE_FAULT */
+	{15, "Block device required"},		/* GF_ERROR_CODE_NOTBLK */
+	{16, "Device or resource busy"},	/* GF_ERROR_CODE_BUSY */
+	{17, "File exists"},			/* GF_ERROR_CODE_EXIST */
+	{18, "Cross-device link"},		/* GF_ERROR_CODE_XDEV */
+	{19, "No such device"},			/* GF_ERROR_CODE_NODEV */
+	{20, "Not a directory"},		/* GF_ERROR_CODE_NOTDIR */
+	{21, "Is a directory"},			/* GF_ERROR_CODE_ISDIR */
+	{22, "Invalid argument"},		/* GF_ERROR_CODE_INVAL */
+	{23, "File table overflow"},		/* GF_ERROR_CODE_NFILE */
+	{24, "Too many open files"},		/* GF_ERROR_CODE_MFILE */
+	{25, "Not a typewriter"},		/* GF_ERROR_CODE_NOTTY */
+	{26, "Text file busy"},			/* GF_ERROR_CODE_TXTBSY */
+	{27, "File too large"},			/* GF_ERROR_CODE_FBIG */
+	{28, "No space left on device"},	/* GF_ERROR_CODE_NOSPC */
+	{29, "Illegal seek"},			/* GF_ERROR_CODE_SPIPE */
+	{30, "Read-only file system"},		/* GF_ERROR_CODE_ROFS */
+	{31, "Too many links"},			/* GF_ERROR_CODE_MLINK */
+	{32, "Broken pipe"},			/* GF_ERROR_CODE_PIPE */
+	{33, "Math argument out of domain of func"},	/* GF_ERROR_CODE_DOM */
+	{34, "Math result not representable"},	/* GF_ERROR_CODE_RANGE */
+	{35, "Resource deadlock would occur"},	/* GF_ERROR_CODE_DEADLK */
+	{36, "File name too long"},		/* GF_ERROR_CODE_NAMETOOLONG */
+	{37, "No record locks available"},	/* GF_ERROR_CODE_NOLCK */
+	{38, "Function not implemented"},	/* GF_ERROR_CODE_NOSYS */
+	{39, "Directory not empty"},		/* GF_ERROR_CODE_NOTEMPTY */
+	{40, "Too many symbolic links encountered"},	/* GF_ERROR_CODE_LOOP */
+
+	{42, "No message of desired type"},	/* GF_ERROR_CODE_NOMSG */
+	{43, "Identifier removed"},		/* GF_ERROR_CODE_IDRM */
+	{44, "Channel number out of range"},	/* GF_ERROR_CODE_CHRNG */
+	{45, "Level 2 not synchronized"},	/* GF_ERROR_CODE_L2NSYNC */
+	{46, "Level 3 halted"},			/* GF_ERROR_CODE_L3HLT */
+	{47, "Level 3 reset"},			/* GF_ERROR_CODE_L3RST */
+	{48, "Link number out of range"},	/* GF_ERROR_CODE_LNRNG */
+	{49, "Protocol driver not attached"},	/* GF_ERROR_CODE_UNATCH */
+	{50, "No CSI structure available"},	/* GF_ERROR_CODE_NOCSI */
+	{51, "Level 2 halted"},			/* GF_ERROR_CODE_L2HLT */
+	{52, "Invalid exchange"},		/* GF_ERROR_CODE_BADE */
+	{53, "Invalid request descriptor"},	/* GF_ERROR_CODE_BADR */
+	{54, "Exchange full"},			/* GF_ERROR_CODE_XFULL */
+	{55, "No anode"},			/* GF_ERROR_CODE_NOANO */
+	{56, "Invalid request code"},		/* GF_ERROR_CODE_BADRQC */
+	{57, "Invalid slot"},			/* GF_ERROR_CODE_BADSLT */
+	{59, "Bad font file format"},		/* GF_ERROR_CODE_BFONT */
+	{60, "Device not a stream"},		/* GF_ERROR_CODE_NOSTR */
+	{61, "No data available"},		/* GF_ERROR_CODE_NODATA */
+	{62, "Timer expired"},			/* GF_ERROR_CODE_TIME */
+	{63, "Out of streams resources"},	/* GF_ERROR_CODE_NOSR */
+	{64, "Machine is not on the network"},	/* GF_ERROR_CODE_NONET */
+	{65, "Package not installed"},		/* GF_ERROR_CODE_NOPKG */
+	{66, "Object is remote"},		/* GF_ERROR_CODE_REMOTE */
+	{67, "Link has been severed"},		/* GF_ERROR_CODE_NOLINK */
+	{68, "Advertise error"},		/* GF_ERROR_CODE_ADV */
+	{69, "Srmount error"},			/* GF_ERROR_CODE_SRMNT */
+	{70, "Communication error on send"},	/* GF_ERROR_CODE_COMM */
+	{71, "Protocol error"},			/* GF_ERROR_CODE_PROTO */
+	{72, "Multihop attempted"},		/* GF_ERROR_CODE_MULTIHOP */
+	{73, "RFS specific error"},		/* GF_ERROR_CODE_DOTDOT */
+	{74, "Not a data message"},		/* GF_ERROR_CODE_BADMSG */
+	{75, "Value too large for defined data type"},	/* GF_ERROR_CODE_OVERFLOW */
+	{76, "Name not unique on network"},	/* GF_ERROR_CODE_NOTUNIQ */
+	{77, "File descriptor in bad state"},	/* GF_ERROR_CODE_BADFD */
+	{78, "Remote address changed"},	/* GF_ERROR_CODE_REMCHG */
+	{79, "Can not access a needed shared library"},	/* GF_ERROR_CODE_LIBACC */
+	{80, "Accessing a corrupted shared library"},	/* GF_ERROR_CODE_LIBBAD */
+	{81, ".lib section in a.out corrupted"},	/* GF_ERROR_CODE_LIBSCN */
+	{82, "Attempting to link in too many shared libraries"},	/* GF_ERROR_CODE_LIBMAX */
+	{83, "Cannot exec a shared library directly"},	/* GF_ERROR_CODE_LIBEXEC */
+	{84, "Illegal byte sequence"},		/* GF_ERROR_CODE_ILSEQ */
+	{85, "Interrupted system call should be restarted"},	/* GF_ERROR_CODE_RESTART */
+	{86, "Streams pipe error"},		/* GF_ERROR_CODE_STRPIPE */
+	{87, "Too many users"},			/* GF_ERROR_CODE_USERS */
+	{88, "Socket operation on non-socket"},	/* GF_ERROR_CODE_NOTSOCK */
+	{89, "Destination address required"},	/* GF_ERROR_CODE_DESTADDRREQ */
+	{90, "Message too long"},		/* GF_ERROR_CODE_MSGSIZE */
+	{91, "Protocol wrong type for socket"},	/* GF_ERROR_CODE_PROTOTYPE */
+	{92, "Protocol not available"},		/* GF_ERROR_CODE_NOPROTOOPT */
+	{93, "Protocol not supported"},		/* GF_ERROR_CODE_PROTONOSUPPORT */
+	{94, "Socket type not supported"},	/* GF_ERROR_CODE_SOCKTNOSUPPORT */
+	{95, "Operation not supported on transport endpoint"}, /* GF_ERROR_CODE_OPNOTSUPP */
+	{96, "Protocol family not supported"},	/* GF_ERROR_CODE_PFNOSUPPORT */
+	{97, "Address family not supported by protocol"},	/* GF_ERROR_CODE_AFNOSUPPORT */
+	{98, "Address already in use"},		/* GF_ERROR_CODE_ADDRINUSE */
+	{99, "Cannot assign requested address"},	/* GF_ERROR_CODE_ADDRNOTAVAIL */
+	{100, "Network is down"},		/* GF_ERROR_CODE_NETDOWN */
+	{101, "Network is unreachable"},	/* GF_ERROR_CODE_NETUNREACH */
+	{102, "Network dropped connection because of reset"},	/* GF_ERROR_CODE_NETRESET */
+	{103, "Software caused connection abort"},	/* GF_ERROR_CODE_CONNABORTED */
+	{104, "Connection reset by peer"},	/* GF_ERROR_CODE_CONNRESET */
+	{105, "No buffer space available"},	/* GF_ERROR_CODE_NOBUFS */
+	{106, "Transport endpoint is already connected"},	/* GF_ERROR_CODE_ISCONN */
+	{107, "Transport endpoint is not connected"},	/* GF_ERROR_CODE_NOTCONN */
+	{108, "Cannot send after transport endpoint shutdown"},	/* GF_ERROR_CODE_SHUTDOWN */
+	{109, "Too many references: cannot splice"},	/* GF_ERROR_CODE_TOOMANYREFS */
+	{110, "Connection timed out"},		/* GF_ERROR_CODE_TIMEDOUT */
+	{111, "Connection refused"},		/* GF_ERROR_CODE_CONNREFUSED */
+	{112, "Host is down"},			/* GF_ERROR_CODE_HOSTDOWN */
+	{113, "No route to host"},		/* GF_ERROR_CODE_HOSTUNREACH */
+	{114, "Operation already in progress"},	/* GF_ERROR_CODE_ALREADY */
+	{115, "Operation now in progress"},	/* GF_ERROR_CODE_INPROGRESS */
+	{116, "Stale NFS file handle"},		/* GF_ERROR_CODE_STALE */
+	{117, "Structure needs cleaning"},	/* GF_ERROR_CODE_UCLEAN */
+	{118, "Not a XENIX named type file"},	/* GF_ERROR_CODE_NOTNAM */
+	{119, "No XENIX semaphores available"},	/* GF_ERROR_CODE_NAVAIL */
+	{120, "Is a named type file"},		/* GF_ERROR_CODE_ISNAM */
+	{121, "Remote I/O error"},		/* GF_ERROR_CODE_REMOTEIO */
+	{122, "Quota exceeded"},		/* GF_ERROR_CODE_DQUOT */
+	{123, "No medium found"},		/* GF_ERROR_CODE_NOMEDIUM */
+	{124, "Wrong medium type"},		/* GF_ERROR_CODE_MEDIUMTYPE */
+	{125, "Operation Canceled"},		/* GF_ERROR_CODE_CANCELED */
+	{126, "Required key not available"},	/* GF_ERROR_CODE_NOKEY */
+	{127, "Key has expired"},		/* GF_ERROR_CODE_KEYEXPIRED */
+	{128, "Key has been revoked"},		/* GF_ERROR_CODE_KEYREVOKED */
+	{129, "Key was rejected by service"},	/* GF_ERROR_CODE_KEYREJECTED */
+
+	/* for robust mutexes */
+	{130, "Owner died"},			/* GF_ERROR_CODE_OWNERDEAD */
+	{131, "State not recoverable"},		/* GF_ERROR_CODE_NOTRECOVERABLE */
+
+	/*
+	 * "Should never be seen by user programs"
+	 * These are internal system call returns (Linux?) used to
+	 * indicate various internal conditions such as "restart
+	 * this system call" indications.
+	 */
+	{512, "Restart system call"},		/* GF_ERROR_CODE_RESTARTSYS */
+	{513, "Restart system call (no intr)"},	/* GF_ERROR_CODE_RESTARTNOINTR */
+	{514, "Restart if no signal handler"},	/* GF_ERROR_CODE_RESTARTNOHAND */
+	{515, "No ioctl command"},		/* GF_ERROR_CODE_NOIOCTLCMD */
+	{516, "Restart system call by calling sys_restart_syscall"},	/* GF_ERROR_CODE_RESTART_RESTARTBLOCK */
+
+	/* Defined for the NFSv3 protocol */
+	{521, "Illegal NFS file handle"},	/* GF_ERROR_CODE_BADHANDLE */
+	{522, "Update synchronization mismatch"},	/* GF_ERROR_CODE_NOTSYNC */
+	{523, "Cookie is stale"},		/* GF_ERROR_CODE_BADCOOKIE */
+	{524, "Operation is not supported"},	/* GF_ERROR_CODE_NOTSUPP */
+	{525, "Buffer or request is too small"},	/* GF_ERROR_CODE_TOOSMALL */
+	{526, "An untranslatable error occurred"},	/* GF_ERROR_CODE_SERVERFAULT */
+	{527, "Type not supported by server"},	/* GF_ERROR_CODE_BADTYPE */
+	{528, "Request initiated, but will not complete before timeout"},	/* GF_ERROR_CODE_JUKEBOX */
+	{529, "iocb queued, will get completion event"},	/* GF_ERROR_CODE_IOCBQUEUED */
+	{530, "iocb queued, will trigger a retry"},	/* GF_ERROR_CODE_IOCBRETRY */
+
+	/* Darwin */
+	{701, "No such policy registered"},	/* GF_ERROR_CODE_NOPOLICY */
+	{702, "Malformed Mach-O file"},		/* GF_ERROR_CODE_BADMACHO */
+	{703, "Device power is off"},		/* GF_ERROR_CODE_PWROFF */
+	{704, "Device error" /* e.g., paper out */},	/* GF_ERROR_CODE_DEVERR */
+	{705, "Bad CPU type in executable"},	/* GF_ERROR_CODE_BADARCH */
+	{706, "Bad executable"},		/* GF_ERROR_CODE_BADEXEC */
+	{707, "Shared library version mismatch"},	/* GF_ERROR_CODE_SHLIBVERS */
+
+	/* Solaris */
+	{801, "Facility is not active"},	/* GF_ERROR_CODE_NOTACTIVE */
+	{802, "locked lock was unmapped"},	/* GF_ERROR_CODE_LOCKUNMAPPED */
+
+	/* BSD system */
+	{901, "Too many processes"},	/* GF_ERROR_CODE_PROCLIM */
+	{902, "RPC struct is bad"},	/* GF_ERROR_CODE_BADRPC */
+	{903, "RPC version wrong"},	/* GF_ERROR_CODE_RPCMISMATCH */
+	{904, "RPC prog. not avail"},	/* GF_ERROR_CODE_PROGUNAVAIL */
+	{905, "Program version wrong"},	/* GF_ERROR_CODE_PROGMISMATCH */
+	{905, "Bad procedure for program"},	/* GF_ERROR_CODE_PROCUNAVAIL */
+	{906, "Inappropriate file type or format"},	/* GF_ERROR_CODE_FTYPE */
+	{907, "Authentication error"},	/* GF_ERROR_CODE_AUTH */
+	{908, "Need authenticator"},	/* GF_ERROR_CODE_NEEDAUTH */
+	{909, "Programming error"},	/* GF_ERROR_CODE_DOOFUS */
+	{1024, "Unknown"},		/* GF_ERROR_CODE_UNKNOWN */
+
+	{0, NULL}
+};
+static value_string_ext glusterfs_error_codes_ext = VALUE_STRING_EXT_INIT(glusterfs_error_codes);
 
 int
 gluster_dissect_common_reply(tvbuff_t *tvb, int offset,
@@ -789,14 +983,10 @@ gluster_dissect_common_reply(tvbuff_t *tvb, int offset,
 
 	offset = dissect_rpc_uint32(tvb, tree, hf_gluster_op_ret, offset);
 
-	if (tree) {
-		op_errno = tvb_get_ntohl(tvb, offset);
-		errno_item = proto_tree_add_int(tree, hf_gluster_op_errno, tvb,
-					    offset, 4, op_errno);
-		proto_item_append_text(errno_item, " (%s)",
-							g_strerror(op_errno));
-	}
-
+	op_errno = tvb_get_ntohl(tvb, offset);
+	errno_item = proto_tree_add_int(tree, hf_gluster_op_errno, tvb,
+			offset, 4, op_errno);
+	proto_item_append_text(errno_item, " (%s)", val_to_str_ext_const(op_errno, &glusterfs_error_codes_ext, "Unknown"));
 	offset += 4;
 
 	return offset;
@@ -817,17 +1007,13 @@ _glusterfs_gfs3_common_readdir_reply(tvbuff_t *tvb, proto_tree *tree, int offset
 
 	offset = dissect_rpc_uint32(tvb, tree, hf_glusterfs_entries, offset);
 
-	if (tree) {
-		op_errno = tvb_get_ntohl(tvb, offset);
-		errno_item = proto_tree_add_int(tree, hf_gluster_op_errno, tvb,
-					    offset, 4, op_errno);
-		if (op_errno == 0)
-			proto_item_append_text(errno_item,
-					    " (More replies follow)");
-		else if (op_errno == 2 /* ENOENT */)
-			proto_item_append_text(errno_item,
-					    " (Last reply)");
-	}
+	op_errno = tvb_get_ntohl(tvb, offset);
+	errno_item = proto_tree_add_int(tree, hf_gluster_op_errno, tvb,
+			offset, 4, op_errno);
+	if (op_errno == 0)
+		proto_item_append_text(errno_item, " (More replies follow)");
+	else if (op_errno == 2 /* GF_ERROR_CODE_NOENT */)
+		proto_item_append_text(errno_item, " (Last reply)");
 	offset += 4;
 
 	return offset;
@@ -1147,9 +1333,7 @@ glusterfs_rpc_dissect_setattr(proto_tree *tree, tvbuff_t *tvb, int offset)
 		NULL
 	};
 
-	if (tree)
-		proto_tree_add_bitmask(tree, tvb, offset,
-			hf_glusterfs_setattr_valid,
+	proto_tree_add_bitmask(tree, tvb, offset, hf_glusterfs_setattr_valid,
 			ett_glusterfs_setattr_valid, flag_bits, ENC_NA);
 	offset += 4;
 
@@ -4224,37 +4408,37 @@ proto_register_glusterfs(void)
 		/* setattr.valid flags from libglusterfs/src/xlator.h */
 		{ &hf_glusterfs_setattr_set_mode,
 			{ "SET_ATTR_MODE", "glusterfs.setattr.set_mode",
-				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x1,
+				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x00000001,
 				NULL, HFILL }
 		},
 		{ &hf_glusterfs_setattr_set_uid,
 			{ "SET_ATTR_UID", "glusterfs.setattr.set_uid",
-				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x2,
+				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x00000002,
 				NULL, HFILL }
 		},
 		{ &hf_glusterfs_setattr_set_gid,
 			{ "SET_ATTR_GID", "glusterfs.setattr.set_gid",
-				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x4,
+				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x00000004,
 				NULL, HFILL }
 		},
 		{ &hf_glusterfs_setattr_set_size,
 			{ "SET_ATTR_SIZE", "glusterfs.setattr.set_size",
-				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x8,
+				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x00000008,
 				NULL, HFILL }
 		},
 		{ &hf_glusterfs_setattr_set_atime,
 			{ "SET_ATTR_ATIME", "glusterfs.setattr.set_atime",
-				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x10,
+				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x00000010,
 				NULL, HFILL }
 		},
 		{ &hf_glusterfs_setattr_set_mtime,
 			{ "SET_ATTR_MTIME", "glusterfs.setattr.set_mtime",
-				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x20,
+				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x00000020,
 				NULL, HFILL }
 		},
 		{ &hf_glusterfs_setattr_set_reserved,
 			{ "Reserved", "glusterfs.setattr.set_reserved",
-				FT_BOOLEAN, 32, TFS(&tfs_set_notset), ~0x3f,
+				FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0xffffffcf,
 				NULL, HFILL }
 		},
 		{ &hf_glusterfs_xflags,

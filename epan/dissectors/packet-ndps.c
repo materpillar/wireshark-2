@@ -19,7 +19,7 @@
 #include <epan/expert.h>
 #include <epan/strutil.h>
 #include <epan/proto_data.h>
-#include <wmem/wmem_map.h>
+#include <epan/wmem_scopes.h>
 
 #include "packet-ipx.h"
 #include "packet-tcp.h"
@@ -27,6 +27,8 @@
 
 void proto_register_ndps(void);
 void proto_reg_handoff_ndps(void);
+
+static dissector_handle_t ndps_handle, ndps_tcp_handle;
 
 /* Limit the number of items we can add to the tree. */
 #define NDPS_MAX_ITEMS 100
@@ -4262,13 +4264,13 @@ ndps_defrag(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, spx_info *spx_i
     {
         /* Lets see if this is a new conversation */
         conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
-            ENDPOINT_NCP, (guint32) pinfo->srcport, (guint32) pinfo->srcport, 0);
+            CONVERSATION_NCP, (guint32) pinfo->srcport, (guint32) pinfo->srcport, 0);
 
         if (conversation == NULL)
         {
             /* It's not part of any conversation - create a new one. */
             conversation = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst,
-                ENDPOINT_NCP, (guint32) pinfo->srcport, (guint32) pinfo->srcport, 0);
+                CONVERSATION_NCP, (guint32) pinfo->srcport, (guint32) pinfo->srcport, 0);
         }
 
         /* So now we need to get the request info for this conversation */
@@ -4454,13 +4456,13 @@ dissect_ndps_request(tvbuff_t *tvb, packet_info *pinfo, proto_tree *ndps_tree, g
         let the user select that conversation to be displayed.) */
 
         conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
-            ENDPOINT_NCP, (guint32) pinfo->srcport, (guint32) pinfo->srcport, 0);
+            CONVERSATION_NCP, (guint32) pinfo->srcport, (guint32) pinfo->srcport, 0);
 
         if (conversation == NULL)
         {
             /* It's not part of any conversation - create a new one. */
             conversation = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst,
-                ENDPOINT_NCP, (guint32) pinfo->srcport, (guint32) pinfo->srcport, 0);
+                CONVERSATION_NCP, (guint32) pinfo->srcport, (guint32) pinfo->srcport, 0);
         }
 
         request_value = ndps_hash_insert(conversation, (guint32) pinfo->srcport);
@@ -6708,7 +6710,7 @@ dissect_ndps_reply(tvbuff_t *tvb, packet_info *pinfo, proto_tree *ndps_tree, int
     if (!pinfo->fd->visited) {
         /* Find the conversation whence the request would have come. */
         conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
-            ENDPOINT_NCP, (guint32) pinfo->destport, (guint32) pinfo->destport, 0);
+            CONVERSATION_NCP, (guint32) pinfo->destport, (guint32) pinfo->destport, 0);
         if (conversation != NULL) {
             /* find the record telling us the request made that caused
             this reply */
@@ -8387,7 +8389,7 @@ proto_register_ndps(void)
             NULL, HFILL }},
 
         { &hf_ndps_attribute_value,
-          { "Value",    "ndps.attribue_value",
+          { "Value",    "ndps.attribute_value",
             FT_UINT32,    BASE_HEX,   NULL,   0x0,
             NULL, HFILL }},
 
@@ -8648,7 +8650,7 @@ proto_register_ndps(void)
 
         { &hf_ndps_len,
           { "Length",    "ndps.len",
-            FT_UINT16,    BASE_DEC,   NULL,   0x0,
+            FT_UINT32,    BASE_DEC,   NULL,   0x0,
             NULL, HFILL }},
 
         { &hf_ndps_limit_enc,
@@ -9437,6 +9439,9 @@ proto_register_ndps(void)
     expert_ndps = expert_register_protocol(proto_ndps);
     expert_register_field_array(expert_ndps, ei, array_length(ei));
 
+    ndps_handle = register_dissector("ndps.ipx", dissect_ndps_ipx, proto_ndps);
+    ndps_tcp_handle = register_dissector("ndps.tcp", dissect_ndps_tcp, proto_ndps);
+
     ndps_module = prefs_register_protocol(proto_ndps, NULL);
     prefs_register_bool_preference(ndps_module, "desegment_tcp",
                                    "Reassemble NDPS messages spanning multiple TCP segments",
@@ -9461,11 +9466,6 @@ proto_register_ndps(void)
 void
 proto_reg_handoff_ndps(void)
 {
-    dissector_handle_t ndps_handle, ndps_tcp_handle;
-
-    ndps_handle = create_dissector_handle(dissect_ndps_ipx, proto_ndps);
-    ndps_tcp_handle = create_dissector_handle(dissect_ndps_tcp, proto_ndps);
-
     dissector_add_uint("spx.socket", SPX_SOCKET_PA, ndps_handle);
     dissector_add_uint("spx.socket", SPX_SOCKET_BROKER, ndps_handle);
     dissector_add_uint("spx.socket", SPX_SOCKET_SRS, ndps_handle);

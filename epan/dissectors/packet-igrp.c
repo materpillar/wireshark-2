@@ -28,6 +28,8 @@ void proto_reg_handoff_igrp(void);
 #define IGRP_HEADER_LENGTH 12
 #define IGRP_ENTRY_LENGTH 14
 
+static dissector_handle_t igrp_handle;
+
 static gint proto_igrp = -1;
 static gint hf_igrp_update = -1;
 static gint hf_igrp_as = -1;
@@ -51,7 +53,7 @@ static gint ett_igrp_net = -1;
 
 static expert_field ei_igrp_version = EI_INIT;
 
-static void dissect_vektor_igrp (tvbuff_t *tvb, proto_tree *igrp_vektor_tree, guint8 network);
+static void dissect_vektor_igrp (packet_info *pinfo, tvbuff_t *tvb, proto_tree *igrp_vektor_tree, guint8 network);
 
 static int dissect_igrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
@@ -115,7 +117,7 @@ static int dissect_igrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
     for( ; ninterior>0 ; ninterior-- ) {
       igrp_vektor_tree =  proto_item_add_subtree(ti,ett_igrp_vektor);
       next_tvb = tvb_new_subset_length_caplen(tvb, offset, IGRP_ENTRY_LENGTH, -1);
-      dissect_vektor_igrp (next_tvb,igrp_vektor_tree,network);
+      dissect_vektor_igrp (pinfo,next_tvb,igrp_vektor_tree,network);
       offset+=IGRP_ENTRY_LENGTH;
     }
 
@@ -123,7 +125,7 @@ static int dissect_igrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
     for( ; nsystem>0 ; nsystem-- ) {
       igrp_vektor_tree =  proto_item_add_subtree(ti,ett_igrp_vektor);
       next_tvb = tvb_new_subset_length_caplen(tvb, offset, IGRP_ENTRY_LENGTH, -1);
-      dissect_vektor_igrp (next_tvb,igrp_vektor_tree,0);
+      dissect_vektor_igrp (pinfo,next_tvb,igrp_vektor_tree,0);
       offset+=IGRP_ENTRY_LENGTH;
     }
 
@@ -131,7 +133,7 @@ static int dissect_igrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
     for( ; nexterior>0 ; nexterior-- ) {
       igrp_vektor_tree =  proto_item_add_subtree(ti,ett_igrp_vektor);
       next_tvb = tvb_new_subset_length_caplen(tvb, offset, IGRP_ENTRY_LENGTH, -1);
-      dissect_vektor_igrp (next_tvb,igrp_vektor_tree,0);
+      dissect_vektor_igrp (pinfo,next_tvb,igrp_vektor_tree,0);
       offset+=IGRP_ENTRY_LENGTH;
     }
 
@@ -140,7 +142,7 @@ static int dissect_igrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
   return tvb_captured_length(tvb);
 }
 
-static void dissect_vektor_igrp (tvbuff_t *tvb, proto_tree *igrp_vektor_tree, guint8 network)
+static void dissect_vektor_igrp (packet_info *pinfo, tvbuff_t *tvb, proto_tree *igrp_vektor_tree, guint8 network)
 {
   union {
     guint8 addr_bytes[4];
@@ -170,7 +172,7 @@ static void dissect_vektor_igrp (tvbuff_t *tvb, proto_tree *igrp_vektor_tree, gu
 
   set_address(&ip_addr, AT_IPv4, 4, &addr);
   igrp_vektor_tree = proto_tree_add_subtree_format(igrp_vektor_tree, tvb, 0 ,14,
-                                                   ett_igrp_net, NULL, "Entry for network %s", address_to_str(wmem_packet_scope(), &ip_addr));
+                                                   ett_igrp_net, NULL, "Entry for network %s", address_to_str(pinfo->pool, &ip_addr));
   proto_tree_add_ipv4(igrp_vektor_tree, hf_igrp_network, tvb, 0, 3, addr.addr_word);
   proto_tree_add_item(igrp_vektor_tree, hf_igrp_delay, tvb, 3, 3, ENC_BIG_ENDIAN);
   proto_tree_add_item(igrp_vektor_tree, hf_igrp_bandwidth, tvb, 6, 3, ENC_BIG_ENDIAN);
@@ -231,6 +233,7 @@ void proto_register_igrp(void)
   /* Register the protocol name and description */
   proto_igrp = proto_register_protocol("Cisco Interior Gateway Routing Protocol",
                                        "IGRP", "igrp");
+  igrp_handle = register_dissector("igrp", dissect_igrp, proto_igrp);
 
   /* Required function calls to register the header fields and subtrees used */
   proto_register_field_array(proto_igrp, hf, array_length(hf));
@@ -242,9 +245,6 @@ void proto_register_igrp(void)
 void
 proto_reg_handoff_igrp(void)
 {
-  dissector_handle_t igrp_handle;
-
-  igrp_handle = create_dissector_handle(dissect_igrp, proto_igrp);
   dissector_add_uint("ip.proto", IP_PROTO_IGRP, igrp_handle);
 }
 

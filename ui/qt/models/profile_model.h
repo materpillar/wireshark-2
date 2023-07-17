@@ -1,4 +1,4 @@
-/* profile_model.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -25,6 +25,7 @@ Q_DECLARE_LOGGING_CATEGORY(profileLogger)
 class ProfileSortModel : public QSortFilterProxyModel
 {
     Q_OBJECT
+
 public:
     ProfileSortModel(QObject *parent = Q_NULLPTR);
 
@@ -118,7 +119,7 @@ public:
     bool checkIfDeleted(int row) const;
     bool checkDuplicate(const QModelIndex &index, bool isOriginalToDuplicate = false) const;
 
-Q_SIGNALS:
+signals:
     void itemChanged(const QModelIndex &idx);
 
 protected:
@@ -162,16 +163,3 @@ private:
 };
 
 #endif
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

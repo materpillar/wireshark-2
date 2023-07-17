@@ -220,7 +220,7 @@ dissect_ehdlc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
 		tei = tei_from_ctei(ctei);
 
 		/* Add TEI to INFO column */
-		col_append_fstr(pinfo->cinfo, COL_INFO, " | TEI:1%u | ", tei);
+		col_append_fstr(pinfo->cinfo, COL_INFO, " | TEI:%02u | ", tei);
 		col_set_fence(pinfo->cinfo, COL_INFO);
 
 		if (tree) {
@@ -306,7 +306,7 @@ proto_register_ehdlc(void)
 	static hf_register_info hf[] = {
 		{ &hf_ehdlc_data_len,
 		  { "DataLen", "ehdlc.data_len",
-		    FT_UINT16, BASE_DEC, NULL, 0x1FF,
+		    FT_UINT16, BASE_DEC, NULL, 0x01FF,
 		    "The length of the data (in bytes)", HFILL }
 		},
 		{ &hf_ehdlc_csapi,
@@ -462,7 +462,7 @@ proto_reg_handoff_ehdlc(void)
 	sub_handles[SUB_PGSL]  = find_dissector_add_dependency("gsm_abis_pgsl", proto_ehdlc);
 	sub_handles[SUB_DATA] = find_dissector("data");
 
-	dissector_add_uint("l2tp.pw_type", L2TPv3_PROTOCOL_ERICSSON, ehdlc_handle);
+	dissector_add_for_decode_as("l2tp.pw_type", ehdlc_handle);
 }
 
 /*

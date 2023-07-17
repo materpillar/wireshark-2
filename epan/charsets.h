@@ -1,4 +1,4 @@
-/* charsets.h
+/** @file
  * Routines for handling character sets
  *
  * Wireshark - Network traffic analyzer
@@ -63,6 +63,7 @@ extern const gunichar2 charset_table_iso_646_basic[0x80];
 /* Tables for EBCDIC code pages */
 extern const gunichar2 charset_table_ebcdic[256];
 extern const gunichar2 charset_table_ebcdic_cp037[256];
+extern const gunichar2 charset_table_ebcdic_cp500[256];
 
 /*
  * Given a wmem scope, a pointer, and a length, treat the string of bytes
@@ -75,6 +76,17 @@ extern const gunichar2 charset_table_ebcdic_cp037[256];
  */
 WS_DLL_PUBLIC guint8 *
 get_ascii_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
+
+/*
+ * Given a wmem scope, a pointer, and a length, treat the string of bytes
+ * referred to by the pointer and length as a UTF-8 string, and return a
+ * pointer to a UTF-8 string, allocated using the wmem scope, with all
+ * ill-formed sequences replaced with the Unicode REPLACEMENT CHARACTER
+ * according to the recommended "best practices" given in the Unicode
+ * Standard and specified by W3C/WHATWG.
+ */
+WS_DLL_PUBLIC guint8 *
+get_utf_8_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
 
 /*
  * Given a wmem scope, a pointer, a length, and a translation table,
@@ -116,17 +128,13 @@ get_unichar2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, con
  * Unicode, and return a pointer to a UTF-8 string, allocated with the
  * wmem scope.
  *
- * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN.
+ * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN,
+ * possibly ORed with ENC_BOM.
  *
  * Specify length in bytes.
- *
- * XXX - should map lead and trail surrogate values to REPLACEMENT
- * CHARACTERs (0xFFFD)?
- * XXX - if there are an odd number of bytes, should put a
- * REPLACEMENT CHARACTER at the end.
  */
 WS_DLL_PUBLIC guint8 *
-get_ucs_2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const guint encoding);
+get_ucs_2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, guint encoding);
 
 /*
  * Given a wmem scope, a pointer, and a length, treat the string of bytes
@@ -135,35 +143,26 @@ get_ucs_2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const 
  *
  * See RFC 2781 section 2.2.
  *
- * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN.
+ * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN,
+ * possibly ORed with ENC_BOM.
  *
  * Specify length in bytes.
- *
- * XXX - should map surrogate errors to REPLACEMENT CHARACTERs (0xFFFD).
- * XXX - should map code points > 10FFFF to REPLACEMENT CHARACTERs.
- * XXX - if there are an odd number of bytes, should put a
- * REPLACEMENT CHARACTER at the end.
  */
 WS_DLL_PUBLIC guint8 *
-get_utf_16_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const guint encoding);
+get_utf_16_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, guint encoding);
 
 /*
  * Given a wmem scope, a pointer, and a length, treat the string of bytes
  * referred to by the pointer and length as a UCS-4 encoded string, and
  * return a pointer to a UTF-8 string, allocated with the wmem scope.
  *
- * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN
+ * Encoding parameter should be ENC_BIG_ENDIAN or ENC_LITTLE_ENDIAN,
+ * possibly ORed with ENC_BOM.
  *
- * Specify length in bytes
- *
- * XXX - should map lead and trail surrogate values to a "substitute"
- * UTF-8 character?
- * XXX - should map code points > 10FFFF to REPLACEMENT CHARACTERs.
- * XXX - if the number of bytes isn't a multiple of 4, should put a
- * REPLACEMENT CHARACTER at the end.
+ * Specify length in bytes.
  */
 WS_DLL_PUBLIC guint8 *
-get_ucs_4_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const guint encoding);
+get_ucs_4_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, guint encoding);
 
 WS_DLL_PUBLIC guint8 *
 get_ts_23_038_7bits_string_packed(wmem_allocator_t *scope, const guint8 *ptr,
@@ -192,18 +191,35 @@ get_ascii_7bits_string(wmem_allocator_t *scope, const guint8 *ptr,
 WS_DLL_PUBLIC guint8 *
 get_nonascii_unichar2_string(wmem_allocator_t *scope, const guint8 *ptr, gint length, const gunichar2 table[256]);
 
+/*
+ * Given a wmem scope, a pointer, and a length, treat the bytes referred to
+ * by the pointer and length as a GB18030 encoded string, and return a pointer
+ * to a UTF-8 string, allocated using the wmem scope, converted having
+ * substituted REPLACEMENT CHARACTER according to the Unicode Standard
+ * 5.22 U+FFFD Substitution for Conversion.
+ * ( https://www.unicode.org/versions/Unicode13.0.0/ch05.pdf )
+ *
+ * As expected, this will also decode GBK and GB2312 strings.
+ */
+WS_DLL_PUBLIC guint8 *
+get_gb18030_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
+
+/*
+ * Given a wmem scope, a pointer, and a length, treat the bytes referred to
+ * by the pointer and length as a EUC-KR encoded string, and return a pointer
+ * to a UTF-8 string, allocated using the wmem scope, converted having
+ * substituted REPLACEMENT CHARACTER according to the Unicode Standard
+ * 5.22 U+FFFD Substitution for Conversion.
+ * ( https://www.unicode.org/versions/Unicode13.0.0/ch05.pdf )
+ */
+WS_DLL_PUBLIC guint8 *
+get_euc_kr_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
+
 WS_DLL_PUBLIC guint8 *
 get_t61_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
 
-#if 0
-void ASCII_to_EBCDIC(guint8 *buf, guint bytes);
-guint8 ASCII_to_EBCDIC1(guint8 c);
-#endif
-WS_DLL_PUBLIC
-void EBCDIC_to_ASCII(guint8 *buf, guint bytes);
-WS_DLL_PUBLIC
-guint8 EBCDIC_to_ASCII1(guint8 c);
-
+WS_DLL_PUBLIC guint8 *
+get_dect_standard_8bits_string(wmem_allocator_t *scope, const guint8 *ptr, gint length);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

@@ -213,7 +213,7 @@ static const value_string isi_sim_cause[] = {
 	{0x00, NULL }
 };
 
-value_string_ext isi_sim_cause_ext = VALUE_STRING_EXT_INIT(isi_sim_cause);
+static value_string_ext isi_sim_cause_ext = VALUE_STRING_EXT_INIT(isi_sim_cause);
 
 static const value_string isi_sim_pb_subblock[] = {
 	{0xE4, "SIM_PB_INFO_REQUEST"},
@@ -679,11 +679,11 @@ static int dissect_isi_sim_auth(tvbuff_t *tvb, packet_info *pinfo, proto_item *i
 			cmd = tvb_get_guint8(tvb, 2);
 			switch(cmd) {
 				case 0x00: /* DISABLE */
-					proto_tree_add_item(tree, hf_isi_sim_auth_pin, tvb, 3, -1, ENC_ASCII|ENC_NA);
+					proto_tree_add_item(tree, hf_isi_sim_auth_pin, tvb, 3, -1, ENC_ASCII);
 					col_set_str(pinfo->cinfo, COL_INFO, "disable SIM startup protection");
 					break;
 				case 0x01: /* ENABLE */
-					proto_tree_add_item(tree, hf_isi_sim_auth_pin, tvb, 3, -1, ENC_ASCII|ENC_NA);
+					proto_tree_add_item(tree, hf_isi_sim_auth_pin, tvb, 3, -1, ENC_ASCII);
 					col_set_str(pinfo->cinfo, COL_INFO, "enable SIM startup protection");
 					break;
 				case 0x04: /* STATUS */
@@ -707,8 +707,8 @@ static int dissect_isi_sim_auth(tvbuff_t *tvb, packet_info *pinfo, proto_item *i
 			switch(code) {
 				case 0x02: /* PIN */
 					col_set_str(pinfo->cinfo, COL_INFO, "update SIM PIN");
-					proto_tree_add_item(tree, hf_isi_sim_auth_pin, tvb, 2, 11, ENC_ASCII|ENC_NA);
-					proto_tree_add_item(tree, hf_isi_sim_auth_new_pin, tvb, 13, 11, ENC_ASCII|ENC_NA);
+					proto_tree_add_item(tree, hf_isi_sim_auth_pin, tvb, 2, 11, ENC_ASCII);
+					proto_tree_add_item(tree, hf_isi_sim_auth_new_pin, tvb, 13, 11, ENC_ASCII);
 					break;
 				case 0x03: /* PUK */
 					col_set_str(pinfo->cinfo, COL_INFO, "update SIM PUK");
@@ -730,12 +730,12 @@ static int dissect_isi_sim_auth(tvbuff_t *tvb, packet_info *pinfo, proto_item *i
 			switch(code) {
 				case 0x02: /* PIN */
 					col_set_str(pinfo->cinfo, COL_INFO, "SIM Authentication with PIN");
-					proto_tree_add_item(tree, hf_isi_sim_auth_pin, tvb, 2, 11, ENC_ASCII|ENC_NA);
+					proto_tree_add_item(tree, hf_isi_sim_auth_pin, tvb, 2, 11, ENC_ASCII);
 					break;
 				case 0x03: /* PUK */
 					col_set_str(pinfo->cinfo, COL_INFO, "SIM Authentication with PUK");
-					proto_tree_add_item(tree, hf_isi_sim_auth_puk, tvb, 2, 11, ENC_ASCII|ENC_NA);
-					proto_tree_add_item(tree, hf_isi_sim_auth_new_pin, tvb, 13, 11, ENC_ASCII|ENC_NA);
+					proto_tree_add_item(tree, hf_isi_sim_auth_puk, tvb, 2, 11, ENC_ASCII);
+					proto_tree_add_item(tree, hf_isi_sim_auth_new_pin, tvb, 13, 11, ENC_ASCII);
 					break;
 				default:
 					col_set_str(pinfo->cinfo, COL_INFO, "unknown SIM Authentication request");
@@ -907,7 +907,7 @@ static int dissect_isi_sim(tvbuff_t *tvb, packet_info *pinfo, proto_item *isitre
 					next_tvb = tvb_new_subset_remaining(tvb, 0);
 					proto_tree_add_item(tree, hf_isi_sim_imsi_byte_1, next_tvb, 4, 1, ENC_LITTLE_ENDIAN);
 					dissect_e212_mcc_mnc(next_tvb, pinfo, tree, 4, FALSE );
-					proto_tree_add_item(tree, hf_E212_msin, tvb, 2, 7, FALSE);
+					proto_tree_add_item(tree, hf_E212_msin, tvb, 2, 7, ENC_BIG_ENDIAN);
 
 					*/
 
@@ -1100,7 +1100,7 @@ static int dissect_isi_gss(tvbuff_t *tvb, packet_info *pinfo, proto_item *isitre
 			break;
 
 		case 0x01: /* GSS_CS_SERVICE_RESP */
-			/* proto_tree_add_item(tree, hf_isi_gss_service_type, tvb, 1, 1, FALSE); */
+			/* proto_tree_add_item(tree, hf_isi_gss_service_type, tvb, 1, 1, ENC_NA); */
 			code = tvb_get_guint8(tvb, 1);
 			switch(code) {
 				/* case 0x9C:
@@ -1359,7 +1359,7 @@ static int dissect_isi_ss(tvbuff_t *tvb, packet_info *pinfo, proto_item *isitree
 			break;
 
 		case 0x02: /* SS_SERVICE_FAILED_RESP */
-			/* proto_tree_add_item(tree, hf_isi_ss_service_type, tvb, 1, 1, FALSE); */
+			/* proto_tree_add_item(tree, hf_isi_ss_service_type, tvb, 1, 1, ENC_NA); */
 			code = tvb_get_guint8(tvb, 1);
 			switch(code) {
 				/* case 0x2F:
@@ -1389,7 +1389,7 @@ static int dissect_isi_ss(tvbuff_t *tvb, packet_info *pinfo, proto_item *isitree
 			break;
 
 		case 0x05: /* SS_GSM_USSD_SEND_RESP */
-			/* proto_tree_add_item(tree, hf_isi_ss_service_type, tvb, 1, 1, FALSE); */
+			/* proto_tree_add_item(tree, hf_isi_ss_service_type, tvb, 1, 1, ENC_NA); */
 			code = tvb_get_guint8(tvb, 1);
 			switch(code) {
 				/* case 0x2F:
@@ -1670,7 +1670,7 @@ static int dissect_isi_sms(tvbuff_t *tvb, packet_info *pinfo, proto_item *isitre
 			break;
 
 		case 0x07: /* SMS_PP_ROUTING_RESP */
-			/* proto_tree_add_item(tree, hf_isi_sms_service_type, tvb, 1, 1, FALSE); */
+			/* proto_tree_add_item(tree, hf_isi_sms_service_type, tvb, 1, 1, ENC_NA); */
 			code = tvb_get_guint8(tvb, 1);
 			switch(code) {
 					/* case 0x2F:
@@ -1686,10 +1686,10 @@ static int dissect_isi_sms(tvbuff_t *tvb, packet_info *pinfo, proto_item *isitre
 			proto_tree_add_item(tree, hf_isi_sms_routing_command, tvb, 1, 1, ENC_BIG_ENDIAN);
 			proto_tree_add_item(tree, hf_isi_sms_routing_mode, tvb, 2, 1, ENC_BIG_ENDIAN);
 #if 0
-				proto_tree_add_item(tree, hf_isi_sms_cb_subject_list_type, tvb, 3, 1, FALSE);
-				proto_tree_add_item(tree, hf_isi_sms_cb_subject_count, tvb, 4, 1, FALSE);
-				proto_tree_add_item(tree, hf_isi_sms_cb_language_count, tvb, 5, 1, FALSE);
-				proto_tree_add_item(tree, hf_isi_sms_cb_range, tvb, 6, 1, FALSE);
+			proto_tree_add_item(tree, hf_isi_sms_cb_subject_list_type, tvb, 3, 1, ENC_BIG_ENDIAN);
+			proto_tree_add_item(tree, hf_isi_sms_cb_subject_count, tvb, 4, 1, ENC_BIG_ENDIAN);
+			proto_tree_add_item(tree, hf_isi_sms_cb_language_count, tvb, 5, 1, ENC_BIG_ENDIAN);
+			proto_tree_add_item(tree, hf_isi_sms_cb_range, tvb, 6, 1, ENC_BIG_ENDIAN);
 #endif
 			code = tvb_get_guint8(tvb, 1);
 			switch(code) {
@@ -1707,8 +1707,8 @@ static int dissect_isi_sms(tvbuff_t *tvb, packet_info *pinfo, proto_item *isitre
 
 		case 0x0C: /* SMS_GSM_CB_ROUTING_RESP */
 #if 0
-				proto_tree_add_item(tree, hf_isi_sms_operation, tvb, 1, 1, FALSE);
-				proto_tree_add_item(tree, hf_isi_sms_service_code, tvb, 2, 1, FALSE);
+			proto_tree_add_item(tree, hf_isi_sms_operation, tvb, 1, 1, ENC_BIG_ENDIAN);
+			proto_tree_add_item(tree, hf_isi_sms_service_code, tvb, 2, 1, ENC_BIG_ENDIAN);
 #endif
 			code = tvb_get_guint8(tvb, 1);
 			switch(code) {
@@ -1894,15 +1894,15 @@ proto_register_isi(void)
 		{ &hf_isi_sim_secondary_cause,
 		  { "Secondary Cause", "isi.sim.secondary_cause", FT_UINT8, BASE_HEX|BASE_EXT_STRING, &isi_sim_cause_ext, 0x0, NULL, HFILL }},
 		{&hf_isi_sim_subblock_count,
-		  { "Subblock Count", "isi.sim.subblock_count", FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
+		  { "Subblock Count", "isi.sim.subblock_count", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 		{&hf_isi_sim_subblock_size,
-		  { "Subblock Size", "isi.sim.subblock_size", FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
+		  { "Subblock Size", "isi.sim.subblock_size", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 		{ &hf_isi_sim_pb_subblock,
 		  { "Subblock", "isi.sim.pb.subblock", FT_UINT8, BASE_HEX, VALS(isi_sim_pb_subblock), 0x0, NULL, HFILL }},
 		{ &hf_isi_sim_pb_type,
 		  { "Phonebook Type", "isi.sim.pb.type", FT_UINT8, BASE_HEX, VALS(isi_sim_pb_type), 0x0, NULL, HFILL }},
 		{&hf_isi_sim_pb_location,
-		  { "Phonebook Location", "isi.sim.pb.location", FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
+		  { "Phonebook Location", "isi.sim.pb.location", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 		{&hf_isi_sim_pb_tag_count,
 		  { "Tag Count", "isi.sim.pb.tag.count", FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 		{ &hf_isi_sim_pb_tag,

@@ -11,8 +11,6 @@
 
 #include "config.h"
 
-#include <stdio.h>
-
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/proto_data.h>
@@ -104,6 +102,18 @@ static const value_string teap_status_vals[] = {
    { 0, NULL }
  };
 
+static const value_string teap_request_action_status_vals[] = {
+   { 1, "Success" },
+   { 2, "Failure" },
+   { 0, NULL }
+ };
+
+static const value_string teap_request_action_action_vals[] = {
+   { 1, "Process-TLV" },
+   { 2, "Negotiate-EAP" },
+   { 0, NULL }
+ };
+
  #define FLAG_EMSK_PRESENT 1
  #define FLAG_MSK_PRESENT  2
  #define FLAG_BOTH_PRESENT 3
@@ -164,12 +174,6 @@ static const value_string teap_error_code_vals[] = {
    { 0, NULL }
 };
 
-static const value_string teap_action_vals[] = {
-   { 1, "Process-TLV" },
-   { 2, "Negotiate-EAP" },
-   { 0, NULL }
- };
-
 #define PAC_KEY       1
 #define PAC_OPAQUE    2
 #define PAC_LIFETIME  3
@@ -215,6 +219,8 @@ static int hf_teap_auth_id = -1;
 static int hf_teap_identity = -1;
 static int hf_teap_status = -1;
 static int hf_teap_vendor_id = -1;
+static int hf_teap_request_action_status = -1;
+static int hf_teap_request_action_action = -1;
 static int hf_teap_crypto_reserved = -1;
 static int hf_teap_crypto_version = -1;
 static int hf_teap_crypto_rcv_version = -1;
@@ -225,7 +231,6 @@ static int hf_teap_crypto_emsk = -1;
 static int hf_teap_crypto_msk = -1;
 static int hf_teap_nak_type = -1;
 static int hf_teap_error_code = -1;
-static int hf_teap_action = -1;
 static int hf_teap_prompt = -1;
 static int hf_teap_user_len = -1;
 static int hf_teap_username = -1;
@@ -243,6 +248,9 @@ static int hf_pac_attr_pac_a_id_info = -1;
 static int hf_pac_attr_pac_result = -1;
 static int hf_pac_attr_pac_type = -1;
 static int hf_pac_attr_val = -1;
+
+static int
+dissect_teap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_);
 
 static int
 dissect_teap_tlv_pac(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, guint16 len);
@@ -341,7 +349,6 @@ dissect_teap_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset
   proto_tree *tlv_tree;
   proto_tree *ti_len;
   tvbuff_t *next_tvb;
-  gboolean more_tlvs = FALSE;
 
   type = tvb_get_guint16(tvb, offset, ENC_BIG_ENDIAN) & TEAP_TLV_TYPE;
   len = tvb_get_guint16(tvb, offset + 2, ENC_BIG_ENDIAN);
@@ -369,13 +376,13 @@ dissect_teap_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset
       break;
 
     case TEAP_IDENTITY:
-      proto_tree_add_item(tlv_tree, hf_teap_identity, tvb, 2, len, ENC_BIG_ENDIAN);
-      offset += 2;
+      proto_tree_add_item(tlv_tree, hf_teap_identity, tvb, offset, 2, ENC_BIG_ENDIAN);
+      offset += len;
       break;
 
     case TEAP_RESULT:
       proto_tree_add_item(tlv_tree, hf_teap_status, tvb, offset, 2, ENC_BIG_ENDIAN);
-      offset += 2;
+      offset += len;
       break;
 
     case TEAP_NAK:
@@ -383,38 +390,61 @@ dissect_teap_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset
       offset += 4;
       proto_tree_add_item(tlv_tree, hf_teap_nak_type, tvb, offset, 2, ENC_BIG_ENDIAN);
       offset += 2;
-      more_tlvs = TRUE;
+
+      if (len > 6) {
+        next_tvb = tvb_new_subset_length(tvb, offset, len - 6);
+        offset += dissect_teap(next_tvb, pinfo, tlv_tree, NULL);
+      }
+
       break;
 
     case TEAP_ERROR:
       proto_tree_add_item(tlv_tree, hf_teap_error_code, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
+      offset += len;
       break;
 
     case TEAP_VENDOR_SPECIFIC:
       proto_tree_add_item(tlv_tree, hf_teap_vendor_id, tvb, offset, 4, ENC_BIG_ENDIAN);
-      offset += 4;
-      more_tlvs = TRUE;
+      offset += len;
       break;
 
     case TEAP_REQUEST_ACTION:
-      proto_tree_add_item(tlv_tree, hf_teap_status, tvb, offset, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_item(tlv_tree, hf_teap_request_action_status, tvb, offset, 1, ENC_BIG_ENDIAN);
       offset += 1;
-      proto_tree_add_item(tlv_tree, hf_teap_action, tvb, offset, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_item(tlv_tree, hf_teap_request_action_action, tvb, offset, 1, ENC_BIG_ENDIAN);
       offset += 1;
-      more_tlvs = TRUE;
+
+      if (len > 2) {
+        next_tvb = tvb_new_subset_length(tvb, offset, len - 2);
+        offset += dissect_teap(next_tvb, pinfo, tlv_tree, NULL);
+      }
+
       break;
 
     case TEAP_EAP_PAYLOAD:
-      next_tvb = tvb_new_subset_remaining(tvb, offset);
+    {
+      guint16 eaplen = tvb_get_guint16(tvb, offset + 2, ENC_BIG_ENDIAN);
+
+      next_tvb = tvb_new_subset_length(tvb, offset, eaplen);
       call_dissector(eap_handle, next_tvb, pinfo, tlv_tree);
-      // TODO parse more_tlvs
-      break;
+      offset += eaplen;
+
+      if (len > eaplen) {
+        next_tvb = tvb_new_subset_length(tvb, offset, len - eaplen);
+        offset += dissect_teap(next_tvb, pinfo, tlv_tree, NULL);
+      }
+    }
+    break;
 
     case TEAP_INTERMEDIATE_RESULT:
       proto_tree_add_item(tlv_tree, hf_teap_status, tvb, offset, 2, ENC_BIG_ENDIAN);
       offset += 2;
-      more_tlvs = TRUE;
+
+      if (len > 2) {
+        next_tvb = tvb_new_subset_length(tvb, offset, len - 2);
+        offset += dissect_teap(next_tvb, pinfo, tlv_tree, NULL);
+      }
+
       break;
 
     case TEAP_PAC:
@@ -484,11 +514,6 @@ dissect_teap_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset
       break;
   }
 
-  if (more_tlvs) {
-    while (offset < (int)tvb_captured_length(tvb)) {
-      offset += dissect_teap_tlv(tvb, pinfo, tlv_tree, offset, FALSE);
-    }
-  }
   return offset - start_offset;
 }
 
@@ -497,6 +522,7 @@ dissect_teap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
 {
   proto_tree *ti;
   proto_tree *teap_tree;
+  int offset = 0;
 
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "TEAP");
   col_clear(pinfo->cinfo, COL_INFO);
@@ -504,7 +530,10 @@ dissect_teap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
   ti = proto_tree_add_item(tree, proto_teap, tvb, 0, tvb_captured_length(tvb), ENC_NA);
   teap_tree = proto_item_add_subtree(ti, ett_teap);
 
-  dissect_teap_tlv(tvb, pinfo, teap_tree, 0, TRUE);
+  while (offset < (int)tvb_captured_length(tvb)) {
+    offset += dissect_teap_tlv(tvb, pinfo, teap_tree, offset, offset == 0);
+  }
+
   return tvb_captured_length(tvb);
 }
 
@@ -602,13 +631,18 @@ proto_register_teap(void)
       FT_UINT32, BASE_DEC, VALS(teap_error_code_vals), 0x0,
       NULL, HFILL }},
 
-     { &hf_teap_action, {
-      "Action", "teap.action",
-      FT_UINT8, BASE_DEC, VALS(teap_action_vals), 0x0,
+     { &hf_teap_request_action_action, {
+      "Action", "teap.request-action.action",
+      FT_UINT8, BASE_DEC, VALS(teap_request_action_action_vals), 0x0,
+      NULL, HFILL }},
+
+     { &hf_teap_request_action_status, {
+      "Status", "teap.request-action.status",
+      FT_UINT8, BASE_DEC, VALS(teap_request_action_status_vals), 0x0,
       NULL, HFILL }},
 
      { &hf_teap_prompt, {
-      "Action", "teap.prompt",
+      "Prompt", "teap.prompt",
       FT_STRING, BASE_NONE, NULL, 0x0,
       NULL, HFILL }},
 

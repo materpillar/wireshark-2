@@ -25,11 +25,12 @@
 #include <QKeyEvent>
 #include <QMessageBox>
 
-#include "wireshark_application.h"
+#include "main_application.h"
 
 extern "C" {
 
 // Page element callbacks
+
 
 static gboolean
 print_preamble_pd(print_stream_t *self, gchar *, const char *)
@@ -77,7 +78,7 @@ PrintDialog::PrintDialog(QWidget *parent, capture_file *cf, QString selRange) :
     Q_ASSERT(cf);
 
     pd_ui_->setupUi(this);
-    setWindowTitle(wsApp->windowTitleString(tr("Print")));
+    setWindowTitle(mainApp->windowTitleString(tr("Print")));
 
     pd_ui_->previewLayout->insertWidget(0, preview_, Qt::AlignTop);
 
@@ -87,7 +88,7 @@ PrintDialog::PrintDialog(QWidget *parent, capture_file *cf, QString selRange) :
     // XXX Make these configurable
     header_font_.setFamily("Times");
     header_font_.setPointSizeF(header_font_.pointSizeF() * 0.8);
-    packet_font_ = wsApp->monospaceFont();
+    packet_font_ = mainApp->monospaceFont();
     packet_font_.setPointSizeF(packet_font_.pointSizeF() * 0.8);
 
     memset(&print_args_, 0, sizeof(print_args_));
@@ -123,6 +124,8 @@ PrintDialog::PrintDialog(QWidget *parent, capture_file *cf, QString selRange) :
             this, SLOT(checkValidity()));
     connect(pd_ui_->formFeedCheckBox, SIGNAL(toggled(bool)),
             preview_, SLOT(updatePreview()));
+    connect(pd_ui_->bannerCheckBox, SIGNAL(toggled(bool)),
+            preview_, SLOT(updatePreview()));
 
     checkValidity();
 }
@@ -136,7 +139,11 @@ PrintDialog::~PrintDialog()
 gboolean PrintDialog::printHeader()
 {
     if (!cap_file_ || !cap_file_->filename || !cur_printer_ || !cur_painter_) return FALSE;
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+    int page_top = cur_printer_->pageLayout().paintRectPixels(cur_printer_->resolution()).top();
+#else
     int page_top = cur_printer_->pageRect().top();
+#endif
 
     if (page_pos_ > page_top) {
         if (in_preview_) {
@@ -149,12 +156,14 @@ gboolean PrintDialog::printHeader()
         page_pos_ = page_top;
     }
 
-    QString banner = QString(tr("%1 %2 total packets, %3 shown"))
-            .arg(cap_file_->filename)
-            .arg(cap_file_->count)
-            .arg(cap_file_->displayed_count);
-    cur_painter_->setFont(header_font_);
-    cur_painter_->drawText(0, page_top, banner);
+    if (pd_ui_->bannerCheckBox->isChecked()) {
+        QString banner = QString(tr("%1 %2 total packets, %3 shown"))
+                .arg(cap_file_->filename)
+                .arg(cap_file_->count)
+                .arg(cap_file_->displayed_count);
+        cur_painter_->setFont(header_font_);
+        cur_painter_->drawText(0, page_top, banner);
+    }
     page_pos_ += cur_painter_->fontMetrics().height();
     cur_painter_->setFont(packet_font_);
     return TRUE;
@@ -162,7 +171,7 @@ gboolean PrintDialog::printHeader()
 
 gboolean PrintDialog::printLine(int indent, const char *line)
 {
-    QRect out_rect;
+    QRect out_rect, page_rect;
     QString out_line;
 
     if (!line || !cur_printer_ || !cur_painter_) return FALSE;
@@ -171,9 +180,15 @@ gboolean PrintDialog::printLine(int indent, const char *line)
     out_line.fill(' ', indent * 4);
     out_line += line;
 
-    out_rect = cur_painter_->boundingRect(cur_printer_->pageRect(), Qt::TextWordWrap, out_line);
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+    page_rect = cur_printer_->pageLayout().paintRectPixels(cur_printer_->resolution());
+#else
+    page_rect = cur_printer_->pageRect();
+#endif
 
-    if (cur_printer_->pageRect().height() < page_pos_ + out_rect.height()) {
+    out_rect = cur_painter_->boundingRect(page_rect, Qt::TextWordWrap, out_line);
+
+    if (page_rect.height() < page_pos_ + out_rect.height()) {
         //
         // We're past the end of the page, so this line will be on
         // the next page.
@@ -233,7 +248,11 @@ void PrintDialog::printPackets(QPrinter *printer, bool in_preview)
 
     if (!printer) return;
 
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+    page_pos_ = printer->pageLayout().paintRectPixels(printer->resolution()).top();
+#else
     page_pos_ = printer->pageRect().top();
+#endif
     in_preview_ = in_preview;
 
     /* Fill in our print args */
@@ -242,6 +261,7 @@ void PrintDialog::printPackets(QPrinter *printer, bool in_preview)
     print_args_.print_summary       = pd_ui_->formatGroupBox->summaryEnabled();
     print_args_.print_col_headings  = pd_ui_->formatGroupBox->includeColumnHeadingsEnabled();
     print_args_.print_hex           = pd_ui_->formatGroupBox->bytesEnabled();
+    print_args_.hexdump_options     = pd_ui_->formatGroupBox->getHexdumpOptions();
     print_args_.print_formfeed      = pd_ui_->formFeedCheckBox->isChecked();
 
     print_args_.print_dissections = print_dissections_none;
@@ -297,7 +317,7 @@ void PrintDialog::checkValidity()
 
 void PrintDialog::on_buttonBox_helpRequested()
 {
-    wsApp->helpTopicAction(HELP_PRINT_DIALOG);
+    mainApp->helpTopicAction(HELP_PRINT_DIALOG);
 }
 
 void PrintDialog::on_buttonBox_clicked(QAbstractButton *button)
@@ -339,16 +359,3 @@ void PrintDialog::on_buttonBox_clicked(QAbstractButton *button)
         break;
     }
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

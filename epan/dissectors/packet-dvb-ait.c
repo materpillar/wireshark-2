@@ -22,6 +22,8 @@
 void proto_register_dvb_ait(void);
 void proto_reg_handoff_dvb_ait(void);
 
+static dissector_handle_t dvb_ait_handle;
+
 static int proto_dvb_ait = -1;
 
 static gint ett_dvb_ait       = -1;
@@ -181,7 +183,7 @@ dissect_dvb_ait_app_name_desc_body(tvbuff_t *tvb, guint offset,
     offset_start = offset;
     while (offset-offset_start < body_len) {
         proto_tree_add_item(tree, hf_dvb_ait_descr_app_name_lang,
-              tvb, offset, 3, ENC_ASCII|ENC_NA);
+              tvb, offset, 3, ENC_ASCII);
         offset += 3;
         len = tvb_get_guint8(tvb, offset);
           /* FT_UINT_STRING with 1 leading len byte */
@@ -315,7 +317,7 @@ dissect_dvb_ait_descriptor(tvbuff_t *tvb, guint offset,
             case AIT_DESCR_SIM_APP_LOC:
                 proto_tree_add_item(descr_tree,
                         hf_dvb_ait_descr_sal_init_path,
-                        tvb, offset, len, ENC_ASCII|ENC_NA);
+                        tvb, offset, len, ENC_ASCII);
                 offset += len;
                 break;
             default:
@@ -554,15 +556,14 @@ proto_register_dvb_ait(void)
 
     proto_register_field_array(proto_dvb_ait, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    dvb_ait_handle = register_dissector("dvb_ait", dissect_dvb_ait, proto_dvb_ait);
 }
 
 
 void
 proto_reg_handoff_dvb_ait(void)
 {
-    dissector_handle_t dvb_ait_handle;
-
-    dvb_ait_handle = create_dissector_handle(dissect_dvb_ait, proto_dvb_ait);
     dissector_add_uint("mpeg_sect.tid", DVB_AIT_TID, dvb_ait_handle);
 }
 

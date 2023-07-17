@@ -13,7 +13,6 @@
 #include "config.h"
 
 #include <stdlib.h>
-#include <errno.h>
 
 #include <epan/packet.h>
 #include <epan/prefs.h>
@@ -51,6 +50,8 @@
 
 void proto_reg_handoff_iser(void);
 void proto_register_iser(void);
+
+static dissector_handle_t iser_handle;
 
 static int proto_iser = -1;
 static dissector_handle_t iscsi_handler;
@@ -222,14 +223,14 @@ dissect_iser(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
        will not work since we do not have the source QP. this WILL succeed when we're still
        in the process of CM negotiations */
     conv = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
-                             ENDPOINT_IBQP, pinfo->srcport, pinfo->destport, 0);
+                             CONVERSATION_IBQP, pinfo->srcport, pinfo->destport, 0);
 
     if (!conv) {
         /* if not, try to find an established RC channel. recall Infiniband conversations are
            registered with one side of the channel. since the packet is only guaranteed to
            contain the qpn of the destination, we'll use this */
         conv = find_conversation(pinfo->num, &pinfo->dst, &pinfo->dst,
-                                 ENDPOINT_IBQP, pinfo->destport, pinfo->destport, NO_ADDR_B|NO_PORT_B);
+                                 CONVERSATION_IBQP, pinfo->destport, pinfo->destport, NO_ADDR_B|NO_PORT_B);
 
         if (!conv)
             return FALSE;   /* nothing to do with no conversation context */
@@ -343,6 +344,8 @@ proto_register_iser(void)
                                     "Range of iSER target ports"
                                     "(default " TCP_PORT_ISER_RANGE ")",
                                     &gPORT_RANGE, MAX_TCP_PORT);
+
+    iser_handle = register_dissector("iser",  dissect_packet, proto_iser );
 }
 
 void
@@ -351,7 +354,7 @@ proto_reg_handoff_iser(void)
     heur_dissector_add("infiniband.payload", dissect_iser, "iSER Infiniband", "iser_infiniband", proto_iser, HEURISTIC_ENABLE);
     heur_dissector_add("infiniband.mad.cm.private", dissect_iser, "iSER in PrivateData of CM packets", "iser_ib_private", proto_iser, HEURISTIC_ENABLE);
 
-    dissector_add_for_decode_as("infiniband", create_dissector_handle( dissect_packet, proto_iser ) );
+    dissector_add_for_decode_as("infiniband", iser_handle);
 
     iscsi_handler = find_dissector_add_dependency("iscsi", proto_iser);
     proto_ib = proto_get_id_by_filter_name( "infiniband" );

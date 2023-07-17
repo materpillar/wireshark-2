@@ -11,6 +11,7 @@
  */
 
 #include <config.h>
+#define WS_LOG_DOMAIN LOG_DOMAIN_EXTCAP
 
 #include <stdio.h>
 #include <glib.h>
@@ -518,14 +519,15 @@ static extcap_arg *extcap_parse_arg_sentence(GList *args, extcap_token_sentence 
             target_arg->arg_type = EXTCAP_ARG_BOOLFLAG;
         } else if (g_ascii_strcasecmp(param_value, "selector") == 0) {
             target_arg->arg_type = EXTCAP_ARG_SELECTOR;
+        } else if (g_ascii_strcasecmp(param_value, "editselector") == 0) {
+            target_arg->arg_type = EXTCAP_ARG_EDIT_SELECTOR;
         } else if (g_ascii_strcasecmp(param_value, "radio") == 0) {
             target_arg->arg_type = EXTCAP_ARG_RADIO;
         } else if (g_ascii_strcasecmp(param_value, "string") == 0) {
             target_arg->arg_type = EXTCAP_ARG_STRING;
         } else if (g_ascii_strcasecmp(param_value, "password") == 0) {
+            /* Password is never saved because is mapped to PREF_PASSWORD later */
             target_arg->arg_type = EXTCAP_ARG_PASSWORD;
-            /* default setting is to not save passwords */
-            target_arg->save = FALSE;
         } else if (g_ascii_strcasecmp(param_value, "fileselect") == 0) {
             target_arg->arg_type = EXTCAP_ARG_FILESELECT;
         } else if (g_ascii_strcasecmp(param_value, "multicheck") == 0) {

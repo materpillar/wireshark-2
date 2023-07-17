@@ -254,7 +254,7 @@ proto_reg_handoff_chdlc(void)
   dissector_add_uint("wtap_encap", WTAP_ENCAP_CHDLC, chdlc_handle);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_CHDLC_WITH_PHDR, chdlc_handle);
   dissector_add_uint("juniper.proto", JUNIPER_PROTO_CHDLC, chdlc_handle);
-  dissector_add_uint("l2tp.pw_type", L2TPv3_PROTOCOL_CHDLC, chdlc_handle);
+  dissector_add_uint("l2tp.pw_type", L2TPv3_PW_CHDLC, chdlc_handle);
 
   chdlc_cap_handle = find_capture_dissector("chdlc");
   capture_dissector_add_uint("wtap_encap", WTAP_ENCAP_CHDLC, chdlc_cap_handle);
@@ -302,7 +302,7 @@ dissect_slarp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
     addr = tvb_get_ipv4(tvb, 4);
     col_add_fstr(pinfo->cinfo, COL_INFO, "%s, from %s, mask %s",
                      val_to_str(code, slarp_ptype_vals, "Unknown (%d)"),
-                     get_hostname(addr), tvb_ip_to_str(tvb, 8));
+                     get_hostname(addr), tvb_ip_to_str(pinfo->pool, tvb, 8));
     if (tree) {
       proto_tree_add_uint(slarp_tree, hf_slarp_ptype, tvb, 0, 4, code);
       proto_tree_add_item(slarp_tree, hf_slarp_address, tvb, 4, 4, ENC_BIG_ENDIAN);
@@ -377,6 +377,7 @@ proto_register_slarp(void)
   };
 
   proto_slarp = proto_register_protocol("Cisco SLARP", "SLARP", "slarp");
+  register_dissector("slarp", dissect_slarp, proto_slarp);
   proto_register_field_array(proto_slarp, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
 
@@ -387,10 +388,7 @@ proto_register_slarp(void)
 void
 proto_reg_handoff_slarp(void)
 {
-  dissector_handle_t slarp_handle;
-
-  slarp_handle = create_dissector_handle(dissect_slarp, proto_slarp);
-  dissector_add_uint("chdlc.protocol", CISCO_SLARP, slarp_handle);
+  dissector_add_uint("chdlc.protocol", CISCO_SLARP, find_dissector("slarp"));
 }
 
 /*

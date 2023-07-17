@@ -1,4 +1,4 @@
-/* remote_capture_dialog.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -37,7 +37,7 @@ private slots:
     void on_pwAuth_toggled(bool checked);
     void on_nullAuth_toggled(bool checked);
     void apply_remote();
-    void hostChanged(QString host);
+    void hostChanged(const QString host);
 
 private:
     Ui::RemoteCaptureDialog *ui;
@@ -46,16 +46,3 @@ private:
 };
 #endif
 #endif // REMOTE_CAPTURE_DIALOG_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

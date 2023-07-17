@@ -1,4 +1,4 @@
-/* filter_expression_toolbar.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -56,21 +56,8 @@ private:
 
     void customMenu(FilterExpressionToolBar * target, QAction * filterAction, const QPoint& pos);
 
-    static gboolean filter_expression_add_action(const void *key, void *value, void *user_data);
+    static bool filter_expression_add_action(const void *key, void *value, void *user_data);
     static QMenu * findParentMenu(const QStringList tree, void *fed_data, QMenu *parent = Q_NULLPTR);
 };
 
 #endif //FILTER_EXPRESSION_TOOLBAR_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

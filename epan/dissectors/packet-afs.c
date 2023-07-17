@@ -19,7 +19,7 @@
 
 #include "config.h"
 
-#include <stdio.h>
+#include <stdio.h>		/* for sscanf() */
 
 #include <epan/packet.h>
 #include <epan/conversation.h>
@@ -545,18 +545,23 @@ static void OUT_RXString(ptvcursor_t *cursor, int field)
 static void OUT_RXStringV(ptvcursor_t *cursor, int field, guint32 length)
 {
 	tvbuff_t* tvb = ptvcursor_tvbuff(cursor);
-	char* str = (char*)wmem_alloc(wmem_packet_scope(), length+1);
+	wmem_strbuf_t *strbuf = wmem_strbuf_new_sized(wmem_packet_scope(), length+1);
 	int offset = ptvcursor_current_offset(cursor),
 		start_offset = offset;
 	guint32 idx;
 
 	for (idx = 0; idx<length; idx++)
 	{
-		str[idx] = (char)tvb_get_ntohl(tvb, offset);
+		wmem_strbuf_append_c(strbuf, (char)tvb_get_ntohl(tvb, offset));
 		offset += 4;
 	}
-	str[length] = '\0';
-	proto_tree_add_string(ptvcursor_tree(cursor), field, tvb, start_offset, length*4, str);
+	/* XXX: There's no indication what encoding this string has.
+	 * Treat it as UTF-8 for now.
+	 */
+	if (!wmem_strbuf_utf8_validate(strbuf, NULL)) {
+		wmem_strbuf_utf8_make_valid(strbuf);
+	}
+	proto_tree_add_string(ptvcursor_tree(cursor), field, tvb, start_offset, length*4, wmem_strbuf_finalize(strbuf));
 	ptvcursor_advance(cursor, length*4);
 }
 
@@ -722,13 +727,13 @@ static void OUT_FS_AFSVolSync(ptvcursor_t *cursor)
 		int acllen; \
 		char tmp[10]; \
 		tmp[0] = 0; \
-		if ( acl & PRSFS_READ ) g_strlcat(tmp, "r", 10);	\
-		if ( acl & PRSFS_LOOKUP ) g_strlcat(tmp, "l", 10);	\
-		if ( acl & PRSFS_INSERT ) g_strlcat(tmp, "i", 10);	\
-		if ( acl & PRSFS_DELETE ) g_strlcat(tmp, "d", 10);	\
-		if ( acl & PRSFS_WRITE ) g_strlcat(tmp, "w", 10);	\
-		if ( acl & PRSFS_LOCK ) g_strlcat(tmp, "k", 10);	\
-		if ( acl & PRSFS_ADMINISTER ) g_strlcat(tmp, "a", 10);  \
+		if ( acl & PRSFS_READ ) (void) g_strlcat(tmp, "r", 10);	\
+		if ( acl & PRSFS_LOOKUP ) (void) g_strlcat(tmp, "l", 10);	\
+		if ( acl & PRSFS_INSERT ) (void) g_strlcat(tmp, "i", 10);	\
+		if ( acl & PRSFS_DELETE ) (void) g_strlcat(tmp, "d", 10);	\
+		if ( acl & PRSFS_WRITE ) (void) g_strlcat(tmp, "w", 10);	\
+		if ( acl & PRSFS_LOCK ) (void) g_strlcat(tmp, "k", 10);	\
+		if ( acl & PRSFS_ADMINISTER ) (void) g_strlcat(tmp, "a", 10);  \
 		save = tree; \
 		tree = proto_tree_add_subtree_format(tree, tvb, offset, bytes, \
 			ett_afs_acl, NULL, "ACL:  %s %s%s", \
@@ -1452,7 +1457,7 @@ afs_hash (gconstpointer v)
  *
  * "positive" and "negative" are integers which contain the number of
  * positive and negative ACL's in the string.  The uid/aclbits pair are
- * ASCII strings containing the UID/PTS record and and a ascii number
+ * ASCII strings containing the UID/PTS record and a ascii number
  * representing a logical OR of all the ACL permission bits
  */
 /*
@@ -1462,7 +1467,7 @@ afs_hash (gconstpointer v)
  *
  * Should this just scan the string itself, rather than using "sscanf()"?
  */
-#define GETSTR (tvb_format_text(tvb,ptvcursor_current_offset(cursor),tvb_captured_length_remaining(tvb,ptvcursor_current_offset(cursor))))
+#define GETSTR (tvb_format_text(wmem_packet_scope(),tvb,ptvcursor_current_offset(cursor),tvb_captured_length_remaining(tvb,ptvcursor_current_offset(cursor))))
 
 static void
 dissect_acl(ptvcursor_t *cursor, struct rxinfo *rxinfo _U_)
@@ -2371,7 +2376,8 @@ dissect_vldb_reply(ptvcursor_t *cursor, struct rxinfo *rxinfo, int opcode)
 			case 503: /* get entry by id */
 			case 504: /* get entry by name */
 				{
-					int nservers,i,j;
+					int nservers,i;
+					unsigned int j;
 					OUT_RXStringV(cursor, hf_afs_vldb_name, VLNAMEMAX);
 					ptvcursor_advance(cursor, 4);
 					nservers = tvb_get_ntohl(ptvcursor_tvbuff(cursor), ptvcursor_current_offset(cursor));
@@ -2420,7 +2426,8 @@ dissect_vldb_reply(ptvcursor_t *cursor, struct rxinfo *rxinfo, int opcode)
 			case 518: /* get entry by id n */
 			case 519: /* get entry by name N */
 				{
-					int nservers,i,j;
+					int nservers,i;
+					unsigned int j;
 					OUT_RXStringV(cursor, hf_afs_vldb_name, VLNAMEMAX);
 					nservers = tvb_get_ntohl(ptvcursor_tvbuff(cursor), ptvcursor_current_offset(cursor));
 					ptvcursor_add(cursor, hf_afs_vldb_numservers, 4, ENC_BIG_ENDIAN);
@@ -2456,7 +2463,8 @@ dissect_vldb_reply(ptvcursor_t *cursor, struct rxinfo *rxinfo, int opcode)
 			case 526: /* get entry by id u */
 			case 527: /* get entry by name u */
 				{
-					int nservers,i,j;
+					int nservers,i;
+					unsigned int j;
 					OUT_RXStringV(cursor, hf_afs_vldb_name, VLNAMEMAX);
 					nservers = tvb_get_ntohl(ptvcursor_tvbuff(cursor), ptvcursor_current_offset(cursor));
 					ptvcursor_add(cursor, hf_afs_vldb_numservers, 4, ENC_BIG_ENDIAN);
@@ -3015,7 +3023,7 @@ dissect_afs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 			/* Process the packet according to what service it is */
 			/* Only for first packet in an rx data stream or the full reassembled stream */
 			if ( dissector && ( rxinfo->seq == 1 || reassembled ) ) {
-				cursor = ptvcursor_new(afs_op_tree, tvb, offset);
+				cursor = ptvcursor_new(pinfo->pool, afs_op_tree, tvb, offset);
 				(*dissector)(cursor, rxinfo, opcode);
 			}
 		}
@@ -3419,13 +3427,13 @@ proto_register_afs(void)
 		FT_UINT32, BASE_HEX, 0, 0, NULL, HFILL }},
 
 	{ &hf_afs_vldb_flags_rwexists, { "Read/Write Exists", "afs.vldb.flags.rwexists",
-		FT_BOOLEAN, 32, 0, 0x1000, NULL, HFILL }},
+		FT_BOOLEAN, 32, 0, 0x00001000, NULL, HFILL }},
 	{ &hf_afs_vldb_flags_roexists, { "Read-Only Exists", "afs.vldb.flags.roexists",
-		FT_BOOLEAN, 32, 0, 0x2000, NULL, HFILL }},
+		FT_BOOLEAN, 32, 0, 0x00002000, NULL, HFILL }},
 	{ &hf_afs_vldb_flags_bkexists, { "Backup Exists", "afs.vldb.flags.bkexists",
-		FT_BOOLEAN, 32, 0, 0x4000, NULL, HFILL }},
+		FT_BOOLEAN, 32, 0, 0x00004000, NULL, HFILL }},
 	{ &hf_afs_vldb_flags_dfsfileset, { "DFS Fileset", "afs.vldb.flags.dfsfileset",
-		FT_BOOLEAN, 32, 0, 0x8000, NULL, HFILL }},
+		FT_BOOLEAN, 32, 0, 0x00008000, NULL, HFILL }},
 
 	{ &hf_afs_vldb_spare1, { "Spare 1", "afs.vldb.spare1",
 		FT_UINT32, BASE_DEC, 0, 0, NULL, HFILL }},
@@ -3485,7 +3493,7 @@ proto_register_afs(void)
 	{ &hf_afs_cm_capabilities, { "Capabilities", "afs.cm.capabilities",
 		FT_UINT32, BASE_HEX, 0, 0, NULL, HFILL }},
 	{ &hf_afs_cm_cap_errortrans, { "ERRORTRANS", "afs.cm.capabilities.errortrans",
-		FT_BOOLEAN, 32, 0, 0x0001, NULL, HFILL }},
+		FT_BOOLEAN, 32, 0, 0x00000001, NULL, HFILL }},
 
 /* PROT Server Fields */
 	{ &hf_afs_prot_errcode, { "Error Code", "afs.prot.errcode",

@@ -1,4 +1,4 @@
-/* mcast_stream.h
+/** @file
  *
  * Copyright 2006, Iskratel , Slovenia
  * By Jakob Bratkovic <j.bratkovic@iskratel.si> and
@@ -18,11 +18,11 @@
 #ifndef __MCAST_STREAM_H__
 #define __MCAST_STREAM_H__
 
+#include <epan/tap.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-#include <epan/tap.h>
 
 #define MAX_SPEED 200000
 
@@ -102,7 +102,7 @@ extern gint32  mcast_stream_cumulemptyspeed;
 * So whenever mcast_stream.c is added to the list of WIRESHARK_TAP_SRCs, the tap will be registered on startup.
 * If not, it will be registered on demand by the mcast_streams and mcast_analysis functions that need it.
 */
-void register_tap_listener_mcast_stream(mcaststream_tapinfo_t *tapinfo);
+GString * register_tap_listener_mcast_stream(mcaststream_tapinfo_t *tapinfo);
 
 /*
 * Removes the mcast_streams tap listener (if not already done)
@@ -116,26 +116,14 @@ void remove_tap_listener_mcast_stream(mcaststream_tapinfo_t *tapinfo);
 void mcaststream_reset(mcaststream_tapinfo_t *tapinfo);
 
 /*
-* Scans all packets for Mcast streams and updates the Mcast streams list.
-* (redissects all packets)
+* Tap callback (tap_packet_cb) for Mcast stream tap updates. Useful if for
+* some reason you can't register the default listener, but want to make use
+* of the existing Mcast calculations.
 */
-void mcaststream_scan(mcaststream_tapinfo_t *tapinfo, capture_file *cap_file);
+tap_packet_status mcaststream_packet(void *tapdata, packet_info *pinfo, epan_dissect_t *edt, const void *data, tap_flags_t flags);
 
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
 
 #endif /* __MCAST_STREAM_H__ */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

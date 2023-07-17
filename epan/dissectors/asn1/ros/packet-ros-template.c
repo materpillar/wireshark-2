@@ -296,7 +296,7 @@ ros_match_call_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
     /* we haven't found a match - try and match it up */
 
     if(isInvoke) {
-      /* this a a request - add it to the unmatched list */
+      /* this is a request - add it to the unmatched list */
 
       /* check that we don't already have one of those in the
 	 unmatched list and if so remove it */
@@ -477,7 +477,7 @@ void proto_register_ros(void) {
   expert_ros = expert_register_protocol(proto_ros);
   expert_register_field_array(expert_ros, ei, array_length(ei));
 
-  ros_oid_dissector_table = register_dissector_table("ros.oid", "ROS OID Dissectors", proto_ros, FT_STRING, BASE_NONE);
+  ros_oid_dissector_table = register_dissector_table("ros.oid", "ROS OID Dissectors", proto_ros, FT_STRING, STRING_CASE_SENSITIVE);
   protocol_table = wmem_map_new(wmem_epan_scope(), wmem_str_hash, g_str_equal);
 }
 

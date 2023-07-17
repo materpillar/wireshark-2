@@ -21,7 +21,6 @@
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/crc32-tvb.h>
-#include <epan/etypes.h>
 #include <epan/expert.h>
 #include "packet-fc.h"
 
@@ -90,6 +89,8 @@ static int ett_fcoe            = -1;
 static expert_field ei_fcoe_crc = EI_INIT;
 
 static dissector_handle_t fc_handle;
+static dissector_handle_t fcoe_handle;
+
 
 /* Looks for the EOF at a given offset. Returns NULL if the EOF is not
  * present, is not one of the known values, or if the next three bytes, if
@@ -108,7 +109,7 @@ fcoe_get_eof(tvbuff_t *tvb, gint eof_offset)
     }
 
     padding_remaining = MIN(tvb_captured_length_remaining(tvb, eof_offset+1),3);
-    if (tvb_memeql(tvb, eof_offset+1, "\x00\x00\x00", padding_remaining)) {
+    if (tvb_memeql(tvb, eof_offset+1, (const guint8*)"\x00\x00\x00", padding_remaining)) {
         return NULL;
     }
 
@@ -155,7 +156,7 @@ dissect_fcoe(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
         version = len_sof >> 14;
         ver = "pre-T11 ";
         if (version != 0)
-            ver = wmem_strdup_printf(wmem_packet_scope(), ver, "pre-T11 ver %d ", version);
+            ver = wmem_strdup_printf(pinfo->pool, ver, "pre-T11 ver %d ", version);
         eof_offset = header_len + frame_len + 4;
         eof_str = "none";
         if (tvb_bytes_exist(tvb, eof_offset, 1)) {
@@ -177,7 +178,7 @@ dissect_fcoe(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
         ver = "";
         version = tvb_get_guint8(tvb, 0) >> 4;
         if (version != 0)
-            ver = wmem_strdup_printf(wmem_packet_scope(), ver, "ver %d ", version);
+            ver = wmem_strdup_printf(pinfo->pool, ver, "ver %d ", version);
 
         eof_offset = header_len + frame_len + 4;
         if (NULL == (eof_str = fcoe_get_eof(tvb, eof_offset))) {
@@ -192,7 +193,7 @@ dissect_fcoe(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
                     /* Hmm, we have enough bytes to look for the EOF
                      * but it's an unexpected value. */
                     eof = tvb_get_guint8(tvb, eof_offset);
-                    eof_str = wmem_strdup_printf(wmem_packet_scope(), "0x%x", eof);
+                    eof_str = wmem_strdup_printf(pinfo->pool, "0x%x", eof);
                 } else {
                     /* We just didn't capture enough to get the EOF */
                     eof_str = "none";
@@ -277,7 +278,7 @@ dissect_fcoe(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
     }
 
     /* Call the FC Dissector if this is carrying an FC frame */
-    fc_data.ethertype = 0;
+    fc_data.ethertype = ETHERTYPE_UNK;
 
     if (fc_handle) {
         call_dissector_with_data(fc_handle, next_tvb, pinfo, tree, &fc_data);
@@ -324,6 +325,7 @@ proto_register_fcoe(void)
     /* Register the protocol name and description */
     proto_fcoe = proto_register_protocol("Fibre Channel over Ethernet",
         "FCoE", "fcoe");
+    fcoe_handle = register_dissector("fcoe", dissect_fcoe, proto_fcoe);
 
     /* Required function calls to register the header fields and
      * subtrees used */
@@ -332,7 +334,7 @@ proto_register_fcoe(void)
     expert_fcoe = expert_register_protocol(proto_fcoe);
     expert_register_field_array(expert_fcoe, ei, array_length(ei));
 
-    fcoe_module = prefs_register_protocol(proto_fcoe, NULL);
+    fcoe_module = prefs_register_protocol_obsolete(proto_fcoe);
 
     prefs_register_obsolete_preference(fcoe_module, "ethertype");
 }
@@ -340,9 +342,6 @@ proto_register_fcoe(void)
 void
 proto_reg_handoff_fcoe(void)
 {
-    dissector_handle_t fcoe_handle;
-
-    fcoe_handle = create_dissector_handle(dissect_fcoe, proto_fcoe);
     dissector_add_uint("ethertype", ETHERTYPE_FCOE, fcoe_handle);
     fc_handle   = find_dissector_add_dependency("fc", proto_fcoe);
 }

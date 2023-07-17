@@ -455,7 +455,7 @@ dissect_tdma_sync(tvbuff_t *tvb, guint offset, proto_tree *tree) {
 
   ti = proto_tree_add_item(tree, hf_tdma_sync_xmit_stamp, tvb, offset, 8, ENC_BIG_ENDIAN);
   timestamp = tvb_get_ntoh64(tvb, offset) - tvb_get_ntoh64(tvb, offset+8);
-  proto_item_append_text(ti, " (%s%" G_GINT64_MODIFIER "d)", (timestamp > 0) ? "+" : "", timestamp);
+  proto_item_append_text(ti, " (%s%" PRId64 ")", (timestamp > 0) ? "+" : "", timestamp);
   offset += 8;
 
   proto_tree_add_item(tree, hf_tdma_sync_sched_xmit, tvb, offset, 8, ENC_BIG_ENDIAN);
@@ -487,7 +487,7 @@ dissect_tdma_reply_cal(tvbuff_t *tvb, guint offset, proto_tree *tree) {
   offset += 8;
 
   ti = proto_tree_add_item(tree, hf_tdma_rpl_cal_xmit_stamp, tvb, offset, 8, ENC_BIG_ENDIAN);
-  proto_item_append_text(ti, " (%s%" G_GINT64_MODIFIER "d)", (timestamp > 0) ? "+" : "", timestamp);
+  proto_item_append_text(ti, " (%s%" PRId64 ")", (timestamp > 0) ? "+" : "", timestamp);
 }
 
 static void
@@ -582,7 +582,7 @@ dissect_rtmac(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
     if (ver == 1) {
       if (!type_str) {
         if (dissector != data_handle)
-          type_str = dissector_handle_get_short_name(dissector);
+          type_str = dissector_handle_get_protocol_short_name(dissector);
         else
           type_str = "Unknown";
       }
@@ -591,7 +591,7 @@ dissect_rtmac(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
         type_str = val_to_str_const(type, rtmac_type_vals, "Unknown");
       else {
         if (dissector != data_handle)
-          type_str = dissector_handle_get_short_name(dissector);
+          type_str = dissector_handle_get_protocol_short_name(dissector);
         else
           type_str = "Unknown";
       }
@@ -860,7 +860,7 @@ dissect_rtcfg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
            case AT_ETHER:
              proto_tree_add_bytes_format_value( rtcfg_tree, hf_rtcfg_client_hw_address, tvb, offset, 32,
                                           NULL, "%s",
-                                          tvb_ether_to_str(tvb, offset));
+                                          tvb_ether_to_str(pinfo->pool, tvb, offset));
              break;
 
            default:
@@ -944,13 +944,13 @@ proto_register_rtmac(void) {
     { &hf_tdma_v1_msg_request_conf_mtu,
       { "MTU",
         "tdma-v1.msg.request_conf.mtu",
-        FT_UINT8, BASE_DEC, NULL, 0x0,
+        FT_UINT16, BASE_DEC, NULL, 0x0,
         "TDMA MTU", HFILL }},
 
     { &hf_tdma_v1_msg_request_conf_cycle,
       { "Cycle",
         "tdma-v1.msg.request_conf.cycle",
-        FT_UINT8, BASE_DEC, NULL, 0x0,
+        FT_UINT32, BASE_DEC, NULL, 0x0,
         "TDMA Cycle", HFILL }},
 
     /* TDMA ack conf */
@@ -970,13 +970,13 @@ proto_register_rtmac(void) {
     { &hf_tdma_v1_msg_ack_conf_mtu,
       { "MTU",
         "tdma-v1.msg.ack_conf.mtu",
-        FT_UINT8, BASE_DEC, NULL, 0x0,
+        FT_UINT16, BASE_DEC, NULL, 0x0,
         "TDMA MTU", HFILL }},
 
     { &hf_tdma_v1_msg_ack_conf_cycle,
       { "Cycle",
         "tdma-v1.msg.ack_conf.cycle",
-        FT_UINT8, BASE_DEC, NULL, 0x0,
+        FT_UINT32, BASE_DEC, NULL, 0x0,
         "TDMA Cycle", HFILL }},
 
     /* TDMA ack ack conf */

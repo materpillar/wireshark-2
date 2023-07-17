@@ -14,13 +14,13 @@
 #include "config.h"
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include "wtap-int.h"
 #include "file_wrappers.h"
 #include "k12.h"
 
 #include <wsutil/str_util.h>
+#include <wsutil/glib-compat.h>
 
 /*
  * See
@@ -35,6 +35,10 @@
  * of the records with various types, it does not indicate how those records
  * are stored in the file.
  */
+
+static int k12_file_type_subtype = -1;
+
+void register_k12(void);
 
 /* #define DEBUG_K12 */
 #ifdef DEBUG_K12
@@ -85,7 +89,7 @@ void k12_hex_ascii_dump(guint level, gint64 offset, const char* label, const uns
 
     if (debug_level < level) return;
 
-    fprintf(dbg_out,"%s(%.8" G_GINT64_MODIFIER "x,%.4x):\n",label,offset,len);
+    fprintf(dbg_out,"%s(%.8" PRIx64 ",%.4x):\n",label,offset,len);
 
     for (i=0 ; i<len ; i += 16) {
         for (j=0; j<16; j++) {
@@ -426,7 +430,7 @@ static gint get_record(k12_t *file_data, FILE_T fh, gint64 file_offset,
      */
     guint junky_offset = 8192 - (gint) ( (file_offset - K12_FILE_HDR_LEN) % 8192 );
 
-    K12_DBG(6,("get_record: ENTER: junky_offset=%" G_GINT64_MODIFIER "d, file_offset=%" G_GINT64_MODIFIER "d",junky_offset,file_offset));
+    K12_DBG(6,("get_record: ENTER: junky_offset=%" PRId64 ", file_offset=%" PRId64,junky_offset,file_offset));
 
     /* no buffer is given, lets create it */
     if (buffer == NULL) {
@@ -479,12 +483,12 @@ static gint get_record(k12_t *file_data, FILE_T fh, gint64 file_offset,
      */
     if (left < 8) {
         *err = WTAP_ERR_BAD_FILE;
-        *err_info = g_strdup_printf("k12: Record length %u is less than 8 bytes long",left);
+        *err_info = ws_strdup_printf("k12: Record length %u is less than 8 bytes long",left);
         return -1;
     }
     if (left > WTAP_MAX_PACKET_SIZE_STANDARD) {
         *err = WTAP_ERR_BAD_FILE;
-        *err_info = g_strdup_printf("k12: Record length %u is greater than the maximum %u",left,WTAP_MAX_PACKET_SIZE_STANDARD);
+        *err_info = ws_strdup_printf("k12: Record length %u is greater than the maximum %u",left,WTAP_MAX_PACKET_SIZE_STANDARD);
         return -1;
     }
 
@@ -508,7 +512,7 @@ static gint get_record(k12_t *file_data, FILE_T fh, gint64 file_offset,
 
     /* Read the rest of the record. */
     do {
-        K12_DBG(6,("get_record: looping left=%d junky_offset=%" G_GINT64_MODIFIER "d",left,junky_offset));
+        K12_DBG(6,("get_record: looping left=%d junky_offset=%" PRId64,left,junky_offset));
 
         if (junky_offset > left) {
             /*
@@ -577,7 +581,7 @@ process_packet_data(wtap_rec *rec, Buffer *target, guint8 *buffer,
     buffer_offset = (type == K12_REC_D0020) ? K12_PACKET_FRAME_D0020 : K12_PACKET_FRAME;
     if (buffer_offset > record_len) {
         *err = WTAP_ERR_BAD_FILE;
-        *err_info = g_strdup_printf("k12: Frame data offset %u > record length %u",
+        *err_info = ws_strdup_printf("k12: Frame data offset %u > record length %u",
                                     buffer_offset, record_len);
         return FALSE;
     }
@@ -585,17 +589,18 @@ process_packet_data(wtap_rec *rec, Buffer *target, guint8 *buffer,
     length = pntoh32(buffer + K12_RECORD_FRAME_LEN) & 0x00001FFF;
     if (length > record_len - buffer_offset) {
         *err = WTAP_ERR_BAD_FILE;
-        *err_info = g_strdup_printf("k12: Frame length %u > record frame data %u",
+        *err_info = ws_strdup_printf("k12: Frame length %u > record frame data %u",
                                     length, record_len - buffer_offset);
         return FALSE;
     }
 
     rec->rec_type = REC_TYPE_PACKET;
+    rec->block = wtap_block_create(WTAP_BLOCK_PACKET);
     rec->presence_flags = WTAP_HAS_TS;
 
     ts = pntoh64(buffer + K12_PACKET_TIMESTAMP);
 
-    rec->ts.secs = (guint32) ((ts / 2000000) + 631152000);
+    rec->ts.secs = (time_t) ((ts / 2000000) + 631152000);
     rec->ts.nsecs = (guint32) ( (ts % 2000000) * 500 );
 
     rec->rec_header.packet_header.len = rec->rec_header.packet_header.caplen = length;
@@ -693,7 +698,7 @@ static gboolean k12_read(wtap *wth, wtap_rec *rec, Buffer *buf, int *err, gchar 
         } else if (len < K12_RECORD_SRC_ID + 4) {
             /* Record not large enough to contain a src ID */
             *err = WTAP_ERR_BAD_FILE;
-            *err_info = g_strdup_printf("k12: Data record length %d too short", len);
+            *err_info = ws_strdup_printf("k12: Data record length %d too short", len);
             return FALSE;
         }
         k12->num_of_records--;
@@ -878,11 +883,12 @@ wtap_open_return_val k12_open(wtap *wth, int *err, gchar **err_info) {
         file_data->num_of_records = pntoh32( header_buffer + K12_FILE_HDR_RECORD_COUNT_1 );
         if ( file_data->num_of_records != pntoh32( header_buffer + K12_FILE_HDR_RECORD_COUNT_2 ) ) {
             *err = WTAP_ERR_BAD_FILE;
-            *err_info = g_strdup_printf("k12: two different record counts, %u at 0x%02x and %u at 0x%02x",
+            *err_info = ws_strdup_printf("k12: two different record counts, %u at 0x%02x and %u at 0x%02x",
                                         file_data->num_of_records,
                                         K12_FILE_HDR_RECORD_COUNT_1,
                                         pntoh32( header_buffer + K12_FILE_HDR_RECORD_COUNT_2 ),
                                         K12_FILE_HDR_RECORD_COUNT_2 );
+            destroy_k12_file_data(file_data);
             return WTAP_OPEN_ERROR;
         }
     }
@@ -919,8 +925,9 @@ wtap_open_return_val k12_open(wtap *wth, int *err, gchar **err_info) {
         if (rec_len < K12_RECORD_TYPE + 4) {
             /* Record isn't long enough to have a type field */
             *err = WTAP_ERR_BAD_FILE;
-            *err_info = g_strdup_printf("k12_open: record length %u < %u",
+            *err_info = ws_strdup_printf("k12: record length %u < %u",
                                         rec_len, K12_RECORD_TYPE + 4);
+            destroy_k12_file_data(file_data);
             return WTAP_OPEN_ERROR;
         }
         type = pntoh32( read_buffer + K12_RECORD_TYPE );
@@ -950,7 +957,7 @@ wtap_open_return_val k12_open(wtap *wth, int *err, gchar **err_info) {
                  * of the source descriptor field.
                  */
                 *err = WTAP_ERR_BAD_FILE;
-                *err_info = g_strdup_printf("k12_open: source descriptor record length %u < %u",
+                *err_info = ws_strdup_printf("k12: source descriptor record length %u < %u",
                                             rec_len, K12_SRCDESC_HWPART);
                 destroy_k12_file_data(file_data);
                 g_free(rec);
@@ -983,7 +990,7 @@ wtap_open_return_val k12_open(wtap *wth, int *err, gchar **err_info) {
                  * field, including the variable-length parts.
                  */
                 *err = WTAP_ERR_BAD_FILE;
-                *err_info = g_strdup_printf("k12_open: source descriptor record length %u < %u (%u + %u + %u + %u)",
+                *err_info = ws_strdup_printf("k12: source descriptor record length %u < %u (%u + %u + %u + %u)",
                                             rec_len,
                                             K12_SRCDESC_HWPART + hwpart_len + name_len + stack_len,
                                             K12_SRCDESC_HWPART, hwpart_len, name_len, stack_len);
@@ -996,7 +1003,7 @@ wtap_open_return_val k12_open(wtap *wth, int *err, gchar **err_info) {
                 if (hwpart_len < 4) {
                     /* Hardware part isn't long enough to have a type field */
                     *err = WTAP_ERR_BAD_FILE;
-                    *err_info = g_strdup_printf("k12_open: source descriptor hardware part length %u < 4",
+                    *err_info = ws_strdup_printf("k12: source descriptor hardware part length %u < 4",
                                                 hwpart_len);
                     destroy_k12_file_data(file_data);
                     g_free(rec);
@@ -1016,7 +1023,7 @@ wtap_open_return_val k12_open(wtap *wth, int *err, gchar **err_info) {
                         if (hwpart_len < K12_SRCDESC_ATM_VCI + 2) {
                             /* Hardware part isn't long enough to have ATM information */
                             *err = WTAP_ERR_BAD_FILE;
-                            *err_info = g_strdup_printf("k12_open: source descriptor hardware part length %u < %u",
+                            *err_info = ws_strdup_printf("k12: source descriptor hardware part length %u < %u",
                                                         hwpart_len,
                                                         K12_SRCDESC_ATM_VCI + 2);
                             destroy_k12_file_data(file_data);
@@ -1056,8 +1063,8 @@ wtap_open_return_val k12_open(wtap *wth, int *err, gchar **err_info) {
                 g_free(rec);
                 return WTAP_OPEN_ERROR;
             }
-            rec->input_name = (gchar *)g_memdup(read_buffer + K12_SRCDESC_HWPART + hwpart_len, name_len);
-            rec->stack_file = (gchar *)g_memdup(read_buffer + K12_SRCDESC_HWPART + hwpart_len + name_len, stack_len);
+            rec->input_name = (gchar *)g_memdup2(read_buffer + K12_SRCDESC_HWPART + hwpart_len, name_len);
+            rec->stack_file = (gchar *)g_memdup2(read_buffer + K12_SRCDESC_HWPART + hwpart_len + name_len, stack_len);
 
             ascii_strdown_inplace (rec->stack_file);
 
@@ -1080,7 +1087,7 @@ wtap_open_return_val k12_open(wtap *wth, int *err, gchar **err_info) {
         file_data->num_of_records--;
     } while(1);
 
-    wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_K12;
+    wth->file_type_subtype = k12_file_type_subtype;
     wth->file_encap = WTAP_ENCAP_K12;
     wth->snapshot_length = 0;
     wth->subtype_read = k12_read;
@@ -1106,7 +1113,7 @@ typedef struct {
     guint32 file_offset;
 } k12_dump_t;
 
-int k12_dump_can_write_encap(int encap) {
+static int k12_dump_can_write_encap(int encap) {
 
     if (encap == WTAP_ENCAP_PER_PACKET)
         return WTAP_ERR_ENCAP_PER_PACKET_UNSUPPORTED;
@@ -1286,7 +1293,7 @@ static gboolean k12_dump(wtap_dumper *wdh, const wtap_rec *rec,
      * Make sure this packet doesn't have a link-layer type that
      * differs from the one for the file.
      */
-    if (wdh->encap != rec->rec_header.packet_header.pkt_encap) {
+    if (wdh->file_encap != rec->rec_header.packet_header.pkt_encap) {
         *err = WTAP_ERR_ENCAP_PER_PACKET_UNSUPPORTED;
         return FALSE;
     }
@@ -1320,7 +1327,7 @@ static gboolean k12_dump(wtap_dumper *wdh, const wtap_rec *rec,
 
 static const guint8 k12_eof[] = {0xff,0xff};
 
-static gboolean k12_dump_finish(wtap_dumper *wdh, int *err) {
+static gboolean k12_dump_finish(wtap_dumper *wdh, int *err, gchar **err_info _U_) {
     k12_dump_t *k12 = (k12_dump_t *)wdh->priv;
     union {
         guint8 b[sizeof(guint32)];
@@ -1363,11 +1370,15 @@ static gboolean k12_dump_finish(wtap_dumper *wdh, int *err) {
     if (! wtap_dump_file_write(wdh, d.b, 4, err))
         return FALSE;
 
+    /* Prevent the above calls to wtap_dump_file_write() from
+     * double-counting the header length
+     */
+    wdh->bytes_dumped = k12->file_len;
     return TRUE;
 }
 
 
-gboolean k12_dump_open(wtap_dumper *wdh, int *err) {
+static gboolean k12_dump_open(wtap_dumper *wdh, int *err, gchar **err_info _U_) {
     k12_dump_t *k12;
 
     if ( ! wtap_dump_file_write(wdh, k12_file_magic, 8, err)) {
@@ -1377,16 +1388,42 @@ gboolean k12_dump_open(wtap_dumper *wdh, int *err) {
     if (wtap_dump_file_seek(wdh, K12_FILE_HDR_LEN, SEEK_SET, err) == -1)
         return FALSE;
 
+    wdh->bytes_dumped = K12_FILE_HDR_LEN;
     wdh->subtype_write = k12_dump;
     wdh->subtype_finish = k12_dump_finish;
 
-    k12 = (k12_dump_t *)g_malloc(sizeof(k12_dump_t));
+    k12 = g_new(k12_dump_t, 1);
     wdh->priv = (void *)k12;
     k12->file_len = K12_FILE_HDR_LEN;
     k12->num_of_records = 0;
     k12->file_offset  = K12_FILE_HDR_LEN;
 
     return TRUE;
+}
+
+static const struct supported_block_type k12_blocks_supported[] = {
+    /*
+     * We support packet blocks, with no comments or other options.
+     */
+    { WTAP_BLOCK_PACKET, MULTIPLE_BLOCKS_SUPPORTED, NO_OPTIONS_SUPPORTED }
+};
+
+static const struct file_type_subtype_info k12_info = {
+    "Tektronix K12xx 32-bit .rf5 format", "rf5", "rf5", NULL,
+    TRUE, BLOCKS_SUPPORTED(k12_blocks_supported),
+    k12_dump_can_write_encap, k12_dump_open, NULL
+};
+
+void register_k12(void)
+{
+    k12_file_type_subtype = wtap_register_file_type_subtype(&k12_info);
+
+    /*
+     * Register name for backwards compatibility with the
+     * wtap_filetypes table in Lua.
+     */
+    wtap_register_backwards_compatibility_lua_name("K12",
+                                                   k12_file_type_subtype);
 }
 
 /*

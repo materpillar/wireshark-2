@@ -10,10 +10,10 @@
 #include "time_shift_dialog.h"
 #include <ui_time_shift_dialog.h>
 
-#include "wireshark_application.h"
+#include "main_application.h"
 
 #include <ui/time_shift.h>
-#include <ui/qt/utils/tango_colors.h>
+#include <ui/qt/utils/color_utils.h>
 
 #include <QStyleOption>
 
@@ -24,10 +24,10 @@ TimeShiftDialog::TimeShiftDialog(QWidget *parent, capture_file *cf) :
     apply_button_(NULL)
 {
     ts_ui_->setupUi(this);
-    setWindowTitle(wsApp->windowTitleString(tr("Time Shift")));
+    setWindowTitle(mainApp->windowTitleString(tr("Time Shift")));
     apply_button_ = ts_ui_->buttonBox->button(QDialogButtonBox::Apply);
     apply_button_->setDefault(true);
-    connect(apply_button_, SIGNAL(clicked()), this, SLOT(applyTimeShift()));
+    connect(apply_button_, &QPushButton::clicked, this, &TimeShiftDialog::applyTimeShift);
 
     QStyleOption style_opt;
     int rb_label_offset =  ts_ui_->shiftAllButton->style()->subElementRect(QStyle::SE_RadioButtonContents, &style_opt).left();
@@ -104,12 +104,10 @@ void TimeShiftDialog::enableWidgets()
         ts_ui_->errorLabel->setStyleSheet(QString(
                     "QLabel {"
                     "  margin-top: 0.5em;"
-                    "  color: #%1;"
-                    "  background-color: #%2;"
+                    "  background-color: %2;"
                     "}"
                     )
-                .arg(ws_css_warn_text, 6, 16, QChar('0'))
-                .arg(ws_css_warn_background, 6, 16, QChar('0'))
+                .arg(ColorUtils::warningBackground().name())
                 );
     }
     apply_button_->setEnabled(enable_apply);
@@ -227,11 +225,11 @@ void TimeShiftDialog::applyTimeShift()
 {
     const gchar *err_str = NULL;
 
-    if (!cap_file_ || cap_file_->state == FILE_CLOSED) return;
+    if (!cap_file_ || cap_file_->state == FILE_CLOSED || cap_file_->state == FILE_READ_PENDING) return;
 
     syntax_err_.clear();
     if (cap_file_->state == FILE_READ_IN_PROGRESS) {
-        syntax_err_ = tr("Time shifting is not available capturing packets.");
+        syntax_err_ = tr("Time shifting is not available while capturing packets.");
     } else if (ts_ui_->shiftAllButton->isChecked()) {
         err_str = time_shift_all(cap_file_,
                                  ts_ui_->shiftAllTimeLineEdit->text().toUtf8().constData());
@@ -264,18 +262,5 @@ void TimeShiftDialog::applyTimeShift()
 
 void TimeShiftDialog::on_buttonBox_helpRequested()
 {
-    wsApp->helpTopicAction(HELP_TIME_SHIFT_DIALOG);
+    mainApp->helpTopicAction(HELP_TIME_SHIFT_DIALOG);
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

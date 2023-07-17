@@ -11,12 +11,12 @@
 #ifndef __PACKET_SCSI_H_
 #define __PACKET_SCSI_H_
 
+#include <epan/exceptions.h>
+#include <epan/srt_table.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-#include <epan/exceptions.h>
-#include <epan/srt_table.h>
 
 /* Structure containing itl nexus data :
  * The itlq nexus is a structure containing data specific
@@ -72,7 +72,7 @@ typedef struct _itlq_nexus_t {
     nstime_t fc_time;
 
 
-    void *extra_data;     /* extra data that that is task specific */
+    void *extra_data;     /* extra data that is task specific */
 } itlq_nexus_t;
 
 

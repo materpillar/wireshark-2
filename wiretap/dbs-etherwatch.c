@@ -78,7 +78,11 @@ static gboolean parse_dbs_etherwatch_packet(FILE_T fh, wtap_rec *rec,
     Buffer* buf, int *err, gchar **err_info);
 static guint parse_single_hex_dump_line(char* rec, guint8 *buf,
     int byte_offset);
-static guint parse_hex_dump(char* dump, guint8 *buf, char seperator, char end);
+static guint parse_hex_dump(char* dump, guint8 *buf, char separator, char end);
+
+static int dbs_etherwatch_file_type_subtype = -1;
+
+void register_dbs_etherwatch(void);
 
 /* Seeks to the beginning of the next packet, and returns the
    byte offset.  Returns -1 on failure, and sets "*err" to the error
@@ -172,7 +176,7 @@ wtap_open_return_val dbs_etherwatch_open(wtap *wth, int *err, gchar **err_info)
     }
 
     wth->file_encap = WTAP_ENCAP_ETHERNET;
-    wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_DBS_ETHERWATCH;
+    wth->file_type_subtype = dbs_etherwatch_file_type_subtype;
     wth->snapshot_length = 0;   /* not known */
     wth->subtype_read = dbs_etherwatch_read;
     wth->subtype_seek_read = dbs_etherwatch_seek_read;
@@ -237,7 +241,7 @@ Protocol 08-00 00 00-00-00-00-00,   50 byte buffer at 10-OCT-2001 10:20:45.17
 #define PID_LENGTH          5           /* Length PID */
 #define PID_POS             18          /* Position PID */
 #define LENGTH_POS          33          /* Position length */
-#define HEX_HDR_SPR         '-'         /* Seperator char header hex values */
+#define HEX_HDR_SPR         '-'         /* Separator char header hex values */
 #define HEX_HDR_END         ' '         /* End char hdr. hex val. except PID */
 #define HEX_PID_END         ','         /* End char PID hex value */
 #define IEEE802_LEN_LEN     2           /* Length of the IEEE 802 len. field */
@@ -431,6 +435,7 @@ parse_dbs_etherwatch_packet(FILE_T fh, wtap_rec *rec, Buffer* buf,
     }
 
     rec->rec_type = REC_TYPE_PACKET;
+    rec->block = wtap_block_create(WTAP_BLOCK_PACKET);
     rec->presence_flags = WTAP_HAS_TS|WTAP_HAS_CAP_LEN;
 
     p = strstr(months, mon);
@@ -451,7 +456,7 @@ parse_dbs_etherwatch_packet(FILE_T fh, wtap_rec *rec, Buffer* buf,
          * space for an immensely-large packet.
          */
         *err = WTAP_ERR_BAD_FILE;
-        *err_info = g_strdup_printf("dbs_etherwatch: File has %u-byte packet, bigger than maximum of %u",
+        *err_info = ws_strdup_printf("dbs_etherwatch: File has %u-byte packet, bigger than maximum of %u",
                                     rec->rec_header.packet_header.caplen, WTAP_MAX_PACKET_SIZE_STANDARD);
         return FALSE;
     }
@@ -518,7 +523,7 @@ parse_dbs_etherwatch_packet(FILE_T fh, wtap_rec *rec, Buffer* buf,
 #define COUNT_POS_HEX       1   /* Count position HEX type */
 #define COUNT_SIZE      5   /* Length counter */
 #define HEX_DUMP_START      '[' /* Start char */
-#define HEX_DUMP_SPR        ' ' /* Seperator char */
+#define HEX_DUMP_SPR        ' ' /* Separator char */
 #define HEX_DUMP_END        ']' /* End char */
 
 /* Take a string representing one line from a hex dump and converts the
@@ -592,7 +597,7 @@ parse_single_hex_dump_line(char* rec, guint8 *buf, int byte_offset) {
 
 /* Parse a hex dump */
 static guint
-parse_hex_dump(char* dump, guint8 *buf, char seperator, char end) {
+parse_hex_dump(char* dump, guint8 *buf, char separator, char end) {
     int     pos, count;
 
     /* Parse the hex dump */
@@ -604,7 +609,7 @@ parse_hex_dump(char* dump, guint8 *buf, char seperator, char end) {
             g_ascii_isxdigit(dump[pos + 1]))) {
             return 0;
         }
-        /* Get the hex value value */
+        /* Get the hex value */
         if(g_ascii_isdigit(dump[pos])) {
             buf[count] = (dump[pos] - '0') << 4;
         } else {
@@ -618,12 +623,37 @@ parse_hex_dump(char* dump, guint8 *buf, char seperator, char end) {
         }
         pos++;
         count++;
-        /* Skip the seperator characters */
-        while(dump[pos] == seperator) {
+        /* Skip the separator characters */
+        while(dump[pos] == separator) {
             pos++;
         }
     }
     return count;
+}
+
+static const struct supported_block_type dbs_etherwatch_blocks_supported[] = {
+    /*
+     * We support packet blocks, with no comments or other options.
+     */
+    { WTAP_BLOCK_PACKET, MULTIPLE_BLOCKS_SUPPORTED, NO_OPTIONS_SUPPORTED }
+};
+
+static const struct file_type_subtype_info dbs_etherwatch_info = {
+    "DBS Etherwatch (VMS)", "etherwatch", "txt", NULL,
+    FALSE, BLOCKS_SUPPORTED(dbs_etherwatch_blocks_supported),
+    NULL, NULL, NULL
+};
+
+void register_dbs_etherwatch(void)
+{
+    dbs_etherwatch_file_type_subtype = wtap_register_file_type_subtype(&dbs_etherwatch_info);
+
+    /*
+     * Register name for backwards compatibility with the
+     * wtap_filetypes table in Lua.
+     */
+    wtap_register_backwards_compatibility_lua_name("DBS_ETHERWATCH",
+                                                   dbs_etherwatch_file_type_subtype);
 }
 
 /*

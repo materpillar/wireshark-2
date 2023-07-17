@@ -1,4 +1,4 @@
-/* rtp_media.h
+/** @file
  *
  * RTP decoding routines for Wireshark.
  * Copied from ui/gtk/rtp_player.c
@@ -15,6 +15,9 @@
 #ifndef __RTP_MEDIA_H__
 #define __RTP_MEDIA_H__
 
+#include <glib.h>
+#include <wsutil/wmem/wmem_map.h>
+
 /** @file
  *  "RTP Player" dialog box common routines.
  *  @ingroup main_ui_group
@@ -24,8 +27,6 @@
 extern "C" {
 #endif /* __cplusplus */
 
-#include <glib.h>
-
 /****************************************************************************/
 /* INTERFACE */
 /****************************************************************************/
@@ -33,6 +34,8 @@ extern "C" {
 typedef gint16 SAMPLE;
 #define SAMPLE_MAX G_MAXINT16
 #define SAMPLE_MIN G_MININT16
+#define SAMPLE_NaN SAMPLE_MIN
+#define SAMPLE_BYTES (sizeof(SAMPLE) / sizeof(char))
 
 /* Defines an RTP packet */
 typedef struct _rtp_packet {
@@ -49,9 +52,16 @@ typedef struct _rtp_packet {
 GHashTable *rtp_decoder_hash_table_new(void);
 
 /** Decode payload from an RTP packet
+ * For RTP packets with dynamic payload types, the payload name, clock rate,
+ * and number of audio channels (e.g., from the SDP) can be provided.
+ * Note that the output sample rate and number of channels might not be the
+ * same as that of the input.
  *
  * @param payload_type Payload number
  * @param payload_type_str Payload name, can be NULL
+ * @param payload_rate Sample rate, can be 0 for codec default
+ * @param payload_channels Audio channels, can be 0 for codec default
+ * @param payload_fmtp_map Map of format parameters for the media type
  * @param payload_data Payload
  * @param payload_len Length of payload
  * @param out_buff Output audio samples.
@@ -60,7 +70,7 @@ GHashTable *rtp_decoder_hash_table_new(void);
  * @param sample_rate_ptr If non-NULL, receives the sample rate.
  * @return The number of decoded bytes on success, 0 on failure.
  */
-size_t decode_rtp_packet_payload(guint8 payload_type, const gchar *payload_type_str, guint8 *payload_data, size_t payload_len, SAMPLE **out_buff, GHashTable *decoders_hash, guint *channels_ptr, guint *sample_rate_ptr);
+size_t decode_rtp_packet_payload(guint8 payload_type, const gchar *payload_type_str, int payload_rate, int payload_channels, wmem_map_t *payload_fmtp_map, guint8 *payload_data, size_t payload_len, SAMPLE **out_buff, GHashTable *decoders_hash, guint *channels_ptr, guint *sample_rate_ptr);
 
 /** Decode an RTP packet
  *
@@ -78,16 +88,3 @@ size_t decode_rtp_packet(rtp_packet_t *rp, SAMPLE **out_buff, GHashTable *decode
 #endif /* __cplusplus */
 
 #endif /* __RTP_MEDIA_H__ */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

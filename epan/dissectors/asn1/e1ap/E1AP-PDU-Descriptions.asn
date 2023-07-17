@@ -1,4 +1,4 @@
--- 3GPP TS 38.463 V16.2.0 (2020-07)
+-- 3GPP TS 37.483 V17.5.0 (2023-06)
 -- **************************************************************
 --
 -- Elementary Procedure definitions
@@ -9,7 +9,7 @@ E1AP-PDU-Descriptions {
 itu-t (0) identified-organization (4) etsi (0) mobileDomain (0)
 ngran-access (22) modules (3) e1ap (5) version1 (1) e1ap-PDU-Descriptions (0) }
 
-DEFINITIONS AUTOMATIC TAGS ::= 
+DEFINITIONS AUTOMATIC TAGS ::=
 
 BEGIN
 
@@ -29,16 +29,27 @@ FROM E1AP-CommonDataTypes
 	ErrorIndication,
 	GNB-CU-UP-E1SetupRequest,
 	GNB-CU-UP-E1SetupResponse,
-	GNB-CU-UP-E1SetupFailure, 
+	GNB-CU-UP-E1SetupFailure,
 	GNB-CU-CP-E1SetupRequest,
 	GNB-CU-CP-E1SetupResponse,
-	GNB-CU-CP-E1SetupFailure, 
+	GNB-CU-CP-E1SetupFailure,
 	GNB-CU-UP-ConfigurationUpdate,
 	GNB-CU-UP-ConfigurationUpdateAcknowledge,
 	GNB-CU-UP-ConfigurationUpdateFailure,
 	GNB-CU-CP-ConfigurationUpdate,
 	GNB-CU-CP-ConfigurationUpdateAcknowledge,
 	GNB-CU-CP-ConfigurationUpdateFailure,
+	BCBearerContextSetupRequest,
+	BCBearerContextSetupResponse,
+	BCBearerContextSetupFailure,
+	BCBearerContextModificationRequest,
+	BCBearerContextModificationResponse,
+	BCBearerContextModificationFailure,
+	BCBearerContextModificationRequired,
+	BCBearerContextModificationConfirm,
+	BCBearerContextReleaseCommand,
+	BCBearerContextReleaseComplete,
+	BCBearerContextReleaseRequest,
 	BearerContextSetupRequest,
 	BearerContextSetupResponse,
 	BearerContextSetupFailure,
@@ -58,6 +69,17 @@ FROM E1AP-CommonDataTypes
 	E1ReleaseResponse,
 	GNB-CU-UP-CounterCheckRequest,
 	GNB-CU-UP-StatusIndication,
+	MCBearerContextSetupRequest,
+	MCBearerContextSetupResponse,
+	MCBearerContextSetupFailure,
+	MCBearerContextModificationRequest,
+	MCBearerContextModificationResponse,
+	MCBearerContextModificationFailure,
+	MCBearerContextModificationRequired,
+	MCBearerContextModificationConfirm,
+	MCBearerContextReleaseCommand,
+	MCBearerContextReleaseComplete,
+	MCBearerContextReleaseRequest,
 	MRDC-DataUsageReport,
 	DeactivateTrace,
 	TraceStart,
@@ -70,7 +92,9 @@ FROM E1AP-CommonDataTypes
 	IAB-UPTNLAddressUpdateAcknowledge,
 	IAB-UPTNLAddressUpdateFailure,
 	CellTrafficTrace,
-	EarlyForwardingSNTransfer
+	EarlyForwardingSNTransfer,
+	GNB-CU-CPMeasurementResultsInformation,
+	IABPSKNotification
 
 FROM E1AP-PDU-Contents
 	id-reset,
@@ -99,7 +123,19 @@ FROM E1AP-PDU-Contents
 	id-resourceStatusReporting,
 	id-iAB-UPTNLAddressUpdate,
 	id-CellTrafficTrace,
-	id-earlyForwardingSNTransfer
+	id-earlyForwardingSNTransfer,
+	id-gNB-CU-CPMeasurementResultsInformation,
+	id-iABPSKNotification,
+	id-BCBearerContextSetup,
+	id-BCBearerContextModification,
+	id-BCBearerContextModificationRequired,
+	id-BCBearerContextRelease,
+	id-BCBearerContextReleaseRequest,
+	id-MCBearerContextSetup,
+	id-MCBearerContextModification,
+	id-MCBearerContextModificationRequired,
+	id-MCBearerContextRelease,
+	id-MCBearerContextReleaseRequest
 
 FROM E1AP-Constants;
 
@@ -112,7 +148,7 @@ FROM E1AP-Constants;
 E1AP-ELEMENTARY-PROCEDURE ::= CLASS {
 	&InitiatingMessage				,
 	&SuccessfulOutcome							OPTIONAL,
-	
+
 &UnsuccessfulOutcome						OPTIONAL,
 	&procedureCode				ProcedureCode 	UNIQUE,
 	&criticality				Criticality 	DEFAULT ignore
@@ -181,7 +217,15 @@ E1AP-ELEMENTARY-PROCEDURES-CLASS-1 E1AP-ELEMENTARY-PROCEDURE ::= {
 	bearerContextModificationRequired			|
 	bearerContextRelease						|
 	resourceStatusReportingInitiation			|
-	iAB-UPTNLAddressUpdate						,
+	iAB-UPTNLAddressUpdate						|
+	bCBearerContextSetup						|
+	bCBearerContextModification					|
+	bCBearerContextModificationRequired			|
+	bCBearerContextRelease						|
+	mCBearerContextSetup						|
+	mCBearerContextModification					|
+	mCBearerContextModificationRequired			|
+	mCBearerContextRelease						,
 	...
 }
 
@@ -193,15 +237,18 @@ E1AP-ELEMENTARY-PROCEDURES-CLASS-2 E1AP-ELEMENTARY-PROCEDURE ::= {
 	uLDataNotification						|
 	dataUsageReport							|
 	gNB-CU-UP-CounterCheck					|
-	gNB-CU-UP-StatusIndication			|
+	gNB-CU-UP-StatusIndication				|
 	mRDC-DataUsageReport					|
 	deactivateTrace							|
 	traceStart								|
 	privateMessage							|
-	privateMessage							|
 	cellTrafficTrace						|
 	resourceStatusReporting					|
-	earlyForwardingSNTransfer				,
+	earlyForwardingSNTransfer				|
+	gNB-CU-CPMeasurementResultsInformation  |
+	iABPSKNotification						|
+	bCBearerContextReleaseRequest			|
+	mCBearerContextReleaseRequest			,
 	...
 }
 
@@ -341,6 +388,12 @@ privateMessage E1AP-ELEMENTARY-PROCEDURE ::= {
 	CRITICALITY				ignore
 }
 
+gNB-CU-CPMeasurementResultsInformation E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		GNB-CU-CPMeasurementResultsInformation
+	PROCEDURE CODE			id-gNB-CU-CPMeasurementResultsInformation
+	CRITICALITY				ignore
+}
+
 mRDC-DataUsageReport	E1AP-ELEMENTARY-PROCEDURE ::= {
 	INITIATING MESSAGE		MRDC-DataUsageReport
 	PROCEDURE CODE			id-mRDC-DataUsageReport
@@ -391,6 +444,84 @@ earlyForwardingSNTransfer E1AP-ELEMENTARY-PROCEDURE ::= {
 	INITIATING MESSAGE		EarlyForwardingSNTransfer
 	PROCEDURE CODE			id-earlyForwardingSNTransfer
 	CRITICALITY				ignore
+}
+
+iABPSKNotification E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		IABPSKNotification
+	PROCEDURE CODE			id-iABPSKNotification
+	CRITICALITY				reject
+}
+
+bCBearerContextSetup E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		BCBearerContextSetupRequest
+	SUCCESSFUL OUTCOME		BCBearerContextSetupResponse
+	UNSUCCESSFUL OUTCOME		BCBearerContextSetupFailure
+	PROCEDURE CODE			id-BCBearerContextSetup
+	CRITICALITY				reject
+}
+
+bCBearerContextModification E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		BCBearerContextModificationRequest
+	SUCCESSFUL OUTCOME		BCBearerContextModificationResponse
+	UNSUCCESSFUL OUTCOME		BCBearerContextModificationFailure
+	PROCEDURE CODE			id-BCBearerContextModification
+	CRITICALITY				reject
+}
+
+bCBearerContextModificationRequired E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		BCBearerContextModificationRequired
+	SUCCESSFUL OUTCOME		BCBearerContextModificationConfirm
+	PROCEDURE CODE			id-BCBearerContextModificationRequired
+	CRITICALITY				reject
+}
+
+bCBearerContextRelease E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		BCBearerContextReleaseCommand
+	SUCCESSFUL OUTCOME		BCBearerContextReleaseComplete
+	PROCEDURE CODE			id-BCBearerContextRelease
+	CRITICALITY				reject
+}
+
+bCBearerContextReleaseRequest E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		BCBearerContextReleaseRequest
+	PROCEDURE CODE			id-BCBearerContextReleaseRequest
+	CRITICALITY				reject
+}
+
+mCBearerContextSetup E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MCBearerContextSetupRequest
+	SUCCESSFUL OUTCOME		MCBearerContextSetupResponse
+	UNSUCCESSFUL OUTCOME		MCBearerContextSetupFailure
+	PROCEDURE CODE			id-MCBearerContextSetup
+	CRITICALITY				reject
+}
+
+mCBearerContextModification E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MCBearerContextModificationRequest
+	SUCCESSFUL OUTCOME		MCBearerContextModificationResponse
+	UNSUCCESSFUL OUTCOME		MCBearerContextModificationFailure
+	PROCEDURE CODE			id-MCBearerContextModification
+	CRITICALITY				reject
+}
+
+mCBearerContextModificationRequired E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MCBearerContextModificationRequired
+	SUCCESSFUL OUTCOME		MCBearerContextModificationConfirm
+	PROCEDURE CODE			id-MCBearerContextModificationRequired
+	CRITICALITY				reject
+}
+
+mCBearerContextRelease E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MCBearerContextReleaseCommand
+	SUCCESSFUL OUTCOME		MCBearerContextReleaseComplete
+	PROCEDURE CODE			id-MCBearerContextRelease
+	CRITICALITY				reject
+}
+
+mCBearerContextReleaseRequest E1AP-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MCBearerContextReleaseRequest
+	PROCEDURE CODE			id-MCBearerContextReleaseRequest
+	CRITICALITY				reject
 }
 
 END

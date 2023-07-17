@@ -22,6 +22,8 @@
 void proto_register_mpls_psc(void);
 void proto_reg_handoff_mpls_psc(void);
 
+static dissector_handle_t mpls_psc_handle;
+
 static gint proto_mpls_psc = -1;
 
 static gint ett_mpls_psc = -1;
@@ -39,7 +41,7 @@ static int hf_mpls_psc_tlvlen = -1;
  * http://www.iana.org/assignments/mpls-oam-parameters/mpls-oam-parameters.xml
  * Registry Name: 'MPLS PSC Request'
  */
-const range_string mpls_psc_req_rvals[] = {
+static const range_string mpls_psc_req_rvals[] = {
     {  0,  0, "No Request"            },
     {  1,  1, "Do Not Revert"         },
     {  2,  3, "Unassigned"            },
@@ -57,7 +59,7 @@ const range_string mpls_psc_req_rvals[] = {
     { 0,   0, NULL                    }
 };
 
-const value_string mpls_psc_req_short_vals[] = {
+static const value_string mpls_psc_req_short_vals[] = {
     {  0, "NR"  },
     {  1, "DNR" },
     {  4, "WTR" },
@@ -69,7 +71,7 @@ const value_string mpls_psc_req_short_vals[] = {
     {  0, NULL  }
 };
 
-const range_string mpls_psc_pt_rvals[] = {
+static const range_string mpls_psc_pt_rvals[] = {
     { 0, 0, "for future extensions"                             },
     { 1, 1, "unidirectional switching using a permanent bridge" },
     { 2, 2, "bidirectional switching using a selector bridge"   },
@@ -77,20 +79,20 @@ const range_string mpls_psc_pt_rvals[] = {
     { 0, 0, NULL                                                }
 };
 
-const range_string mpls_psc_rev_rvals[] = {
+static const range_string mpls_psc_rev_rvals[] = {
     { 0, 0, "non-revertive mode" },
     { 1, 1, "revertive mode"     },
     { 0, 0, NULL                 }
 };
 
-const range_string mpls_psc_fpath_rvals[] = {
+static const range_string mpls_psc_fpath_rvals[] = {
     { 0,   0, "protection"            },
     { 1,   1, "working"               },
     { 2, 255, "for future extensions" },
     { 0,   0, NULL                    }
 };
 
-const range_string mpls_psc_dpath_rvals[] = {
+static const range_string mpls_psc_dpath_rvals[] = {
     { 0,   0, "protection is not in use" },
     { 1,   1, "protection is in use"     },
     { 2, 255, "for future extensions"    },
@@ -222,14 +224,13 @@ proto_register_mpls_psc(void)
 
     proto_register_field_array(proto_mpls_psc, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    mpls_psc_handle = register_dissector("mpls_psc", dissect_mpls_psc, proto_mpls_psc);
 }
 
 void
 proto_reg_handoff_mpls_psc(void)
 {
-    dissector_handle_t mpls_psc_handle;
-
-    mpls_psc_handle    = create_dissector_handle( dissect_mpls_psc, proto_mpls_psc );
     dissector_add_uint("pwach.channel_type", PW_ACH_TYPE_PSC, mpls_psc_handle);
 }
 

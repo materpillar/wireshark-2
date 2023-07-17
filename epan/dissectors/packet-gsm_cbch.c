@@ -21,7 +21,7 @@ void proto_reg_handoff_gsm_cbch(void);
 
 #define CBCH_FRAGMENT_SIZE 22
 
-const value_string block_type_lpd_strings[] = {
+static const value_string block_type_lpd_strings[] = {
     { 0x00, "NOT Cell Broadcast"},
     { 0x01, "Cell Broadcast"},
     { 0x02, "NOT Cell Broadcast"},
@@ -29,7 +29,7 @@ const value_string block_type_lpd_strings[] = {
     {    0, NULL}
 };
 
-const value_string block_type_seq_num_values[] = {
+static const value_string block_type_seq_num_values[] = {
     { 0x00, "First Block"},
     { 0x01, "Second Block"},
     { 0x02, "Third Block"},
@@ -39,7 +39,7 @@ const value_string block_type_seq_num_values[] = {
     {    0, NULL}
 };
 
-const value_string sched_type_values[] = {
+static const value_string sched_type_values[] = {
     { 0x00, "messages formatted as specified in subclause 3.5 of 3GPP 44.012"},
     { 0xFF, "Unknown schedule message format"},
     {    0, NULL}
@@ -257,7 +257,7 @@ dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree
                 /* XXX I don't know if a message can validly contain more than
                  * 48 slots, but that's the size of the array we create so cap
                  * it there to avoid uninitialized memory errors (see bug
-                 * https://bugs.wireshark.org/bugzilla/show_bug.cgi?id=9270) */
+                 * https://gitlab.com/wireshark/wireshark/-/issues/9270) */
                 if (sched_end > 48)
                     sched_end = 48;
                 while ((k<sched_end) && (other_slots[k]!=0xFFFF))
@@ -291,7 +291,7 @@ dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree
                          * case. Perhaps just an expert info is appropriate?
                          * Regardless, we need to increment k to prevent an
                          * infinite loop, see
-                         * https://bugs.wireshark.org/bugzilla/show_bug.cgi?id=8730
+                         * https://gitlab.com/wireshark/wireshark/-/issues/8730
                          */
                         ++k;
                     }

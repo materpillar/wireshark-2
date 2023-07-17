@@ -16,6 +16,7 @@
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <wsutil/wsgcrypt.h>
+#include <wsutil/wslog.h>
 
 /* for dissect_mscldap_string */
 #include "packet-ldap.h"
@@ -25,6 +26,7 @@
 #include "packet-windows-common.h"
 #include "packet-dcerpc-lsa.h"
 #include "packet-ntlmssp.h"
+#include "packet-dcerpc-misc.h"
 /* for keytab format */
 #include <epan/asn1.h>
 #include "packet-kerberos.h"
@@ -709,7 +711,7 @@ static void dissect_ndr_lm_nt_byte_array(packet_info *pinfo,
     }
     len = (guint16)tmp;
     cb_ref->response->length = len;
-    cb_ref->response->contents = (guint8 *)tvb_memdup(wmem_packet_scope(), tvb, offset, len);
+    cb_ref->response->contents = (guint8 *)tvb_memdup(pinfo->pool, tvb, offset, len);
     if (len > 24) {
         dissect_ntlmv2_response(tvb, pinfo, tree, offset, len);
     }
@@ -1265,7 +1267,7 @@ netlogon_dissect_NETWORK_INFO(tvbuff_t *tvb, int offset,
     struct LOGON_INFO_STATE_CB *lm_cb = NULL;
 
     if (state == NULL) {
-        state = wmem_new0(wmem_packet_scope(), struct LOGON_INFO_STATE);
+        state = wmem_new0(pinfo->pool, struct LOGON_INFO_STATE);
         state->ntlmssph = (ntlmssp_header_t) { .type = NTLMSSP_AUTH, };
         state->domain_cb.state = state;
         state->domain_cb.name_ptr = &state->ntlmssph.domain_name;
@@ -4569,7 +4571,7 @@ netlogon_dissect_UAS_INFO_0(tvbuff_t *tvb, int offset,
         return offset;
     }
 
-    proto_tree_add_item(tree, hf_netlogon_computer_name, tvb, offset, 16, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(tree, hf_netlogon_computer_name, tvb, offset, 16, ENC_ASCII);
     offset += 16;
 
     time_created = tvb_get_guint32(tvb, offset, DREP_ENC_INTEGER(drep));
@@ -6122,7 +6124,7 @@ netlogon_dissect_UNICODE_STRING_512(tvbuff_t *tvb, int offset,
                                    ett_UNICODE_STRING_512, &item, "UNICODE_STRING_512:");
     }
 
-    for(i=0;i<512;i++){
+    for(i=0;i<256;i++){
         offset = dissect_ndr_uint16(tvb, offset, pinfo, tree, di, drep,
                                     hf_netlogon_unknown_short, NULL);
     }
@@ -6694,11 +6696,21 @@ netlogon_dissect_netrserverauthenticate3_rqst(tvbuff_t *tvb, int offset,
     guint32 flags;
     offset = netlogon_dissect_LOGONSRV_HANDLE(tvb, offset,
                                               pinfo, tree, di, drep);
+    ALIGN_TO_5_BYTES
+
     offset = dissect_ndr_str_pointer_item(tvb, offset, pinfo, tree, di, drep,
                                           NDR_POINTER_REF, "Acct Name", hf_netlogon_acct_name, 0);
 
+    if (di->call_data->flags & DCERPC_IS_NDR64) {
+        ALIGN_TO_4_BYTES
+    } else {
+        ALIGN_TO_2_BYTES
+    }
+
     offset = netlogon_dissect_NETLOGON_SECURE_CHANNEL_TYPE(tvb, offset,
                                                            pinfo, tree, di, drep);
+
+    ALIGN_TO_5_BYTES
 
     offset = dissect_ndr_str_pointer_item(tvb, offset, pinfo, tree, di, drep,
                                           NDR_POINTER_REF, "Computer Name", hf_netlogon_computer_name, 0);
@@ -6796,11 +6808,10 @@ netlogon_dissect_netrserverauthenticate023_reply(tvbuff_t *tvb, int offset,
 
             vars->flags = flags;
             vars->can_decrypt = FALSE;
-            list_size = get_md4pass_list(&pass_list);
+            list_size = get_md4pass_list(pinfo->pool, &pass_list);
             debugprintf("Found %d passwords \n",list_size);
             if( flags & NETLOGON_FLAG_AES )
             {
-#if GCRYPT_VERSION_NUMBER >= 0x010800 /* 1.8.0 */
                 guint8 salt_buf[16] = { 0 };
                 guint8 sha256[HASH_SHA2_256_LENGTH];
                 guint64 calculated_cred;
@@ -6829,14 +6840,14 @@ netlogon_dissect_netrserverauthenticate023_reply(tvbuff_t *tvb, int offset,
                         /* Open the cipher */
                         err = gcry_cipher_open(&cipher_hd, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CFB8, 0);
                         if (err != 0) {
-                            g_warning("GCRY: cipher open %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+                            ws_warning("GCRY: cipher open %s/%s\n", gcry_strsource(err), gcry_strerror(err));
                             break;
                         }
 
                         /* Set the initial value */
                         err = gcry_cipher_setiv(cipher_hd, iv, sizeof(iv));
                         if (err != 0) {
-                            g_warning("GCRY: setiv %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+                            ws_warning("GCRY: setiv %s/%s\n", gcry_strsource(err), gcry_strerror(err));
                             gcry_cipher_close(cipher_hd);
                             break;
                         }
@@ -6844,7 +6855,7 @@ netlogon_dissect_netrserverauthenticate023_reply(tvbuff_t *tvb, int offset,
                         /* Set the key */
                         err = gcry_cipher_setkey(cipher_hd, session_key, 16);
                         if (err != 0) {
-                            g_warning("GCRY: setkey %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+                            ws_warning("GCRY: setkey %s/%s\n", gcry_strsource(err), gcry_strerror(err));
                             gcry_cipher_close(cipher_hd);
                             break;
                         }
@@ -6854,7 +6865,7 @@ netlogon_dissect_netrserverauthenticate023_reply(tvbuff_t *tvb, int offset,
                                                   (guint8 *)&calculated_cred, 8,
                                                   (const guint8 *)&vars->server_challenge, 8);
                         if (err != 0) {
-                            g_warning("GCRY: encrypt %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+                            ws_warning("GCRY: encrypt %s/%s\n", gcry_strsource(err), gcry_strerror(err));
                             gcry_cipher_close(cipher_hd);
                             break;
                         }
@@ -6870,7 +6881,6 @@ netlogon_dissect_netrserverauthenticate023_reply(tvbuff_t *tvb, int offset,
                         }
                     }
                 }
-#endif
             } else if ( flags & NETLOGON_FLAG_STRONGKEY ) {
                 guint8 zeros[4] = { 0 };
                 guint8 md5[HASH_MD5_LENGTH];
@@ -7082,15 +7092,15 @@ netlogon_dissect_netrserverpasswordset2_rqst(tvbuff_t *tvb, int offset,
                                               pinfo, tree, di, drep);
 
     offset = dissect_ndr_str_pointer_item(tvb, offset, pinfo, tree, di, drep,
-                                          NDR_POINTER_UNIQUE, "unknown string",
-                                          hf_netlogon_unknown_string, 0);
+                                          NDR_POINTER_REF, "Acct Name",
+                                          hf_netlogon_acct_name, 0);
 
-    offset = dissect_ndr_uint16(tvb, offset, pinfo, tree, di, drep,
-                                hf_netlogon_unknown_short, NULL);
+    offset = netlogon_dissect_NETLOGON_SECURE_CHANNEL_TYPE(tvb, offset,
+                                                           pinfo, tree, di, drep);
 
     offset = dissect_ndr_str_pointer_item(tvb, offset, pinfo, tree, di, drep,
-                                          NDR_POINTER_UNIQUE, "unknown string",
-                                          hf_netlogon_unknown_string, 0);
+                                          NDR_POINTER_REF, "Computer Name",
+                                          hf_netlogon_computer_name, 0);
 
     offset = dissect_ndr_pointer(tvb, offset, pinfo, tree, di, drep,
                                  netlogon_dissect_AUTHENTICATOR, NDR_POINTER_REF,
@@ -7108,7 +7118,7 @@ netlogon_dissect_netrserverpasswordset2_reply(tvbuff_t *tvb, int offset,
                                               packet_info *pinfo, proto_tree *tree, dcerpc_info *di, guint8 *drep)
 {
     offset = dissect_ndr_pointer(tvb, offset, pinfo, tree, di, drep,
-                                 netlogon_dissect_AUTHENTICATOR, NDR_POINTER_UNIQUE,
+                                 netlogon_dissect_AUTHENTICATOR, NDR_POINTER_REF,
                                  "AUTHENTICATOR: return_authenticator", -1);
 
     offset = dissect_ntstatus(tvb, offset, pinfo, tree, di, drep,
@@ -7653,41 +7663,41 @@ static int dissect_secchan_nl_auth_message(tvbuff_t *tvb, int offset,
     /* netbios domain name */
     if (messageflags&0x00000001) {
         len = tvb_strsize(tvb, offset);
-        proto_tree_add_item(subtree, hf_netlogon_secchan_nl_nb_domain, tvb, offset, len, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(subtree, hf_netlogon_secchan_nl_nb_domain, tvb, offset, len, ENC_ASCII);
         offset += len;
     }
 
     /* netbios host name */
     if (messageflags&0x00000002) {
         len = tvb_strsize(tvb, offset);
-        proto_tree_add_item(subtree, hf_netlogon_secchan_nl_nb_host, tvb, offset, len, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(subtree, hf_netlogon_secchan_nl_nb_host, tvb, offset, len, ENC_ASCII);
         offset += len;
     }
 
     /* DNS domain name */
     if (messageflags&0x00000004) {
         int old_offset=offset;
-        char str[256];
+        char *str;
 
-        offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+        offset=dissect_mscldap_string(tvb, offset, 255, &str);
         proto_tree_add_string(subtree, hf_netlogon_secchan_nl_dns_domain, tvb, old_offset, offset-old_offset, str);
     }
 
     /* DNS host name */
     if (messageflags&0x00000008) {
         int old_offset=offset;
-        char str[256];
+        char *str;
 
-        offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+        offset=dissect_mscldap_string(tvb, offset, 255, &str);
         proto_tree_add_string(subtree, hf_netlogon_secchan_nl_dns_host, tvb, old_offset, offset-old_offset, str);
     }
 
     /* NetBios host name (UTF8) */
     if (messageflags&0x00000010) {
         int old_offset=offset;
-        char str[256];
+        char *str;
 
-        offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+        offset=dissect_mscldap_string(tvb, offset, 255, &str);
         proto_tree_add_string(subtree, hf_netlogon_secchan_nl_nb_host_utf8, tvb, old_offset, offset-old_offset, str);
     }
 
@@ -7849,12 +7859,14 @@ static int hf_netlogon_secchan_verf_nonce = -1;
 
 static const value_string sign_algs[] = {
     { 0x0077, "HMAC-MD5"},
+    { 0x0013, "HMAC-SHA256"},
     { 0, NULL}
 };
 
 static const value_string seal_algs[] = {
     { 0xFFFF, "Not Encrypted"},
     { 0x007A, "RC4"},
+    { 0x001A, "AES-128"},
     { 0, NULL}
 };
 
@@ -7875,7 +7887,6 @@ static int get_seal_key(const guint8 *session_key,int key_len,guint8* seal_key)
 
 }
 
-#if GCRYPT_VERSION_NUMBER >= 0x010800 /* 1.8.0 */
 static guint64 uncrypt_sequence_aes(guint8* session_key,guint64 checksum,guint64 enc_seq,unsigned char is_server _U_)
 {
     gcry_error_t err;
@@ -7888,14 +7899,14 @@ static guint64 uncrypt_sequence_aes(guint8* session_key,guint64 checksum,guint64
     /* Open the cipher */
     err = gcry_cipher_open(&cipher_hd, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CFB8, 0);
     if (err != 0) {
-        g_warning("GCRY: cipher open %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: cipher open %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         return 0;
     }
 
     /* Set the initial value */
     err = gcry_cipher_setiv(cipher_hd, iv, sizeof(iv));
     if (err != 0) {
-        g_warning("GCRY: setiv %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: setiv %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         gcry_cipher_close(cipher_hd);
         return 0;
     }
@@ -7903,14 +7914,14 @@ static guint64 uncrypt_sequence_aes(guint8* session_key,guint64 checksum,guint64
     /* Set the key */
     err = gcry_cipher_setkey(cipher_hd, session_key, 16);
     if (err != 0) {
-        g_warning("GCRY: setkey %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: setkey %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         gcry_cipher_close(cipher_hd);
         return 0;
     }
 
     err = gcry_cipher_decrypt(cipher_hd, (guint8*) &enc_seq, 8, NULL, 0);
     if (err != 0) {
-        g_warning("GCRY: encrypt %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: encrypt %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         gcry_cipher_close(cipher_hd);
         return 0;
     }
@@ -7918,7 +7929,6 @@ static guint64 uncrypt_sequence_aes(guint8* session_key,guint64 checksum,guint64
     gcry_cipher_close(cipher_hd);
     return enc_seq;
 }
-#endif
 
 static guint64 uncrypt_sequence_strong(guint8* session_key,guint64 checksum,guint64 enc_seq,unsigned char is_server _U_)
 {
@@ -7956,11 +7966,9 @@ static guint64 uncrypt_sequence_strong(guint8* session_key,guint64 checksum,guin
 
 static guint64 uncrypt_sequence(guint32 flags, guint8* session_key,guint64 checksum,guint64 enc_seq,unsigned char is_server _U_)
 {
-#if GCRYPT_VERSION_NUMBER >= 0x010800 /* 1.8.0 */
     if (flags & NETLOGON_FLAG_AES) {
         return uncrypt_sequence_aes(session_key, checksum, enc_seq, is_server);
     }
-#endif
 
     if (flags & NETLOGON_FLAG_STRONGKEY) {
         return uncrypt_sequence_strong(session_key, checksum, enc_seq, is_server);
@@ -7969,7 +7977,6 @@ static guint64 uncrypt_sequence(guint32 flags, guint8* session_key,guint64 check
     return 0;
 }
 
-#if GCRYPT_VERSION_NUMBER >= 0x010800 /* 1.8.0 */
 static gcry_error_t prepare_decryption_cipher_aes(netlogon_auth_vars *vars,
                                                   gcry_cipher_hd_t *_cipher_hd)
 {
@@ -7985,14 +7992,14 @@ static gcry_error_t prepare_decryption_cipher_aes(netlogon_auth_vars *vars,
     /* Open the cipher */
     err = gcry_cipher_open(&cipher_hd, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CFB8, 0);
     if (err != 0) {
-        g_warning("GCRY: cipher open %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: cipher open %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         return 0;
     }
 
     /* Set the initial value */
     err = gcry_cipher_setiv(cipher_hd, iv, sizeof(iv));
     if (err != 0) {
-        g_warning("GCRY: setiv %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: setiv %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         gcry_cipher_close(cipher_hd);
         return 0;
     }
@@ -8000,7 +8007,7 @@ static gcry_error_t prepare_decryption_cipher_aes(netlogon_auth_vars *vars,
     /* Set the key */
     err = gcry_cipher_setkey(cipher_hd, vars->encryption_key, 16);
     if (err != 0) {
-        g_warning("GCRY: setkey %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: setkey %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         gcry_cipher_close(cipher_hd);
         return 0;
     }
@@ -8008,7 +8015,6 @@ static gcry_error_t prepare_decryption_cipher_aes(netlogon_auth_vars *vars,
     *_cipher_hd = cipher_hd;
     return 0;
 }
-#endif
 
 static gcry_error_t prepare_decryption_cipher_strong(netlogon_auth_vars *vars,
                                                      gcry_cipher_hd_t *_cipher_hd)
@@ -8022,26 +8028,26 @@ static gcry_error_t prepare_decryption_cipher_strong(netlogon_auth_vars *vars,
 
     err = ws_hmac_buffer(GCRY_MD_MD5, tmp, zeros, 4, vars->encryption_key, 16);
     if (err != 0) {
-        g_warning("GCRY: GCRY_MD_MD5 %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: GCRY_MD_MD5 %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         return err;
     }
     err = ws_hmac_buffer(GCRY_MD_MD5, seal_key, (guint8*)&sequence, 8, tmp, HASH_MD5_LENGTH);
     if (err != 0) {
-        g_warning("GCRY: GCRY_MD_MD5 %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: GCRY_MD_MD5 %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         return err;
     }
 
     /* Open the cipher */
     err = gcry_cipher_open(&cipher_hd, GCRY_CIPHER_ARCFOUR, GCRY_CIPHER_MODE_STREAM, 0);
     if (err != 0) {
-        g_warning("GCRY: cipher open %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: cipher open %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         return err;
     }
 
     /* Set the key */
     err = gcry_cipher_setkey(cipher_hd, seal_key, 16);
     if (err != 0) {
-        g_warning("GCRY: setkey %s/%s\n", gcry_strsource(err), gcry_strerror(err));
+        ws_warning("GCRY: setkey %s/%s\n", gcry_strsource(err), gcry_strerror(err));
         gcry_cipher_close(cipher_hd);
         return err;
     }
@@ -8055,11 +8061,9 @@ static gcry_error_t prepare_decryption_cipher(netlogon_auth_vars *vars,
 {
     *_cipher_hd = NULL;
 
-#if GCRYPT_VERSION_NUMBER >= 0x010800 /* 1.8.0 */
     if (vars->flags & NETLOGON_FLAG_AES) {
         return prepare_decryption_cipher_aes(vars, _cipher_hd);
     }
-#endif
 
     if (vars->flags & NETLOGON_FLAG_STRONGKEY) {
         return prepare_decryption_cipher_strong(vars, _cipher_hd);
@@ -8103,7 +8107,7 @@ dissect_packet_data(tvbuff_t *tvb ,tvbuff_t *auth_tvb _U_,
                 }
                 err = prepare_decryption_cipher(vars, &cipher_hd);
                 if (err != 0) {
-                    g_warning("GCRY: prepare_decryption_cipher %s/%s\n",
+                    ws_warning("GCRY: prepare_decryption_cipher %s/%s\n",
                               gcry_strsource(err), gcry_strerror(err));
                     return NULL;
                 }
@@ -8159,7 +8163,7 @@ dissect_secchan_verf(tvbuff_t *tvb, int offset, packet_info *pinfo,
     proto_item *vf = NULL;
     proto_tree *subtree = NULL;
     guint64 encrypted_seq;
-    guint64 digest;
+    guint64 digest = 0;
     guint64 confounder = 0;
     int update_vars = 0;
 
@@ -8254,15 +8258,6 @@ dissect_response_secchan_verf(tvbuff_t *tvb, int offset, packet_info *pinfo ,
 {
     return dissect_secchan_verf(tvb,offset,pinfo,tree,drep,1);
 }
-
-/* Secure channel types */
-
-static const value_string sec_chan_type_vals[] = {
-    { SEC_CHAN_WKSTA,  "Workstation" },
-    { SEC_CHAN_DOMAIN, "Domain trust" },
-    { SEC_CHAN_BDC,    "Backup domain controller" },
-    { 0, NULL }
-};
 
 void
 proto_register_dcerpc_netlogon(void)
@@ -8817,7 +8812,7 @@ proto_register_dcerpc_netlogon(void)
 
         { &hf_netlogon_secure_channel_type,
           { "Sec Chan Type", "netlogon.sec_chan_type", FT_UINT16, BASE_DEC,
-            VALS(sec_chan_type_vals), 0x0, "Secure Channel Type", HFILL }},
+            VALS(misc_netr_SchannelType_vals), 0x0, "Secure Channel Type", HFILL }},
 
         { &hf_netlogon_restart_state,
           { "Restart State", "netlogon.restart_state", FT_UINT16, BASE_DEC,
@@ -8969,14 +8964,14 @@ proto_register_dcerpc_netlogon(void)
 #endif
 
         { &hf_netlogon_neg_flags_40000000,
-          { "Authenticated RPC supported", "ntlmssp.neg_flags.na8000000", FT_BOOLEAN, 32, TFS(&tfs_set_notset), NETLOGON_FLAG_40000000, NULL, HFILL }},
+          { "Authenticated RPC supported", "ntlmssp.neg_flags.na4000000", FT_BOOLEAN, 32, TFS(&tfs_set_notset), NETLOGON_FLAG_40000000, NULL, HFILL }},
 
         { &hf_netlogon_neg_flags_20000000,
-          { "Authenticated RPC via lsass supported", "ntlmssp.neg_flags.na8000000", FT_BOOLEAN, 32, TFS(&tfs_set_notset), NETLOGON_FLAG_20000000, "rpc via lsass", HFILL }},
+          { "Authenticated RPC via lsass supported", "ntlmssp.neg_flags.na2000000", FT_BOOLEAN, 32, TFS(&tfs_set_notset), NETLOGON_FLAG_20000000, "rpc via lsass", HFILL }},
 
 #if 0
         { &hf_netlogon_neg_flags_10000000,
-          { "Not used 10000000", "ntlmssp.neg_flags.na8000000", FT_BOOLEAN, 32, TFS(&tfs_set_notset), NETLOGON_FLAG_10000000, "Not used", HFILL }},
+          { "Not used 10000000", "ntlmssp.neg_flags.na1000000", FT_BOOLEAN, 32, TFS(&tfs_set_notset), NETLOGON_FLAG_10000000, "Not used", HFILL }},
 #endif
 
 #if 0

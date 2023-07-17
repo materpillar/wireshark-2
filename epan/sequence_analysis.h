@@ -1,4 +1,4 @@
-/* sequence-analysis.h
+/** @file
  * Flow sequence analysis
  *
  * Copied from gtk/graph_analysis.h
@@ -34,6 +34,12 @@ extern "C" {
 
 #define MAX_NUM_NODES 40
 
+/** defines info types for graph analysis additional information */
+typedef enum _ga_info_type {
+    GA_INFO_TYPE_NONE=0,
+    GA_INFO_TYPE_RTP
+} ga_info_type;
+
 /** defines an entry for the graph analysis */
 typedef struct _seq_analysis_item {
     guint32 frame_number;
@@ -52,6 +58,8 @@ typedef struct _seq_analysis_item {
     guint src_node;                     /**< this is used by graph_analysis.c to identify the node */
     guint dst_node;                     /**< a node is an IP address that will be displayed in columns */
     guint16 line_style;                 /**< the arrow line width in pixels*/
+    ga_info_type info_type;             /**< type of info for item */
+    gpointer info_ptr;                  /**< ptr to info for item */
 } seq_analysis_item_t;
 
 /** defines the graph analysis structure */
@@ -70,8 +78,8 @@ typedef struct register_analysis register_analysis_t;
 
 #if 0
 #define SEQ_ANALYSIS_DEBUG(...) { \
-    char *SEQ_ANALYSIS_DEBUG_MSG = g_strdup_printf(__VA_ARGS__); \
-    g_warning("sequence analysis: %s:%d %s", G_STRFUNC, __LINE__, SEQ_ANALYSIS_DEBUG_MSG); \
+    char *SEQ_ANALYSIS_DEBUG_MSG = ws_strdup_printf(__VA_ARGS__); \
+    ws_warning("sequence analysis: %s:%d %s", G_STRFUNC, __LINE__, SEQ_ANALYSIS_DEBUG_MSG); \
     g_free(SEQ_ANALYSIS_DEBUG_MSG); \
 }
 #else

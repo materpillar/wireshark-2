@@ -93,13 +93,15 @@ typedef struct _smb2_sesid_info_t {
 	guint16 server_port;
 	guint8 session_key[NTLMSSP_KEY_LEN];
 	guint8 signing_key[NTLMSSP_KEY_LEN];
-	guint8 client_decryption_key[AES_KEY_SIZE];
-	guint8 server_decryption_key[AES_KEY_SIZE];
+	guint8 client_decryption_key16[AES_KEY_SIZE];
+	guint8 server_decryption_key16[AES_KEY_SIZE];
+	guint8 client_decryption_key32[AES_KEY_SIZE*2];
+	guint8 server_decryption_key32[AES_KEY_SIZE*2];
 
 	wmem_map_t *tids;
-	GHashTable *fids;
+	wmem_map_t *fids;
 	/* table to store some infos for smb export object */
-	GHashTable *files;
+	wmem_map_t *files;
 
 	guint8 preauth_hash[SMB2_PREAUTH_HASH_SIZE];
 } smb2_sesid_info_t;
@@ -112,6 +114,7 @@ typedef struct _smb2_conv_info_t {
 	GHashTable *unmatched;
 	GHashTable *matched;
 	guint16 dialect;
+	guint16 sign_alg;
 	guint16 enc_alg;
 
 	/* preauth hash before session setup */

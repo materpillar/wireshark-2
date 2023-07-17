@@ -9,28 +9,24 @@
  */
 
 #include <config.h>
+#define WS_LOG_DOMAIN  LOG_DOMAIN_MAIN
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <glib.h>
 
-#ifdef HAVE_GETOPT_H
-#include <getopt.h>
-#endif
+#include <ws_exit_codes.h>
+#include <wsutil/ws_getopt.h>
 
 #include <wiretap/wtap.h>
 
-#ifndef HAVE_GETOPT_LONG
-#include "wsutil/wsgetopt.h"
-#endif
-
-#include <ui/cmdarg_err.h>
+#include <wsutil/cmdarg_err.h>
 #include <wsutil/filesystem.h>
 #include <wsutil/file_util.h>
 #include <wsutil/privileges.h>
 #include <cli_main.h>
-#include <version_info.h>
+#include <wsutil/version_info.h>
 #include <wiretap/wtap_opttypes.h>
 
 #ifdef HAVE_PLUGINS
@@ -38,11 +34,11 @@
 #endif
 
 #include <wsutil/report_message.h>
+#include <wsutil/wslog.h>
 
 #include "ui/failure_message.h"
 
-#define INVALID_OPTION 1
-#define OPEN_ERROR 2
+/* Additional exit codes */
 #define OUTPUT_FILE_ERROR 1
 
 /* Show command-line usage */
@@ -55,6 +51,7 @@ print_usage(FILE *output)
     fprintf(output, "Options:\n");
     fprintf(output, "  -n        don't write to output file if the input file is ordered.\n");
     fprintf(output, "  -h        display this help and exit.\n");
+    fprintf(output, "  -v        print version information and exit.\n");
 }
 
 /* Remember where this frame was in the file */
@@ -88,7 +85,7 @@ frame_write(FrameRecord_t *frame, wtap *wth, wtap_dumper *pdh,
     int    err;
     gchar  *err_info;
 
-    DEBUG_PRINT("\nDumping frame (offset=%" G_GINT64_MODIFIER "u)\n",
+    DEBUG_PRINT("\nDumping frame (offset=%" PRIu64 ")\n",
                 frame->offset);
 
 
@@ -99,7 +96,7 @@ frame_write(FrameRecord_t *frame, wtap *wth, wtap_dumper *pdh,
             fprintf(stderr,
                     "reordercap: An error occurred while re-reading \"%s\".\n",
                     infile);
-            cfile_read_failure_message("reordercap", infile, err, err_info);
+            cfile_read_failure_message(infile, err, err_info);
             exit(1);
         }
     }
@@ -111,11 +108,11 @@ frame_write(FrameRecord_t *frame, wtap *wth, wtap_dumper *pdh,
 
     /* Dump frame to outfile */
     if (!wtap_dump(pdh, rec, ws_buffer_start_ptr(buf), &err, &err_info)) {
-        cfile_write_failure_message("reordercap", infile, outfile, err,
-                                    err_info, frame->num,
+        cfile_write_failure_message(infile, outfile, err, err_info, frame->num,
                                     wtap_file_type_subtype(wth));
         exit(1);
     }
+    wtap_rec_reset(rec);
 }
 
 /* Comparing timestamps between 2 frames.
@@ -140,7 +137,7 @@ frames_compare(gconstpointer a, gconstpointer b)
  * in reordercap.
  */
 static void
-failure_warning_message(const char *msg_format, va_list ap)
+reordercap_cmdarg_err(const char *msg_format, va_list ap)
 {
     fprintf(stderr, "reordercap: ");
     vfprintf(stderr, msg_format, ap);
@@ -151,7 +148,7 @@ failure_warning_message(const char *msg_format, va_list ap)
  * Report additional information for an error in command-line arguments.
  */
 static void
-failure_message_cont(const char *msg_format, va_list ap)
+reordercap_cmdarg_err_cont(const char *msg_format, va_list ap)
 {
     vfprintf(stderr, msg_format, ap);
     fprintf(stderr, "\n");
@@ -163,7 +160,19 @@ failure_message_cont(const char *msg_format, va_list ap)
 int
 main(int argc, char *argv[])
 {
-    char *init_progfile_dir_error;
+    char *configuration_init_error;
+    static const struct report_message_routines reordercap_message_routines = {
+        failure_message,
+        failure_message,
+        open_failure_message,
+        read_failure_message,
+        write_failure_message,
+        cfile_open_failure_message,
+        cfile_dump_open_failure_message,
+        cfile_read_failure_message,
+        cfile_write_failure_message,
+        cfile_close_failure_message
+    };
     wtap *wth = NULL;
     wtap_dumper *pdh = NULL;
     wtap_rec rec;
@@ -181,19 +190,27 @@ main(int argc, char *argv[])
     FrameRecord_t *prevFrame = NULL;
 
     int opt;
-    static const struct option long_options[] = {
-        {"help", no_argument, NULL, 'h'},
-        {"version", no_argument, NULL, 'v'},
+    static const struct ws_option long_options[] = {
+        {"help", ws_no_argument, NULL, 'h'},
+        {"version", ws_no_argument, NULL, 'v'},
         {0, 0, 0, 0 }
     };
     int file_count;
     char *infile;
     const char *outfile;
 
-    cmdarg_err_init(failure_warning_message, failure_message_cont);
+    cmdarg_err_init(reordercap_cmdarg_err, reordercap_cmdarg_err_cont);
+
+    /* Initialize log handler early so we can have proper logging during startup. */
+    ws_log_init("reordercap", vcmdarg_err);
+
+    /* Early logging command-line initialization. */
+    ws_log_parse_args(&argc, argv, vcmdarg_err, WS_EXIT_INVALID_OPTION);
+
+    ws_noisy("Finished log init and parsing command line log arguments");
 
     /* Initialize the version information. */
-    ws_init_version_info("Reordercap (Wireshark)", NULL, NULL, NULL);
+    ws_init_version_info("Reordercap", NULL, NULL);
 
     /*
      * Get credential information for later use.
@@ -204,21 +221,20 @@ main(int argc, char *argv[])
      * Attempt to get the pathname of the directory containing the
      * executable file.
      */
-    init_progfile_dir_error = init_progfile_dir(argv[0]);
-    if (init_progfile_dir_error != NULL) {
+    configuration_init_error = configuration_init(argv[0], NULL);
+    if (configuration_init_error != NULL) {
         fprintf(stderr,
                 "reordercap: Can't get pathname of directory containing the reordercap program: %s.\n",
-                init_progfile_dir_error);
-        g_free(init_progfile_dir_error);
+                configuration_init_error);
+        g_free(configuration_init_error);
     }
 
-    init_report_message(failure_warning_message, failure_warning_message,
-                        NULL, NULL, NULL);
+    init_report_message("reordercap", &reordercap_message_routines);
 
     wtap_init(TRUE);
 
     /* Process the options first */
-    while ((opt = getopt_long(argc, argv, "hnv", long_options, NULL)) != -1) {
+    while ((opt = ws_getopt_long(argc, argv, "hnv", long_options, NULL)) != -1) {
         switch (opt) {
             case 'n':
                 write_output_regardless = FALSE;
@@ -232,20 +248,20 @@ main(int argc, char *argv[])
                 goto clean_exit;
             case '?':
                 print_usage(stderr);
-                ret = INVALID_OPTION;
+                ret = WS_EXIT_INVALID_OPTION;
                 goto clean_exit;
         }
     }
 
     /* Remaining args are file names */
-    file_count = argc - optind;
+    file_count = argc - ws_optind;
     if (file_count == 2) {
-        infile  = argv[optind];
-        outfile = argv[optind+1];
+        infile  = argv[ws_optind];
+        outfile = argv[ws_optind+1];
     }
     else {
         print_usage(stderr);
-        ret = INVALID_OPTION;
+        ret = WS_EXIT_INVALID_OPTION;
         goto clean_exit;
     }
 
@@ -254,8 +270,8 @@ main(int argc, char *argv[])
        open_routine reader to use, then the following needs to change. */
     wth = wtap_open_offline(infile, WTAP_TYPE_AUTO, &err, &err_info, TRUE);
     if (wth == NULL) {
-        cfile_open_failure_message("reordercap", infile, err, err_info);
-        ret = OPEN_ERROR;
+        cfile_open_failure_message(infile, err, err_info);
+        ret = WS_EXIT_OPEN_ERROR;
         goto clean_exit;
     }
     DEBUG_PRINT("file_type_subtype is %d\n", wtap_file_type_subtype(wth));
@@ -264,15 +280,17 @@ main(int argc, char *argv[])
 
     /* Open outfile (same filetype/encap as input file) */
     if (strcmp(outfile, "-") == 0) {
-      pdh = wtap_dump_open_stdout(wtap_file_type_subtype(wth), WTAP_UNCOMPRESSED, &params, &err);
+      pdh = wtap_dump_open_stdout(wtap_file_type_subtype(wth),
+                                  WTAP_UNCOMPRESSED, &params, &err, &err_info);
     } else {
-      pdh = wtap_dump_open(outfile, wtap_file_type_subtype(wth), WTAP_UNCOMPRESSED, &params, &err);
+      pdh = wtap_dump_open(outfile, wtap_file_type_subtype(wth),
+                           WTAP_UNCOMPRESSED, &params, &err, &err_info);
     }
     g_free(params.idb_inf);
     params.idb_inf = NULL;
 
     if (pdh == NULL) {
-        cfile_dump_open_failure_message("reordercap", outfile, err,
+        cfile_dump_open_failure_message(outfile, err, err_info,
                                         wtap_file_type_subtype(wth));
         wtap_dump_params_cleanup(&params);
         ret = OUTPUT_FILE_ERROR;
@@ -303,12 +321,13 @@ main(int argc, char *argv[])
 
         g_ptr_array_add(frames, newFrameRecord);
         prevFrame = newFrameRecord;
+        wtap_rec_reset(&rec);
     }
     wtap_rec_cleanup(&rec);
     ws_buffer_free(&buf);
     if (err != 0) {
       /* Print a message noting that the read failed somewhere along the line. */
-      cfile_read_failure_message("reordercap", infile, err, err_info);
+      cfile_read_failure_message(infile, err, err_info);
     }
 
     printf("%u frames, %u out of order\n", frames->len, wrong_order_count);
@@ -341,8 +360,8 @@ main(int argc, char *argv[])
     g_ptr_array_free(frames, TRUE);
 
     /* Close outfile */
-    if (!wtap_dump_close(pdh, &err)) {
-        cfile_close_failure_message(outfile, err);
+    if (!wtap_dump_close(pdh, NULL, &err, &err_info)) {
+        cfile_close_failure_message(outfile, err, err_info);
         wtap_dump_params_cleanup(&params);
         ret = OUTPUT_FILE_ERROR;
         goto clean_exit;

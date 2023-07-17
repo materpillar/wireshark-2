@@ -19,6 +19,9 @@
 void proto_register_laplink(void);
 void proto_reg_handoff_laplink(void);
 
+static dissector_handle_t laplink_udp_handle;
+static dissector_handle_t laplink_tcp_handle;
+
 #define TCP_PORT_LAPLINK 1547
 #define UDP_PORT_LAPLINK 1547
 
@@ -88,7 +91,7 @@ dissect_laplink_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *d
 		proto_tree_add_uint(laplink_tree, hf_laplink_udp_ident, tvb, offset, 4, udp_ident);
 		offset += 4;
 
-		proto_tree_add_item(laplink_tree, hf_laplink_udp_name, tvb, offset, -1, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(laplink_tree, hf_laplink_udp_name, tvb, offset, -1, ENC_ASCII);
 	}
 	return tvb_captured_length(tvb);
 }
@@ -210,6 +213,9 @@ proto_register_laplink(void)
 				       "Whether the Laplink dissector should reassemble messages spanning multiple TCP segments."
 				       " To use this option, you must also enable \"Allow subdissectors to reassemble TCP streams\" in the TCP protocol settings.",
 				       &laplink_desegment);
+
+	laplink_tcp_handle = register_dissector("laplink.tcp", dissect_laplink_tcp, proto_laplink);
+	laplink_udp_handle = register_dissector("laplink.udp", dissect_laplink_udp, proto_laplink);
 }
 
 
@@ -220,13 +226,7 @@ proto_register_laplink(void)
 void
 proto_reg_handoff_laplink(void)
 {
-	dissector_handle_t laplink_udp_handle;
-	dissector_handle_t laplink_tcp_handle;
-
-	laplink_tcp_handle = create_dissector_handle(dissect_laplink_tcp, proto_laplink);
 	dissector_add_uint_with_preference("tcp.port", TCP_PORT_LAPLINK, laplink_tcp_handle);
-
-	laplink_udp_handle = create_dissector_handle(dissect_laplink_udp, proto_laplink);
 	dissector_add_uint_with_preference("udp.port", UDP_PORT_LAPLINK, laplink_udp_handle);
 }
 

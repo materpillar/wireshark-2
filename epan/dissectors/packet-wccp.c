@@ -1,5 +1,5 @@
 /* packet-wccp.c
- * Routines for Web Cache Communication Protocol dissection
+ * Routines for Web Cache C* Protocol dissection
  * Jerry Talkington <jtalkington@users.sourceforge.net>
  *
  * Wireshark - Network traffic analyzer
@@ -270,19 +270,22 @@ static expert_field ei_wccp_a_zero_not_c = EI_INIT;
 /*
  * At
  *
- *      https://tools.ietf.org/html/draft-forster-wrec-wccp-v1-00
+ *      https://datatracker.ietf.org/doc/html/draft-forster-wrec-wccp-v1-00
  *
- * is a copy of the now-expired Internet-Draft for WCCP 1.0.
+ * is the now-expired Internet-Draft for WCCP 1.0 (Web Cache Coordination
+ * Protocol V1.0).
  *
  * At
  *
- *      https://tools.ietf.org/html/draft-wilson-wrec-wccp-v2-01
+ *      https://datatracker.ietf.org/doc/html/draft-wilson-wrec-wccp-v2-01
  *
- * is an Internet-Draft for WCCP 2.0.
+ * is the now-expired Internet-Draft for WCCP 2.0 (Web Cache Communication
+ * Protocol V2.0).
  *
- *      https://tools.ietf.org/html/draft-param-wccp-v2rev1-01
+ *      https://datatracker.ietf.org/doc/html/draft-param-wccp-v2rev1-01
  *
- * is the current draft for WCCP 2.01.
+ * is the now-expired Internet-Draft for WCCP 2.01 (Web Cache Communication
+ * Protocol V2, Revision 1).
  */
 
 /* This is NOT IANA assigned */
@@ -317,10 +320,10 @@ static const value_string wccp_version_val[] = {
   { 0, NULL}
 };
 
-const true_false_string tfs_src_dest_port = { "Source port", "Destination port" };
-const true_false_string tfs_redirect_protocol0 = { "Redirect only protocol 0 (IP)", "Redirect all traffic" };
-const true_false_string tfs_historical_current = { "Historical", "Current" };
-const true_false_string tfs_version_min_max = {"WCCP version set is maximum supported by CE", "WCCP version set is minimum supported by CE"};
+static const true_false_string tfs_src_dest_port = { "Source port", "Destination port" };
+static const true_false_string tfs_redirect_protocol0 = { "Redirect only protocol 0 (IP)", "Redirect all traffic" };
+static const true_false_string tfs_historical_current = { "Historical", "Current" };
+static const true_false_string tfs_version_min_max = {"WCCP version set is maximum supported by CE", "WCCP version set is minimum supported by CE"};
 
 static const value_string wccp_address_family_val[] = {
   { 0, "Reserved" },
@@ -786,7 +789,7 @@ wccp_bucket_info(guint8 bucket_info, proto_tree *bucket_tree, guint32 start,
 
 #define SECURITY_INFO_LEN               4
 
-const value_string security_option_vals[] = {
+static const value_string security_option_vals[] = {
   { WCCP2_NO_SECURITY, "None" },
   { WCCP2_MD5_SECURITY, "MD5" },
   { 0,    NULL }
@@ -823,7 +826,7 @@ dissect_wccp2_security_info(tvbuff_t *tvb, int offset, gint length,
 #define WCCP2_SERVICE_STANDARD          0
 #define WCCP2_SERVICE_DYNAMIC           1
 
-const value_string service_type_vals[] = {
+static const value_string service_type_vals[] = {
   { WCCP2_SERVICE_STANDARD, "Standard predefined service"},
   { WCCP2_SERVICE_DYNAMIC, "Dynamic CE defined service" },
   { 0,    NULL }
@@ -832,17 +835,17 @@ const value_string service_type_vals[] = {
 /*
  * Service flags.
  */
-#define WCCP2_SI_SRC_IP_HASH                    0x0001
-#define WCCP2_SI_DST_IP_HASH                    0x0002
-#define WCCP2_SI_SRC_PORT_HASH                  0x0004
-#define WCCP2_SI_DST_PORT_HASH                  0x0008
-#define WCCP2_SI_PORTS_DEFINED                  0x0010
-#define WCCP2_SI_PORTS_SOURCE                   0x0020
-#define WCCP2r1_SI_REDIRECT_ONLY_PROTOCOL_0     0x0040
-#define WCCP2_SI_SRC_IP_ALT_HASH                0x0100
-#define WCCP2_SI_DST_IP_ALT_HASH                0x0200
-#define WCCP2_SI_SRC_PORT_ALT_HASH              0x0400
-#define WCCP2_SI_DST_PORT_ALT_HASH              0x0800
+#define WCCP2_SI_SRC_IP_HASH                    0x00000001
+#define WCCP2_SI_DST_IP_HASH                    0x00000002
+#define WCCP2_SI_SRC_PORT_HASH                  0x00000004
+#define WCCP2_SI_DST_PORT_HASH                  0x00000008
+#define WCCP2_SI_PORTS_DEFINED                  0x00000010
+#define WCCP2_SI_PORTS_SOURCE                   0x00000020
+#define WCCP2r1_SI_REDIRECT_ONLY_PROTOCOL_0     0x00000040
+#define WCCP2_SI_SRC_IP_ALT_HASH                0x00000100
+#define WCCP2_SI_DST_IP_ALT_HASH                0x00000200
+#define WCCP2_SI_SRC_PORT_ALT_HASH              0x00000400
+#define WCCP2_SI_DST_PORT_ALT_HASH              0x00000800
 
 
 static gint
@@ -1208,7 +1211,7 @@ dissect_wccp2_web_cache_view_info(tvbuff_t *tvb, int offset, gint length,
 /* 6.2 Router Assignment Element */
 static void
 dissect_wccp2_router_assignment_element(tvbuff_t *tvb, int offset,
-                                        gint length, packet_info *pinfo, proto_tree *info_tree, wccp_address_table* addr_table)
+                                        gint length _U_, packet_info *pinfo, proto_tree *info_tree, wccp_address_table* addr_table)
 {
   dissect_wccp2_router_identity_element(tvb,offset,pinfo,info_tree, addr_table);
   EAT(8);
@@ -1507,15 +1510,15 @@ dissect_wccp2r1_address_table_info(tvbuff_t *tvb, int offset, int length,
     switch (family) {
     case 1:
       /* IPv4 */
-      addr  =  tvb_ip_to_str(tvb, offset);
+      addr  =  tvb_ip_to_str(pinfo->pool, tvb, offset);
       if ((wccp_wccp_address_table->in_use == FALSE) &&
           (wccp_wccp_address_table->table_ipv4 != NULL) &&
           (i < wccp_wccp_address_table->table_length))
-        wccp_wccp_address_table->table_ipv4[i] = tvb_get_ntohl(tvb, offset);
+        wccp_wccp_address_table->table_ipv4[i] = tvb_get_ipv4(tvb, offset);
       break;
     case 2:
       /* IPv6 */
-      addr = tvb_ip6_to_str(tvb, offset);
+      addr = tvb_ip6_to_str(pinfo->pool, tvb, offset);
       if ((wccp_wccp_address_table->in_use == FALSE) &&
           (wccp_wccp_address_table->table_ipv6 != NULL) &&
           (i < wccp_wccp_address_table->table_length))
@@ -2377,7 +2380,6 @@ dissect_wccp2_info(tvbuff_t *tvb, int offset,
                    packet_info *pinfo, proto_tree *wccp_tree,
                    guint32 message_type)
 {
-  int length_remaining;
   guint16 type;
   guint16 item_length;
   proto_item *tf;
@@ -2420,7 +2422,7 @@ dissect_wccp2_info(tvbuff_t *tvb, int offset,
   */
   find_wccp_address_table(tvb,offset,pinfo,wccp_tree, &wccp_wccp_address_table);
 
-  while ((length_remaining = tvb_reported_length_remaining(tvb, offset)) > 0) {
+  while (tvb_reported_length_remaining(tvb, offset) > 0) {
     type = tvb_get_ntohs(tvb, offset);
     switch (type) {
 
@@ -2733,7 +2735,7 @@ dissect_wccp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
                                    hf_cache_ip, tvb, offset, 4,
                                    ipaddr,
                                    "Web Cache %d IP Address: %s", i,
-                                   tvb_ip_to_str(tvb, offset));
+                                   tvb_ip_to_str(pinfo->pool, tvb, offset));
         offset += 4;
       }
 
@@ -2825,7 +2827,7 @@ proto_register_wccp(void)
         NULL, HFILL }
     },
     { &hf_hash_flag_u,
-      { "Hash information", "wccp.hash_flag.u", FT_BOOLEAN, 32, TFS(&tfs_historical_current), 0x10000,
+      { "Hash information", "wccp.hash_flag.u", FT_BOOLEAN, 32, TFS(&tfs_historical_current), 0x00010000,
         NULL, HFILL }
     },
     { &hf_recvd_id,
@@ -2857,7 +2859,7 @@ proto_register_wccp(void)
         "The data for an unknown item type", HFILL }
     },
     { &hf_security_info_option,
-      { "Security Option", "wccp.security_info_option", FT_UINT16, BASE_DEC, VALS(security_option_vals), 0x0,
+      { "Security Option", "wccp.security_info_option", FT_UINT32, BASE_DEC, VALS(security_option_vals), 0x0,
         NULL, HFILL }
     },
     { &hf_security_info_md5_checksum,
@@ -3449,7 +3451,7 @@ proto_register_wccp(void)
         "The WCCP Address Table Address Length", HFILL }
     },
     { &hf_address_table_length,
-      { "Length", "wccp.address_table.length", FT_UINT16, BASE_DEC, NULL, 0x0,
+      { "Length", "wccp.address_table.length", FT_UINT32, BASE_DEC, NULL, 0x0,
         "The WCCP Address Table Length", HFILL }
     },
     { &hf_address_table_element,

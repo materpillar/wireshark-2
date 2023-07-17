@@ -1,4 +1,4 @@
--- 3GPP TS 38.455 V15.2.1 (2019-01-14)
+-- 3GPP TS 38.455 V17.4.0 (2023-03)
 --
 -- ASN1START
 -- **************************************************************
@@ -11,7 +11,7 @@ NRPPA-PDU-Descriptions {
 itu-t (0) identified-organization (4) etsi (0) mobileDomain (0)
 ngran-access (22) modules (3) nrppa (4) version1 (1) nrppa-PDU-Descriptions (0) }
 
-DEFINITIONS AUTOMATIC TAGS ::= 
+DEFINITIONS AUTOMATIC TAGS ::=
 
 BEGIN
 
@@ -39,7 +39,34 @@ FROM NRPPA-CommonDataTypes
 	E-CIDMeasurementTerminationCommand,
 	OTDOAInformationRequest,
 	OTDOAInformationResponse,
-	OTDOAInformationFailure
+	OTDOAInformationFailure,
+	AssistanceInformationControl,
+	AssistanceInformationFeedback,
+	PositioningInformationRequest,
+	PositioningInformationResponse,
+	PositioningInformationFailure,
+	PositioningInformationUpdate,
+	MeasurementRequest,
+	MeasurementResponse,
+	MeasurementFailure,
+	MeasurementReport,
+	MeasurementUpdate,
+	MeasurementAbort,
+	MeasurementFailureIndication,
+	TRPInformationRequest,
+	TRPInformationResponse,
+	TRPInformationFailure,
+	PositioningActivationRequest,
+	PositioningActivationResponse,
+	PositioningActivationFailure,
+	PositioningDeactivation,
+	PRSConfigurationRequest,
+	PRSConfigurationResponse,
+	PRSConfigurationFailure,
+	MeasurementPreconfigurationRequired,
+	MeasurementPreconfigurationConfirm,
+	MeasurementPreconfigurationRefuse,
+	MeasurementActivation
 
 
 FROM NRPPA-PDU-Contents
@@ -50,7 +77,23 @@ FROM NRPPA-PDU-Contents
 	id-e-CIDMeasurementFailureIndication,
 	id-e-CIDMeasurementReport,
 	id-e-CIDMeasurementTermination,
-	id-oTDOAInformationExchange
+	id-oTDOAInformationExchange,
+	id-assistanceInformationControl,
+	id-assistanceInformationFeedback,
+	id-positioningInformationExchange,
+	id-positioningInformationUpdate,
+	id-Measurement,
+	id-MeasurementReport,
+	id-MeasurementUpdate,
+	id-MeasurementAbort,
+	id-MeasurementFailureIndication,
+	id-tRPInformationExchange,
+	id-positioningActivation,
+	id-positioningDeactivation,
+	id-pRSConfigurationExchange,
+	id-measurementPreconfiguration,
+	id-measurementActivation
+
 
 
 FROM NRPPA-Constants;
@@ -125,7 +168,14 @@ NRPPA-ELEMENTARY-PROCEDURES NRPPA-ELEMENTARY-PROCEDURE ::= {
 
 NRPPA-ELEMENTARY-PROCEDURES-CLASS-1 NRPPA-ELEMENTARY-PROCEDURE ::= {
 	e-CIDMeasurementInitiation	|
-	oTDOAInformationExchange		,
+	oTDOAInformationExchange	|
+	positioningInformationExchange	|
+	measurement						|
+	tRPInformationExchange		|
+	positioningActivation		|
+	pRSConfigurationExchange	|
+	measurementPreconfiguration,
+
 	...
 }
 
@@ -133,8 +183,17 @@ NRPPA-ELEMENTARY-PROCEDURES-CLASS-2 NRPPA-ELEMENTARY-PROCEDURE ::= {
 	e-CIDMeasurementFailureIndication		|
 	e-CIDMeasurementReport					|
 	e-CIDMeasurementTermination				|
-	errorIndication						|
-	privateMessage							,
+	errorIndication							|
+	privateMessage							|
+	assistanceInformationControl			|
+	assistanceInformationFeedback 			|
+	positioningInformationUpdate			|
+	measurementReport						|
+	measurementUpdate						|
+	measurementAbort						|
+	measurementFailureIndication		|
+	positioningDeactivation		|
+	measurementActivation,
 	...
 }
 
@@ -179,6 +238,20 @@ oTDOAInformationExchange NRPPA-ELEMENTARY-PROCEDURE ::= {
 	CRITICALITY				reject
 }
 
+
+assistanceInformationControl NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		AssistanceInformationControl
+	PROCEDURE CODE			id-assistanceInformationControl
+	CRITICALITY				reject
+}
+
+assistanceInformationFeedback NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		AssistanceInformationFeedback
+	PROCEDURE CODE			id-assistanceInformationFeedback
+	CRITICALITY				reject
+}
+
+
 errorIndication NRPPA-ELEMENTARY-PROCEDURE ::= {
 	INITIATING MESSAGE		ErrorIndication
 	PROCEDURE CODE			id-errorIndication
@@ -191,5 +264,97 @@ privateMessage			NRPPA-ELEMENTARY-PROCEDURE ::= {
 	PROCEDURE CODE			id-privateMessage
 	CRITICALITY			ignore
 }
+
+
+positioningInformationExchange	NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		PositioningInformationRequest
+	SUCCESSFUL OUTCOME		PositioningInformationResponse
+	UNSUCCESSFUL OUTCOME	PositioningInformationFailure
+	PROCEDURE CODE			id-positioningInformationExchange
+	CRITICALITY				reject
+}
+
+positioningInformationUpdate	NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		PositioningInformationUpdate
+	PROCEDURE CODE			id-positioningInformationUpdate
+	CRITICALITY				ignore
+}
+
+measurement	NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MeasurementRequest
+	SUCCESSFUL OUTCOME		MeasurementResponse
+	UNSUCCESSFUL OUTCOME	MeasurementFailure
+	PROCEDURE CODE			id-Measurement
+	CRITICALITY				reject
+}
+
+measurementReport	NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MeasurementReport
+	PROCEDURE CODE			id-MeasurementReport
+	CRITICALITY				ignore
+}
+
+measurementUpdate	NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MeasurementUpdate
+	PROCEDURE CODE			id-MeasurementUpdate
+	CRITICALITY				ignore
+}
+
+measurementAbort	NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MeasurementAbort
+	PROCEDURE CODE			id-MeasurementAbort
+	CRITICALITY				ignore
+}
+
+measurementFailureIndication	NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MeasurementFailureIndication
+	PROCEDURE CODE			id-MeasurementFailureIndication
+	CRITICALITY				ignore
+}
+
+tRPInformationExchange	NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		TRPInformationRequest
+	SUCCESSFUL OUTCOME		TRPInformationResponse
+	UNSUCCESSFUL OUTCOME	TRPInformationFailure
+	PROCEDURE CODE			id-tRPInformationExchange
+	CRITICALITY				reject
+}
+
+positioningActivation NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		PositioningActivationRequest
+	SUCCESSFUL OUTCOME		PositioningActivationResponse
+	UNSUCCESSFUL OUTCOME	PositioningActivationFailure
+	PROCEDURE CODE			id-positioningActivation
+	CRITICALITY				reject
+}
+
+positioningDeactivation NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		PositioningDeactivation
+	PROCEDURE CODE			id-positioningDeactivation
+	CRITICALITY				ignore
+}
+
+pRSConfigurationExchange NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		PRSConfigurationRequest
+	SUCCESSFUL OUTCOME		PRSConfigurationResponse
+	UNSUCCESSFUL OUTCOME	PRSConfigurationFailure
+	PROCEDURE CODE			id-pRSConfigurationExchange
+	CRITICALITY				reject
+}
+
+measurementPreconfiguration NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MeasurementPreconfigurationRequired
+	SUCCESSFUL OUTCOME		MeasurementPreconfigurationConfirm
+	UNSUCCESSFUL OUTCOME		MeasurementPreconfigurationRefuse
+	PROCEDURE CODE			id-measurementPreconfiguration
+	CRITICALITY				reject
+}
+
+measurementActivation NRPPA-ELEMENTARY-PROCEDURE ::= {
+	INITIATING MESSAGE		MeasurementActivation
+	PROCEDURE CODE			id-measurementActivation
+	CRITICALITY				ignore
+}
+
 
 END

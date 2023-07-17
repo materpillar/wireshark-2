@@ -24,6 +24,7 @@ void proto_register_a21(void);
 void proto_reg_handoff_a21(void);
 
 #define A21_PORT 23272
+static dissector_handle_t a21_handle = NULL;
 static dissector_handle_t gcsna_handle = NULL;
 
 static int proto_a21 = -1;
@@ -313,7 +314,9 @@ static const value_string a21_band_class_values[] = {
     { 0, NULL }
 };
 
-value_string_ext a21_band_class_values_ext = VALUE_STRING_EXT_INIT(a21_band_class_values);
+#if 0
+static value_string_ext a21_band_class_values_ext = VALUE_STRING_EXT_INIT(a21_band_class_values);
+#endif
 
 static void
 dissect_a21_pilot_list(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, proto_item *item _U_, guint16 length _U_, guint8 message_type _U_)
@@ -1067,7 +1070,7 @@ void proto_register_a21(void)
 		  },
 		  { &hf_a21_service_option,
 			 {"Service Option", "a21.service_option",
-			  FT_UINT8, BASE_DEC, VALS(a21_service_option_vals), 0x7f,
+			  FT_UINT16, BASE_DEC, VALS(a21_service_option_vals), 0x7f,
 			  NULL, HFILL }
 		  },
 		  { &hf_a21_gcsna_status_reserved,
@@ -1122,7 +1125,7 @@ void proto_register_a21(void)
 		  },
 		  { &hf_a21_ch_rec_ch_num,
 		      { "Channel Number", "a21.ch_channel_number",
-		      FT_UINT16, BASE_DEC, NULL, 0x7ff,
+		      FT_UINT16, BASE_DEC, NULL, 0x07ff,
 		      NULL, HFILL }
 		  },
 
@@ -1252,13 +1255,12 @@ void proto_register_a21(void)
 	proto_register_subtree_array(ett_a21_array, array_length(ett_a21_array));
 	expert_a21 = expert_register_protocol(proto_a21);
 	expert_register_field_array(expert_a21, ei, array_length(ei));
+
+	a21_handle = register_dissector("a21", dissect_a21, proto_a21);
 }
 
 void proto_reg_handoff_a21(void)
 {
-	dissector_handle_t a21_handle;
-
-	a21_handle = create_dissector_handle(dissect_a21, proto_a21);
 	gcsna_handle = find_dissector_add_dependency("gcsna", proto_a21);
 	dissector_add_uint_with_preference("udp.port", A21_PORT, a21_handle);
 }

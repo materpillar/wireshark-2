@@ -26,6 +26,7 @@
 
 void proto_register_winsrepl(void);
 void proto_reg_handoff_winsrepl(void);
+static dissector_handle_t winsrepl_handle;
 
 static gboolean winsrepl_reassemble = TRUE;
 
@@ -309,7 +310,7 @@ dissect_winsrepl_wins_ip(tvbuff_t *winsrepl_tvb, _U_ packet_info *pinfo,
 	/* IP */
 	*addr = tvb_get_ipv4(winsrepl_tvb, winsrepl_offset);
 	proto_tree_add_ipv4(ip_tree, hf_winsrepl_ip_ip, winsrepl_tvb, winsrepl_offset, 4, *addr);
-	proto_item_append_text(ip_item, ": %s", tvb_ip_to_str(winsrepl_tvb, winsrepl_offset));
+	proto_item_append_text(ip_item, ": %s", tvb_ip_to_str(pinfo->pool, winsrepl_tvb, winsrepl_offset));
 	winsrepl_offset += 4;
 
 	return winsrepl_offset;
@@ -342,7 +343,7 @@ dissect_winsrepl_wins_address_list(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 							   winsrepl_offset, addr_list_tree,
 							   &ip, addr_list_tree, i);
 		set_address(&addr, AT_IPv4, 4, &ip);
-		addr_str = address_to_str(wmem_packet_scope(), &addr);
+		addr_str = address_to_str(pinfo->pool, &addr);
 		if (i == 0) {
 			proto_item_append_text(parent_item, ": %s", addr_str);
 			proto_item_append_text(addr_list_item, ": %s", addr_str);
@@ -442,7 +443,7 @@ dissect_winsrepl_wins_name(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 	case WREPL_NAME_TYPE_NORMAL_GROUP:
 		/* Single address */
 		proto_tree_add_item(name_tree, hf_winsrepl_ip_ip, winsrepl_tvb, winsrepl_offset, 4, ENC_BIG_ENDIAN);
-		proto_item_append_text(name_item, ": %s", tvb_ip_to_str(winsrepl_tvb, winsrepl_offset));
+		proto_item_append_text(name_item, ": %s", tvb_ip_to_str(pinfo->pool, winsrepl_tvb, winsrepl_offset));
 		winsrepl_offset += 4;
 		break;
 
@@ -851,6 +852,7 @@ proto_register_winsrepl(void)
 	proto_register_field_array(proto_winsrepl, hf, array_length(hf));
 	expert_winsrepl = expert_register_protocol(proto_winsrepl);
 	expert_register_field_array(expert_winsrepl, ei, array_length(ei));
+	winsrepl_handle = register_dissector("winsrepl", dissect_winsrepl, proto_winsrepl);
 
 	winsrepl_module = prefs_register_protocol(proto_winsrepl, NULL);
 	prefs_register_bool_preference(winsrepl_module, "reassemble",
@@ -863,9 +865,6 @@ proto_register_winsrepl(void)
 void
 proto_reg_handoff_winsrepl(void)
 {
-	dissector_handle_t winsrepl_handle;
-
-	winsrepl_handle = create_dissector_handle(dissect_winsrepl, proto_winsrepl);
 	dissector_add_uint_with_preference("tcp.port", WINS_REPLICATION_PORT, winsrepl_handle);
 }
 

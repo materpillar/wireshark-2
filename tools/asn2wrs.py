@@ -326,6 +326,19 @@ StringTypes = ['Numeric', 'Printable', 'IA5', 'BMP', 'Universal', 'UTF8',
                'Teletex', 'T61', 'Videotex', 'Graphic', 'ISO646', 'Visible',
                'General']
 
+# Effective permitted-alphabet constraints are PER-visible only
+# for the known-multiplier character string types (X.691 27.1)
+#
+# XXX: This should include BMPString (UCS2) and UniversalString (UCS4),
+# but asn2wrs only suports the RestrictedCharacterStringValue
+# notation of "cstring", but not that of "CharacterStringList",
+# "Quadruple", or "Tuple" (See X.680 41.8), and packet-per.c does
+# not support members of the permitted-alphabet being outside the
+# ASCII range. We don't currently have any ASN.1 modules that need it,
+# anyway.
+KnownMultiplierStringTypes = ('NumericString', 'PrintableString', 'IA5String',
+                              'ISO646String', 'VisibleString')
+
 for s in StringTypes:
     reserved_words[s + 'String'] = s + 'String'
 
@@ -713,7 +726,7 @@ class EthCtx:
             else:
                 attr.update(self.type[t]['attr'])
                 attr.update(self.eth_type[self.type[t]['ethname']]['attr'])
-        if attr['STRINGS'].startswith('VALS64('):
+        if attr['STRINGS'].startswith('VALS64(') and '|BASE_VAL64_STRING' not in attr['DISPLAY']:
             attr['DISPLAY'] += '|BASE_VAL64_STRING'
         #print " ", attr
         return attr
@@ -802,7 +815,7 @@ class EthCtx:
 
     #--- eth_reg_assign ---------------------------------------------------------
     def eth_reg_assign(self, ident, val, virt=False):
-        #print "eth_reg_assign(ident='%s')" % (ident)
+        #print("eth_reg_assign(ident='%s')" % (ident), 'module=', self.Module())
         if ident in self.assign:
             raise DuplicateError("assignment", ident)
         self.assign[ident] = { 'val' : val , 'virt' : virt }
@@ -921,14 +934,15 @@ class EthCtx:
         self.type_dep[type].append(dep)
 
     #--- eth_reg_type -----------------------------------------------------------
-    def eth_reg_type(self, ident, val):
-        #print "eth_reg_type(ident='%s', type='%s')" % (ident, val.type)
+    def eth_reg_type(self, ident, val, mod=None):
+        #print("eth_reg_type(ident='%s', type='%s')" % (ident, val.type))
         if ident in self.type:
             if self.type[ident]['import'] and (self.type[ident]['import'] == self.Module()) :
                 # replace imported type
                 del self.type[ident]
                 self.type_imp.remove(ident)
             else:
+                #print('DuplicateError: import=', self.type[ident]['import'], 'module=', self.Module())
                 raise DuplicateError("type", ident)
         val.ident = ident
         self.type[ident] = { 'val' : val, 'import' : None }
@@ -938,11 +952,18 @@ class EthCtx:
             self.type[ident]['tname'] = val.eth_tname()
         else:
             self.type[ident]['tname'] = asn2c(ident)
+        if mod :
+            mident = "$%s$%s" % (mod, ident)
+        else:
+            mident = None
         self.type[ident]['export'] = self.conform.use_item('EXPORTS', ident)
         self.type[ident]['enum'] = self.conform.use_item('MAKE_ENUM', ident)
         self.type[ident]['vals_ext'] = self.conform.use_item('USE_VALS_EXT', ident)
         self.type[ident]['user_def'] = self.conform.use_item('USER_DEFINED', ident)
-        self.type[ident]['no_emit'] = self.conform.use_item('NO_EMIT', ident)
+        if mident and self.conform.check_item('NO_EMIT', mident) :
+            self.type[ident]['no_emit'] = self.conform.use_item('NO_EMIT', mident)
+        else:
+            self.type[ident]['no_emit'] = self.conform.use_item('NO_EMIT', ident)
         self.type[ident]['tname'] = self.conform.use_item('TYPE_RENAME', ident, val_dflt=self.type[ident]['tname'])
         self.type[ident]['ethname'] = ''
         if (val.type == 'Type_Ref') or (val.type == 'TaggedType') or (val.type == 'SelectionType') :
@@ -2974,22 +2995,22 @@ class EthOut:
         print("\n")
 
     #--- make_single_file -------------------------------------------------------
-    def make_single_file(self):
+    def make_single_file(self, suppress_line):
         if (not self.single_file): return
         in_nm = self.single_file + '.c'
         out_nm = os.path.join(self.outdir, self.output_fname(''))
-        self.do_include(out_nm, in_nm)
+        self.do_include(out_nm, in_nm, suppress_line)
         in_nm = self.single_file + '.h'
         if (os.path.exists(in_nm)):
             out_nm = os.path.join(self.outdir, self.output_fname('', ext='h'))
-            self.do_include(out_nm, in_nm)
+            self.do_include(out_nm, in_nm, suppress_line)
         if (not self.keep):
             for fn in self.created_files_ord:
                 if not self.created_files[fn]:
                     os.unlink(fn)
 
     #--- do_include -------------------------------------------------------
-    def do_include(self, out_nm, in_nm):
+    def do_include(self, out_nm, in_nm, suppress_line):
         def check_file(fn, fnlist):
             fnfull = os.path.normcase(os.path.abspath(fn))
             if (fnfull in fnlist and os.path.exists(fnfull)):
@@ -2998,9 +3019,10 @@ class EthOut:
         fin = open(in_nm, "r")
         fout = open(out_nm, "w")
         fout.write(self.fhdr(out_nm))
-        fout.write('/* Input file: ' + os.path.basename(in_nm) +' */\n')
-        fout.write('\n')
-        fout.write('#line %u "%s"\n' % (1, rel_dissector_path(in_nm)))
+        if (not suppress_line):
+            fout.write('/* Input file: ' + os.path.basename(in_nm) +' */\n')
+            fout.write('\n')
+            fout.write('#line %u "%s"\n' % (1, rel_dissector_path(in_nm)))
 
         include = re.compile(r'^\s*#\s*include\s+[<"](?P<fname>[^>"]+)[>"]', re.IGNORECASE)
 
@@ -3020,14 +3042,16 @@ class EthOut:
                 if (not ifile):
                     ifile = check_file(result.group('fname'), self.created_files)
             if (ifile):
-                fout.write('\n')
-                fout.write('/*--- Included file: ' + ifile + ' ---*/\n')
-                fout.write('#line %u "%s"\n' % (1, rel_dissector_path(ifile)))
+                if (not suppress_line):
+                    fout.write('\n')
+                    fout.write('/*--- Included file: ' + ifile + ' ---*/\n')
+                    fout.write('#line %u "%s"\n' % (1, rel_dissector_path(ifile)))
                 finc = open(ifile, "r")
                 fout.write(finc.read())
-                fout.write('\n')
-                fout.write('/*--- End of included file: ' + ifile + ' ---*/\n')
-                fout.write('#line %u "%s"\n' % (cont_linenum+1, rel_dissector_path(in_nm)) )
+                if (not suppress_line):
+                    fout.write('\n')
+                    fout.write('/*--- End of included file: ' + ifile + ' ---*/\n')
+                    fout.write('#line %u "%s"\n' % (cont_linenum+1, rel_dissector_path(in_nm)) )
                 finc.close()
             else:
                 fout.write(line)
@@ -3286,7 +3310,7 @@ class Type (Node):
             else:
                 trnm = self.val
         else:
-            ectx.eth_reg_type(nm, self)
+            ectx.eth_reg_type(nm, self, mod = ectx.Module())
             trnm = nm
         if ectx.conform.check_item('VIRTUAL_ASSGN', nm):
             vnm = ectx.conform.use_item('VIRTUAL_ASSGN', nm)
@@ -3368,8 +3392,8 @@ class Type (Node):
     def eth_type_default_table(self, ectx, tname):
         return ''
 
-    def eth_type_default_body(self, ectx):
-        print("#Unhandled  eth_type_default_body() in %s" % (self.type))
+    def eth_type_default_body(self, ectx, tname):
+        print("#Unhandled  eth_type_default_body('%s') in %s" % (tname, self.type))
         print(self.str_depth(1))
         return ''
 
@@ -3655,7 +3679,8 @@ class Constraint (Node):
     def Needs64b(self, ectx):
         (minv, maxv, ext) = self.GetValue(ectx)
         if ((str(minv).isdigit() or ((str(minv)[0] == "-") and str(minv)[1:].isdigit())) \
-        and str(maxv).isdigit() and (abs(int(maxv) - int(minv)) >= 2**32)) \
+        and (str(maxv).isdigit() or ((str(maxv)[0] == "-") and str(maxv)[1:].isdigit())) \
+        and ((abs(int(maxv) - int(minv)) >= 2**32) or (int(minv) < -2**31) or (int(maxv) >= 2**32))) \
         or (maxv == 'MAX') or (minv == 'MIN'):
             return True
         return False
@@ -5140,7 +5165,11 @@ class RestrictedCharacterStringType (CharacterStringType):
                                         par=(('%(IMPLICIT_TAG)s', '%(STRING_TAG)s'),
                                              ('%(ACTX)s', '%(TREE)s', '%(TVB)s', '%(OFFSET)s', '%(HF_INDEX)s'),
                                              ('%(VAL_PTR)s',),))
-        elif (ectx.Per() and self.HasPermAlph()):
+        elif (ectx.Per() and self.HasPermAlph() and self.eth_tsname() in KnownMultiplierStringTypes):
+            # XXX: If there is a permitted alphabet but it is extensible,
+            # then the permitted-alphabet is not PER-visible and should be
+            # ignored. (X.691 9.3.10, 9.3.18) We don't handle extensible
+            # permitted-alphabets.
             body = ectx.eth_fn_call('dissect_%(ER)s_restricted_character_string', ret='offset',
                                     par=(('%(TVB)s', '%(OFFSET)s', '%(ACTX)s', '%(TREE)s', '%(HF_INDEX)s'),
                                          ('%(MIN_VAL)s', '%(MAX_VAL)s', '%(EXT)s', '%(ALPHABET)s', '%(ALPHABET_LEN)s'),
@@ -5152,7 +5181,13 @@ class RestrictedCharacterStringType (CharacterStringType):
             elif (self.eth_tsname() == 'GeneralizedTime' or self.eth_tsname() == 'UTCTime'):
                 body = ectx.eth_fn_call('dissect_%(ER)s_VisibleString', ret='offset',
                                         par=(('%(TVB)s', '%(OFFSET)s', '%(ACTX)s', '%(TREE)s', '%(HF_INDEX)s'),
-                                             ('%(MIN_VAL)s', '%(MAX_VAL)s', '%(EXT)s',),))
+                                             ('%(MIN_VAL)s', '%(MAX_VAL)s', '%(EXT)s'),
+                                             ('%(VAL_PTR)s',),))
+            elif (self.eth_tsname() in KnownMultiplierStringTypes):
+                body = ectx.eth_fn_call('dissect_%(ER)s_%(STRING_TYPE)s', ret='offset',
+                                        par=(('%(TVB)s', '%(OFFSET)s', '%(ACTX)s', '%(TREE)s', '%(HF_INDEX)s'),
+                                             ('%(MIN_VAL)s', '%(MAX_VAL)s', '%(EXT)s'),
+                                             ('%(VAL_PTR)s',),))
             else:
                 body = ectx.eth_fn_call('dissect_%(ER)s_%(STRING_TYPE)s', ret='offset',
                                         par=(('%(TVB)s', '%(OFFSET)s', '%(ACTX)s', '%(TREE)s', '%(HF_INDEX)s'),
@@ -5231,6 +5266,12 @@ class UnrestrictedCharacterStringType (CharacterStringType):
 class GeneralizedTime (RestrictedCharacterStringType):
     def eth_tsname(self):
         return 'GeneralizedTime'
+
+    def eth_ftype(self, ectx):
+        if (ectx.Ber()):
+            return ('FT_ABSOLUTE_TIME', 'ABSOLUTE_TIME_LOCAL')
+        else:
+            return ('FT_STRING', 'BASE_NONE')
 
     def eth_type_default_body(self, ectx, tname):
         if (ectx.Ber()):
@@ -7987,6 +8028,8 @@ def eth_main():
             ectx.srcdir = relpath(a)
         if o in ("-C",):
             ectx.constraints_check = True
+        if o in ("-L",):
+            ectx.suppress_line = True
         if o in ("-X",):
             warnings.warn("Command line option -X is obsolete and can be removed")
         if o in ("-T",):
@@ -8070,7 +8113,7 @@ def eth_main():
 
     if ectx.dbg('o'):
         ectx.output.dbg_print()
-    ectx.output.make_single_file()
+    ectx.output.make_single_file(ectx.suppress_line)
 
 
 # Python compiler

@@ -158,6 +158,8 @@ static expert_field ei_sigcomp_execution_of_this_instruction_is_not_implemented 
 
 static dissector_handle_t sip_handle;
 static dissector_handle_t sigcomp_handle;
+static dissector_handle_t sigcomp_tcp_handle;
+
 
 /* set the tcp ports */
 #define SIGCOMP_TCP_PORT_RANGE "5555,6666" /* Not IANA registered */
@@ -982,9 +984,9 @@ static int udvm_state_access(tvbuff_t *tvb, proto_tree *tree,guint8 *buff,guint1
     proto_tree_add_string(tree,hf_id, tvb, 0, 0, partial_state_str);
 
     /* Debug
-     * g_warning("State Access: partial state =%s",partial_state_str);
-     * g_warning("g_hash_table_lookup = 0x%x",state_buff);
-     * g_warning("State Access: partial state =%s",partial_state_str);
+     * ws_warning("State Access: partial state =%s",partial_state_str);
+     * ws_warning("g_hash_table_lookup = 0x%x",state_buff);
+     * ws_warning("State Access: partial state =%s",partial_state_str);
      */
     state_buff = (guint8 *)g_hash_table_lookup(state_buffer_table, partial_state_str);
     if ( state_buff == NULL ) {
@@ -1068,12 +1070,12 @@ static int udvm_state_access(tvbuff_t *tvb, proto_tree *tree,guint8 *buff,guint1
     byte_copy_left = buff[64] << 8;
     byte_copy_left = byte_copy_left | buff[65];
     /* debug
-     *g_warning(" state_begin %u state_address %u",state_begin , *state_address);
+     *ws_warning(" state_begin %u state_address %u",state_begin , *state_address);
      */
     while ( (gint32) n < (state_begin + *state_length + 8) && n < UDVM_MEMORY_SIZE ) {
         buff[k] = state_buff[n];
         /*  debug
-            g_warning(" Loading 0x%x at address %u",buff[k] , k);
+            ws_warning(" Loading 0x%x at address %u",buff[k] , k);
         */
         k = ( k + 1 ) & 0xffff;
         if ( k == byte_copy_right ) {
@@ -1096,7 +1098,7 @@ static void udvm_state_create(guint8 *state_buff,guint8 *state_identifier,guint1
     gchar *dummy_buff;
     /*
      * Debug
-     g_warning("Received items of state,state_length_buff[0]= %u, state_length_buff[1]= %u",
+     ws_warning("Received items of state,state_length_buff[0]= %u, state_length_buff[1]= %u",
      state_length_buff[0],state_length_buff[1]);
 
     */
@@ -1138,7 +1140,7 @@ void udvm_state_free(guint8 buff[],guint16 p_id_start,guint16 p_id_length) {
     partial_state_str = bytes_to_str(NULL, partial_state, p_id_length);
     /* TODO Implement a state create counter before actually freeing states
      * Hmm is it a good idea to free the buffer at all?
-     * g_warning("State-free on  %s ",partial_state_str);
+     * ws_warning("State-free on  %s ",partial_state_str);
      */
     dummy_buff = g_hash_table_lookup(state_buffer_table, partial_state_str);
     if ( dummy_buff != NULL ) {
@@ -1437,7 +1439,7 @@ decode_udvm_multitype_operand(guint8 *buff,guint operand_address, guint16 *value
          */
         operand =  buff[operand_address];
         /* debug
-         *g_warning("Reading 0x%x From address %u",operand,offset);
+         *ws_warning("Reading 0x%x From address %u",operand,offset);
          */
         *value = operand;
         offset ++;
@@ -1508,7 +1510,7 @@ decode_udvm_multitype_operand(guint8 *buff,guint operand_address, guint16 *value
                         temp_data16 = buff[(operand_address + 1) & 0xffff] << 8;
                         temp_data16 = temp_data16 | buff[(operand_address + 2) & 0xffff];
                         /*  debug
-                         * g_warning("Reading 0x%x From address %u",temp_data16,operand_address);
+                         * ws_warning("Reading 0x%x From address %u",temp_data16,operand_address);
                          */
                         if ( (bytecode & 0x01) == 1 ) {
                             memmory_addr = temp_data16;
@@ -1545,7 +1547,7 @@ decode_udvm_multitype_operand(guint8 *buff,guint operand_address, guint16 *value
             temp_data16 = temp_data16 | buff[(memmory_addr+1) & 0xffff];
             *value = temp_data16;
             /*  debug
-             * g_warning("Reading 0x%x From address %u",temp_data16,memmory_addr);
+             * ws_warning("Reading 0x%x From address %u",temp_data16,memmory_addr);
              */
             offset = offset +2;
         }
@@ -6863,6 +6865,7 @@ proto_register_sigcomp(void)
     proto_raw_sigcomp = proto_register_protocol("Decompressed SigComp message as raw text", "Raw_SigComp", "raw_sigcomp");
 
     sigcomp_handle = register_dissector("sigcomp", dissect_sigcomp, proto_sigcomp);
+    sigcomp_tcp_handle = register_dissector("sigcomp_tcp", dissect_sigcomp_tcp,proto_sigcomp);
 
 /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_sigcomp, hf, array_length(hf));
@@ -6910,9 +6913,6 @@ proto_register_sigcomp(void)
 void
 proto_reg_handoff_sigcomp(void)
 {
-    dissector_handle_t sigcomp_tcp_handle;
-
-    sigcomp_tcp_handle = create_dissector_handle(dissect_sigcomp_tcp,proto_sigcomp);
     sip_handle = find_dissector_add_dependency("sip",proto_sigcomp);
     dissector_add_uint_range_with_preference("tcp.port", SIGCOMP_TCP_PORT_RANGE, sigcomp_tcp_handle);
     dissector_add_uint_range_with_preference("udp.port", SIGCOMP_TCP_PORT_RANGE, sigcomp_handle);

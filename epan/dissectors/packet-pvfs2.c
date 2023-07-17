@@ -7,6 +7,9 @@
  * By Gerald Combs <gerald@wireshark.org>
  * Copyright 1998 Gerald Combs
  *
+ * Dissector for Parallel Virtual File System (PVFS) version 2.
+ * https://web.archive.org/web/20160701052501/http://www.pvfs.org/
+ *
  * Copied from packet-smb.c and others
  *
  * TODO
@@ -25,6 +28,8 @@
 #include <epan/prefs.h>
 #include <epan/strutil.h>
 #include <epan/expert.h>
+#include <epan/charsets.h>
+#include <wsutil/ws_roundup.h>
 #include "packet-tcp.h"
 
 #define TCP_PORT_PVFS2 3334 /* Not IANA registered */
@@ -40,6 +45,8 @@ static gboolean pvfs_desegment = TRUE;
 /* Forward declaration we need below */
 void proto_register_pvfs(void);
 void proto_reg_handoff_pvfs(void);
+
+static dissector_handle_t pvfs_handle;
 
 /* Initialize the protocol and registered fields */
 static int proto_pvfs = -1;
@@ -710,7 +717,7 @@ dissect_pvfs2_attrmask(tvbuff_t *tvb, proto_tree *tree, int offset,
 
 	for (i = 0; i < 32; i++)
 	{
-		if (attrmask & (1 << i))
+		if (attrmask & (1u << i))
 			proto_tree_add_uint(attrtree, hf_pvfs_attr, tvb, offset, 4, i);
 	}
 
@@ -756,13 +763,10 @@ dissect_pvfs2_ds_type(tvbuff_t *tvb, proto_tree *tree, int offset,
 	return offset;
 }
 
-#define roundup4(x) (((x) + 3) & ~3)
-#define roundup8(x) (((x) + 7) & ~7)
-
 static int
 dissect_pvfs_opaque_data(tvbuff_t *tvb, int offset,
 	proto_tree *tree,
-	packet_info *pinfo _U_,
+	packet_info *pinfo,
 	int hfindex,
 	gboolean fixed_length, guint32 length,
 	gboolean string_data, const char **string_buffer_ret)
@@ -813,9 +817,9 @@ dissect_pvfs_opaque_data(tvbuff_t *tvb, int offset,
 	 */
 
 	if (!string_data)
-		string_length_full = roundup4(string_length);
+		string_length_full = WS_ROUNDUP_4(string_length);
 	else
-		string_length_full = roundup8(4 + string_length);
+		string_length_full = WS_ROUNDUP_8(4 + string_length);
 
 	if (string_length_captured < string_length) {
 		/* truncated string */
@@ -860,36 +864,30 @@ dissect_pvfs_opaque_data(tvbuff_t *tvb, int offset,
 	}
 
 	if (string_data) {
-		char *tmpstr;
-
-		tmpstr = (char *) tvb_get_string_enc(wmem_packet_scope(), tvb, data_offset,
-				string_length_copy, ENC_ASCII);
-
-		string_buffer = (char *)memcpy(wmem_alloc(wmem_packet_scope(), string_length_copy+1), tmpstr, string_length_copy);
+		string_buffer = tvb_get_string_enc(pinfo->pool, tvb, data_offset, string_length_copy, ENC_ASCII);
 	} else {
 		string_buffer = (char *) tvb_memcpy(tvb,
-				wmem_alloc(wmem_packet_scope(), string_length_copy+1), data_offset, string_length_copy);
+				wmem_alloc(pinfo->pool, string_length_copy+1), data_offset, string_length_copy);
+		string_buffer[string_length_copy] = '\0';
 	}
-
-	string_buffer[string_length_copy] = '\0';
 
 	/* calculate a nice printable string */
 	if (string_length) {
-		if (string_length != string_length_copy) {
+		if (string_length != strlen(string_buffer)) {
 			if (string_data) {
 				char *formatted;
 				size_t string_buffer_size = 0;
 				char *string_buffer_temp;
 
-				formatted = format_text(wmem_packet_scope(), (guint8 *)string_buffer,
+				formatted = format_text(pinfo->pool, (guint8 *)string_buffer,
 						(int)strlen(string_buffer));
 
 				string_buffer_size = strlen(formatted) + 12 + 1;
 
 				/* alloc maximum data area */
-				string_buffer_temp = (char*) wmem_alloc(wmem_packet_scope(), string_buffer_size);
+				string_buffer_temp = (char*) wmem_alloc(pinfo->pool, string_buffer_size);
 				/* copy over the data */
-				g_snprintf(string_buffer_temp, (gulong)string_buffer_size,
+				snprintf(string_buffer_temp, string_buffer_size,
 						"%s<TRUNCATED>", formatted);
 				/* append <TRUNCATED> */
 				/* This way, we get the TRUNCATED even
@@ -905,7 +903,7 @@ dissect_pvfs_opaque_data(tvbuff_t *tvb, int offset,
 			}
 		} else {
 			if (string_data) {
-				string_buffer_print = format_text(wmem_packet_scope(), (guint8 *) string_buffer,
+				string_buffer_print = format_text(pinfo->pool, (guint8 *) string_buffer,
 								 (int)strlen(string_buffer));
 			} else {
 				string_buffer_print="<DATA>";
@@ -975,9 +973,9 @@ dissect_pvfs_opaque_data(tvbuff_t *tvb, int offset,
 
 static int
 dissect_pvfs_string(tvbuff_t *tvb, proto_tree *tree, int hfindex,
-		int offset, const char **string_buffer_ret)
+		int offset, packet_info *pinfo, const char **string_buffer_ret)
 {
-	return dissect_pvfs_opaque_data(tvb, offset, tree, NULL, hfindex,
+	return dissect_pvfs_opaque_data(tvb, offset, tree, pinfo, hfindex,
 			FALSE, 0, TRUE, string_buffer_ret);
 }
 
@@ -1132,7 +1130,8 @@ int dissect_pvfs_uint64(tvbuff_t *tvb, proto_tree *tree, int offset,
 #define PVFS_DIST_SIMPLE_STRIPE_NAME_SIZE 14
 
 static int
-dissect_pvfs_distribution(tvbuff_t *tvb, proto_tree *tree, int offset)
+dissect_pvfs_distribution(tvbuff_t *tvb, proto_tree *tree, int offset,
+		packet_info *pinfo)
 {
 	proto_item *dist_item;
 	proto_tree *dist_tree;
@@ -1145,10 +1144,10 @@ dissect_pvfs_distribution(tvbuff_t *tvb, proto_tree *tree, int offset)
 	distlen = tvb_get_letohl(tvb, offset);
 
 	/* Get distribution name */
-	tmpstr = (char *) tvb_get_string_enc(wmem_packet_scope(), tvb, offset + 4, distlen, ENC_ASCII);
+	tmpstr = (char *) tvb_get_string_enc(pinfo->pool, tvb, offset + 4, distlen, ENC_ASCII);
 
 	/* 'distlen' does not include the NULL terminator */
-	total_len = roundup8(4 + distlen + 1);
+	total_len = WS_ROUNDUP_8(4 + distlen + 1);
 
 	if (((distlen + 1) == PVFS_DIST_SIMPLE_STRIPE_NAME_SIZE) &&
 			(g_ascii_strncasecmp(tmpstr, PVFS_DIST_SIMPLE_STRIPE_NAME,
@@ -1166,7 +1165,7 @@ dissect_pvfs_distribution(tvbuff_t *tvb, proto_tree *tree, int offset)
 
 	/* io_dist */
 	offset = dissect_pvfs_string(tvb, dist_tree, hf_pvfs_io_dist, offset,
-			NULL);
+			pinfo, NULL);
 
 	/* TODO: only one distribution type is currently supported */
 	if (issimplestripe)
@@ -1240,7 +1239,7 @@ dissect_pvfs_object_attr(tvbuff_t *tvb, proto_tree *tree, int offset,
 
 	if (attrmask & PVFS_ATTR_META_DIST)
 	{
-		offset = dissect_pvfs_distribution(tvb, attr_tree, offset);
+		offset = dissect_pvfs_distribution(tvb, attr_tree, offset, pinfo);
 
 		offset = dissect_pvfs_meta_attr_dfiles(tvb, attr_tree, offset, pinfo);
 	}
@@ -1269,7 +1268,7 @@ dissect_pvfs_object_attr(tvbuff_t *tvb, proto_tree *tree, int offset,
 
 					/* target_path */
 					offset = dissect_pvfs_string(tvb, attr_tree, hf_pvfs_path,
-							offset, NULL);
+							offset, pinfo, NULL);
 				}
 				else
 				{
@@ -1477,7 +1476,7 @@ dissect_pvfs2_io_request(tvbuff_t *tvb, proto_tree *tree, int offset,
 	offset += 4;
 
 	/* Distribution */
-	offset = dissect_pvfs_distribution(tvb, tree, offset);
+	offset = dissect_pvfs_distribution(tvb, tree, offset, pinfo);
 
 	proto_tree_add_item(tree, hf_pvfs_numreq, tvb, offset, 4, ENC_LITTLE_ENDIAN);
 	offset += 4;
@@ -1540,7 +1539,7 @@ dissect_pvfs2_lookup_path_request(tvbuff_t *tvb, proto_tree *tree,
 		int offset, packet_info *pinfo)
 {
 	/* Path */
-	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, NULL);
+	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, pinfo, NULL);
 
 	/* fs_id */
 	offset = dissect_pvfs_fs_id(tvb, tree, offset);
@@ -1561,7 +1560,7 @@ dissect_pvfs2_crdirent_request(tvbuff_t *tvb, proto_tree *tree, int offset,
 		packet_info *pinfo)
 {
 	/* Filename */
-	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, NULL);
+	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, pinfo, NULL);
 
 	offset = dissect_pvfs_fh(tvb, offset, pinfo, tree, "file handle", NULL);
 
@@ -1594,7 +1593,7 @@ dissect_pvfs2_rmdirent_request(tvbuff_t *tvb, proto_tree *tree, int offset,
 		packet_info *pinfo)
 {
 	/* path */
-	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, NULL);
+	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, pinfo, NULL);
 
 	/* handle */
 	offset = dissect_pvfs_fh(tvb, offset, pinfo, tree, "handle", NULL);
@@ -1624,7 +1623,7 @@ dissect_pvfs2_chdirent_request(tvbuff_t *tvb, proto_tree *tree, int offset,
 		packet_info *pinfo)
 {
 	/* path */
-	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, NULL);
+	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, pinfo, NULL);
 
 	/* New directory entry handle */
 	offset = dissect_pvfs_fh(tvb, offset, pinfo, tree, "new directory handle",
@@ -1847,7 +1846,7 @@ dissect_pvfs2_mgmt_remove_dirent_request(tvbuff_t *tvb,
 	offset += 4;
 
 	/* entry */
-	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, NULL);
+	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, pinfo, NULL);
 
 	return offset;
 }
@@ -1867,22 +1866,22 @@ dissect_pvfs2_mgmt_get_dirdata_handle_request(tvbuff_t *tvb,
 
 /* TODO: untested/incomplete */
 static int
-dissect_pvfs_ds_keyval(tvbuff_t *tvb, proto_tree *tree, int offset)
+dissect_pvfs_ds_keyval(tvbuff_t *tvb, proto_tree *tree, int offset, packet_info *pinfo)
 {
 	/* attribute key */
 	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_attribute_key, offset,
-			NULL);
+			pinfo, NULL);
 
 	/* attribute value */
 	offset = dissect_pvfs_string(tvb, tree, hf_pvfs_attribute_value, offset,
-			NULL);
+			pinfo, NULL);
 
 	return offset;
 }
 
 /* TODO: incomplete/untested */
 static int
-dissect_ds_keyval_array(tvbuff_t *tvb, proto_tree *tree, int offset)
+dissect_ds_keyval_array(tvbuff_t *tvb, proto_tree *tree, int offset, packet_info *pinfo)
 {
 	guint32 nKey, i;
 
@@ -1891,7 +1890,7 @@ dissect_ds_keyval_array(tvbuff_t *tvb, proto_tree *tree, int offset)
 	offset += 4;
 
 	for (i = 0; i < nKey; i++)
-		offset = dissect_pvfs_ds_keyval(tvb, tree, offset);
+		offset = dissect_pvfs_ds_keyval(tvb, tree, offset, pinfo);
 
 	return offset;
 }
@@ -1909,7 +1908,7 @@ dissect_pvfs2_geteattr_request(tvbuff_t *tvb, proto_tree *tree,
 
 	offset += 4;
 
-	offset = dissect_ds_keyval_array(tvb, tree, offset);
+	offset = dissect_ds_keyval_array(tvb, tree, offset, pinfo);
 
 	return offset;
 }
@@ -1927,7 +1926,7 @@ dissect_pvfs2_seteattr_request(tvbuff_t *tvb, proto_tree *tree,
 
 	offset += 4;
 
-	offset = dissect_ds_keyval_array(tvb, tree, offset);
+	offset = dissect_ds_keyval_array(tvb, tree, offset, pinfo);
 
 	return offset;
 }
@@ -1944,7 +1943,7 @@ dissect_pvfs2_deleattr_request(tvbuff_t *tvb, proto_tree *tree,
 	offset = dissect_pvfs_fs_id(tvb, tree, offset);
 
 	/* key */
-	offset = dissect_pvfs_ds_keyval(tvb, tree, offset);
+	offset = dissect_pvfs_ds_keyval(tvb, tree, offset, pinfo);
 
 	return offset;
 }
@@ -1952,7 +1951,7 @@ dissect_pvfs2_deleattr_request(tvbuff_t *tvb, proto_tree *tree,
 static void
 pvfc_fmt_release_num(gchar *result, guint32 release_nr)
 {
-	g_snprintf( result, ITEM_LABEL_LENGTH, "%d (%d.%d.%d)",
+	snprintf( result, ITEM_LABEL_LENGTH, "%d (%d.%d.%d)",
 			release_nr,
 			release_nr / 10000,
 			(release_nr % 10000) / 100,
@@ -2262,7 +2261,7 @@ dissect_pvfs2_readdir_response(tvbuff_t *tvb, proto_tree *tree, int offset,
 
 	for (nCount = 0; nCount < dirent_count; nCount++)
 	{
-		offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, NULL);
+		offset = dissect_pvfs_string(tvb, tree, hf_pvfs_path, offset, pinfo, NULL);
 		offset = dissect_pvfs_fh(tvb, offset, pinfo, tree, "handle", NULL);
 	}
 
@@ -2338,9 +2337,9 @@ dissect_pvfs2_getconfig_response(tvbuff_t *tvb, proto_tree *parent_tree,
 		guint32 entry_length = 0, tmp_entry_length = 0;
 		guint32 bufsiz = sizeof(entry);
 
-		while ((*ptr != '\n') && (*ptr != '\0') &&
-				(bytes_processed < total_config_bytes) &&
-				(entry_length < bufsiz))
+		while ((bytes_processed < total_config_bytes) &&
+				(entry_length < bufsiz) &&
+				(*ptr != '\n') && (*ptr != '\0'))
 		{
 			*pentry++ = *ptr++;
 
@@ -2368,8 +2367,8 @@ dissect_pvfs2_getconfig_response(tvbuff_t *tvb, proto_tree *parent_tree,
 
 		*pentry= '\0';
 
-		tmp_entry = entry;
-		tmp_entry_length = entry_length;
+		tmp_entry = get_ascii_string(pinfo->pool, entry, entry_length);
+		tmp_entry_length = (guint32)strlen(tmp_entry);
 
 		/* Remove all whitespace from front of entry */
 		while ((tmp_entry_length > 0) && (!g_ascii_isalnum(*tmp_entry)) &&
@@ -2697,7 +2696,7 @@ dissect_pvfs2_geteattr_response(tvbuff_t *tvb, proto_tree *tree, int offset,
 	offset += 4;
 
 	/* Dissect nKey & ds_keyval array */
-	offset = dissect_ds_keyval_array(tvb, tree, offset);
+	offset = dissect_ds_keyval_array(tvb, tree, offset, pinfo);
 
 	return offset;
 }
@@ -3576,6 +3575,7 @@ proto_register_pvfs(void)
 	/* Register the protocol name and description */
 	proto_pvfs = proto_register_protocol("Parallel Virtual File System",
 			"PVFS", "pvfs");
+	pvfs_handle = register_dissector("pvfs", dissect_pvfs_heur, proto_pvfs);
 
 	/*
 	 * Required function calls to register the header fields and
@@ -3600,9 +3600,6 @@ proto_register_pvfs(void)
 void
 proto_reg_handoff_pvfs(void)
 {
-	dissector_handle_t pvfs_handle;
-
-	pvfs_handle = create_dissector_handle(dissect_pvfs_heur, proto_pvfs);
 	dissector_add_uint_with_preference("tcp.port", TCP_PORT_PVFS2, pvfs_handle);
 
 	heur_dissector_add("tcp", dissect_pvfs_heur, "PVFS over TCP", "pvfs_tcp", proto_pvfs, HEURISTIC_ENABLE);

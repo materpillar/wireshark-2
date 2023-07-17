@@ -1,4 +1,4 @@
-/* color_utils.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -22,7 +22,6 @@
 
 class ColorUtils : public QObject
 {
-    Q_OBJECT
 public:
     explicit ColorUtils(QObject *parent = 0);
 
@@ -52,12 +51,36 @@ public:
      * @return true if we're running in dark mode, false otherwise.
      */
     static bool themeIsDark();
+    /**
+     * Returns an appropriate link color for the current mode.
+     * @return A brush suitable for setting a text color.
+     */
     static QBrush themeLinkBrush();
+    /**
+     * Returns an appropriate HTML+CSS link style for the current mode.
+     * @return A "<style>a:link { color: ... ; }</style>" string
+     */
     static QString themeLinkStyle();
+    /**
+     * Returns either QPalette::Text or QPalette::Base as appropriate for the
+     * specified foreground color
+     *
+     * @param color The background color.
+     * @return A contrasting foreground color for the current mode / theme.
+     */
+    static const QColor contrastingTextColor(const QColor color);
 
-signals:
+    /**
+     * Returns an appropriate background color for hovered abstract items.
+     * @return The background color.
+     */
+    static const QColor hoverBackground();
 
-public slots:
+    /**
+     * Returns an appropriate warning background color for the current mode.
+     * @return The background color.
+     */
+    static const QColor warningBackground();
 
 private:
     static QList<QRgb> graph_colors_;
@@ -67,16 +90,3 @@ private:
 void color_filter_qt_add_cb(color_filter_t *colorf, gpointer user_data);
 
 #endif // COLOR_UTILS_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

@@ -83,7 +83,7 @@ dissect_ros_connection_header_field(tvbuff_t *tvb, proto_tree *tree, packet_info
 
 		proto_tree_add_item(field_tree, hf_tcpros_connection_header_field_length, tvb, offset, SIZE_OF_LENGTH_FIELD, ENC_LITTLE_ENDIAN);
 		offset += SIZE_OF_LENGTH_FIELD;
-		ti = proto_tree_add_item(field_tree, hf_tcpros_connection_header_field_data, tvb, offset, fLen, ENC_UTF_8|ENC_NA);
+		ti = proto_tree_add_item(field_tree, hf_tcpros_connection_header_field_data, tvb, offset, fLen, ENC_UTF_8);
 
 		/** Look for the '=' separator */
 		sep = (tvb_find_guint8(tvb, offset, fLen, '=') - offset);
@@ -92,8 +92,8 @@ dissect_ros_connection_header_field(tvbuff_t *tvb, proto_tree *tree, packet_info
 		if( sep > 0 ) {
 			const guint8* field;
 			field_tree = proto_item_add_subtree(ti, ett_tcpros);
-			proto_tree_add_item_ret_string(field_tree, hf_tcpros_connection_header_field_name, tvb, offset, sep, ENC_UTF_8|ENC_NA, wmem_packet_scope(), &field);
-			proto_tree_add_item(field_tree, hf_tcpros_connection_header_field_value, tvb, offset+sep+1, fLen - sep - 1, ENC_UTF_8|ENC_NA);
+			proto_tree_add_item_ret_string(field_tree, hf_tcpros_connection_header_field_name, tvb, offset, sep, ENC_UTF_8|ENC_NA, pinfo->pool, &field);
+			proto_tree_add_item(field_tree, hf_tcpros_connection_header_field_value, tvb, offset+sep+1, fLen - sep - 1, ENC_UTF_8);
 
 			col_append_str(pinfo->cinfo, COL_INFO, field);
 		}
@@ -165,7 +165,7 @@ dissect_ros_message_header_stamp(tvbuff_t *tvb, proto_tree *root_tree, packet_in
 	consumed_len += SIZE_OF_LENGTH_FIELD;
 
 	/** Info */
-	col_append_fstr(pinfo->cinfo, COL_INFO, "Timestamp: %d.%d ", sec, nsec);
+	col_append_fstr(pinfo->cinfo, COL_INFO, "Timestamp: %d.%09d ", sec, nsec);
 
 	return consumed_len;
 }
@@ -228,7 +228,7 @@ dissect_ros_message_header(tvbuff_t *tvb, proto_tree *root_tree, packet_info *pi
 	proto_tree_add_item(sub_tree, hf_tcpros_message_header_frame_length, tvb, offset + consumed_len, SIZE_OF_LENGTH_FIELD, ENC_LITTLE_ENDIAN);
 	consumed_len += SIZE_OF_LENGTH_FIELD;
 
-	proto_tree_add_item_ret_string(sub_tree, hf_tcpros_message_header_frame_value, tvb, offset + consumed_len, frame_id_len, ENC_UTF_8|ENC_NA, wmem_packet_scope(), &frame_str);
+	proto_tree_add_item_ret_string(sub_tree, hf_tcpros_message_header_frame_value, tvb, offset + consumed_len, frame_id_len, ENC_UTF_8|ENC_NA, pinfo->pool, &frame_str);
 	col_append_fstr(pinfo->cinfo, COL_INFO, "Frame ID: '%s' ", frame_str);
 	consumed_len += frame_id_len;
 
@@ -303,18 +303,16 @@ is_rosheaderfield(tvbuff_t *tvb, packet_info *pinfo _U_ , guint offset)
 	/** ROS Header Field:
 	    4-byte len + string */
 	gint available = tvb_reported_length_remaining(tvb, offset);
-	gint string_len = 0;
-	gint i;
+	guint32 string_len = 0;
+	guint32 i;
 
 	if( available < 4 )
 		return FALSE;
 
 	string_len = tvb_get_letohl(tvb, offset);
-	if( string_len < 0 )
-		return FALSE;
 
 	/** If we don't have enough data for the whole string, assume its not */
-	if( available < (string_len + 4) )
+	if( (guint)available < (string_len + 4) )
 		return FALSE;
 	/** Check for a valid ascii character and not nil */
 	for( i = 0; i < string_len; i++ ) {
@@ -333,7 +331,7 @@ is_rosconnection_header(tvbuff_t *tvb, packet_info *pinfo _U_ , guint offset)
 	/** ROS Connection Headers: http://wiki.ros.org/ROS/Connection%20Header
 	    4-byte length + [4-byte length + string] */
 	gint available = tvb_reported_length_remaining(tvb, offset);
-	gint msg_len = 0;
+	guint32 msg_len = 0;
 
 	if( available < 8+1 )
 		return FALSE;
@@ -356,16 +354,13 @@ is_rosclock(tvbuff_t *tvb, packet_info *pinfo _U_ , guint offset)
 	/** ROS Clock message: http://docs.ros.org/api/rosgraph_msgs/html/msg/Clock.html
 	    4-byte length + 8-byte timestamp == 12 bytes exactly */
 	gint available = tvb_reported_length_remaining(tvb, offset);
-	if( available < 12 )
+	if( available != 12 )
 		return FALSE;
 
 	if( tvb_get_letohl(tvb, offset) != 8 )
 		return FALSE;
 
 	/** This is highly likely a clock message. */
-	if( available != 12 )
-		return FALSE;
-
 	return TRUE;
 }
 
@@ -375,8 +370,8 @@ is_rosmsg(tvbuff_t *tvb, packet_info *pinfo _U_ , guint offset)
 	/** Most ROS messages start with a header: http://docs.ros.org/jade/api/std_msgs/html/msg/Header.html
 	    4-byte size + 4-byte sequence id + 8-byte timestamp + 4-byte frame id length + frame id */
 	gint available = tvb_reported_length_remaining(tvb, offset);
-	gint string_len = 0;
-	gint msg_len = 0;
+	guint32 string_len = 0;
+	guint32 msg_len = 0;
 
 	if( available < 20 )
 		return FALSE;
@@ -388,6 +383,10 @@ is_rosmsg(tvbuff_t *tvb, packet_info *pinfo _U_ , guint offset)
 	/** Check to see if the frame id length is reasonable */
 	string_len = tvb_get_letohl(tvb, offset + 4 + 4 + 8);
 	if( string_len > (msg_len - (4 + 8 + 4)) )
+		return FALSE;
+
+	/** If we don't have enough data for the whole string, assume its not */
+	if( (guint)available < (string_len + 4) )
 		return FALSE;
 
 	/** This is highly likely a ROS message. */

@@ -67,7 +67,7 @@ void CopyFromProfileButton::setFilename(QString filename)
         if (! profileDir.exists())
             continue;
 
-        QFileInfo fi = profileDir.filePath(filename);
+        QFileInfo fi(profileDir.filePath(filename));
         if (! fi.exists())
             continue;
 
@@ -119,6 +119,7 @@ QAction * CopyFromProfileButton::systemDefault(QString filename)
         QFont font = data->font();
         font.setItalic(true);
         data->setFont(font);
+        data->setProperty("profile_filename", path);
     }
 
     return data;

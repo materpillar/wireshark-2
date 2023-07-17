@@ -1,5 +1,5 @@
 /* packet-nordic_ble.c
- * Routines for Nordic BLE sniffer dissection
+ * Routines for nRF Sniffer for Bluetooth LE dissection
  *
  * Copyright (c) 2016-2018 Nordic Semiconductor.
  *
@@ -10,7 +10,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-/* Nordic BLE Sniffer packet format: BoardID + Header + Payload
+/* nRF Sniffer for Bluetooth LE packet format: BoardID + Header + Payload
  *
  *  +--------+--------+--------+--------+--------+--------+--------+--------+
  *  |                           BoardID  (1 byte)                           |
@@ -211,6 +211,8 @@
 void proto_reg_handoff_nordic_ble(void);
 void proto_register_nordic_ble(void);
 
+static dissector_handle_t nordic_ble_handle;
+
 /* Initialize the protocol and registered fields */
 static int proto_nordic_ble = -1;
 
@@ -236,7 +238,7 @@ static int hf_nordic_ble_mic_not_relevant = -1;
 static int hf_nordic_ble_aux_type = -1;
 static int hf_nordic_ble_flag_reserved1 = -1;
 static int hf_nordic_ble_flag_reserved2 = -1;
-static int hf_nordic_ble_flag_reserved3 = -1;
+static int hf_nordic_ble_address_resolved = -1;
 static int hf_nordic_ble_flag_reserved7 = -1;
 static int hf_nordic_ble_le_phy = -1;
 static int hf_nordic_ble_direction = -1;
@@ -257,12 +259,6 @@ static const true_false_string direction_tfs =
 {
     "Master -> Slave",
     "Slave -> Master"
-};
-
-static const true_false_string ok_incorrect =
-{
-    "OK",
-    "Incorrect"
 };
 
 static const value_string le_phys[] =
@@ -370,6 +366,7 @@ dissect_flags(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree, 
     }
 
     nordic_ble_context->phy = (flags >> 4) & 7;
+    context->phy = nordic_ble_context->phy;
 
     if (context->pdu_type == BTLE_PDU_TYPE_DATA) {
         if (dir) {
@@ -416,7 +413,7 @@ dissect_flags(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree, 
             proto_tree_add_item(flags_tree, hf_nordic_ble_flag_reserved1, tvb, offset, 1, ENC_NA);
             proto_tree_add_item(flags_tree, hf_nordic_ble_flag_reserved2, tvb, offset, 1, ENC_NA);
         }
-        proto_tree_add_item(flags_tree, hf_nordic_ble_flag_reserved3, tvb, offset, 1, ENC_NA);
+        proto_tree_add_item(flags_tree, hf_nordic_ble_address_resolved, tvb, offset, 1, ENC_NA);
     }
 
     proto_tree_add_item(flags_tree, hf_nordic_ble_le_phy, tvb, offset, 1, ENC_NA);
@@ -455,69 +452,128 @@ static guint16 packet_time_get(nordic_ble_context_t *nordic_ble_context, guint8 
     }
 }
 
+typedef struct
+{
+    guint32 packet_start_time;
+    guint32 packet_end_time;
+} packet_times_t;
+
+typedef struct {
+    gboolean first_frame_seen;
+    /* Time information about previous packet times to calculate delta times */
+    guint32 packet_time;
+    guint32 packet_start_time;
+    guint32 packet_end_time;
+} packet_time_context_t;
+
+static wmem_tree_t *packet_time_context_tree;
+
+static packet_time_context_t *packet_times_get(packet_info *pinfo)
+{
+    guint32 interface_id = (pinfo->rec->presence_flags & WTAP_HAS_INTERFACE_ID) ? pinfo->rec->rec_header.packet_header.interface_id: HCI_INTERFACE_DEFAULT;
+    wmem_tree_t *wmem_tree;
+    wmem_tree_key_t keys[2];
+
+    keys[0].length = 1;
+    keys[0].key = &interface_id;
+    keys[1].length = 0;
+    keys[1].key = NULL;
+
+    wmem_tree = (wmem_tree_t *) wmem_tree_lookup32_array(packet_time_context_tree, keys);
+    if (wmem_tree) {
+        return (packet_time_context_t *) wmem_tree_lookup32_le(wmem_tree, 0);
+    }
+
+    return NULL;
+}
+
+static packet_time_context_t *packet_times_insert(packet_info *pinfo)
+{
+    guint32 interface_id = (pinfo->rec->presence_flags & WTAP_HAS_INTERFACE_ID) ? pinfo->rec->rec_header.packet_header.interface_id: HCI_INTERFACE_DEFAULT;
+    guint32 key = 0;
+    wmem_tree_key_t keys[3];
+    packet_time_context_t *packet_times;
+
+    keys[0].length = 1;
+    keys[0].key = &interface_id;
+    keys[1].length = 1;
+    keys[1].key = &key;
+    keys[2].length = 0;
+    keys[2].key = NULL;
+    packet_times = wmem_new0(wmem_file_scope(), packet_time_context_t);
+    wmem_tree_insert32_array(packet_time_context_tree, keys, packet_times);
+
+    return packet_times;
+}
+
 static gint
 dissect_ble_delta_time(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree, nordic_ble_context_t *nordic_ble_context)
 {
-    static guint32 previous_ble_packet_time;
     guint32 delta_time, delta_time_ss, prev_packet_time, packet_time;
     proto_item *pi;
+    packet_time_context_t *packet_times_context;
+
+    packet_times_context = packet_times_get(pinfo);
+    if (!packet_times_context) {
+        packet_times_context = packet_times_insert(pinfo);
+    }
 
     /* end-to-start */
     proto_tree_add_item_ret_uint(tree, hf_nordic_ble_delta_time, tvb, offset, 4, ENC_LITTLE_ENDIAN, &delta_time);
 
     if (!pinfo->fd->visited) {
         /* First time visiting this packet, store previous BLE packet time */
-        p_add_proto_data(wmem_file_scope(), pinfo, proto_nordic_ble, 0, GUINT_TO_POINTER(previous_ble_packet_time));
-        prev_packet_time = previous_ble_packet_time;
+        p_add_proto_data(wmem_file_scope(), pinfo, proto_nordic_ble, 0, GUINT_TO_POINTER(packet_times_context->packet_time));
+        prev_packet_time = packet_times_context->packet_time;
     } else {
         prev_packet_time = GPOINTER_TO_UINT(p_get_proto_data(wmem_file_scope(), pinfo, proto_nordic_ble, 0));
     }
 
-    if (pinfo->num > 1) {
-        /* Calculated start-to-start is not valid for the first packet because we don't have the previous packet */
+    if (!packet_times_context->first_frame_seen) {
         delta_time_ss = prev_packet_time + delta_time;
         pi = proto_tree_add_uint(tree, hf_nordic_ble_delta_time_ss, tvb, offset, 4, delta_time_ss);
         proto_item_set_generated(pi);
     }
-    offset += 4;
 
     packet_time = packet_time_get(nordic_ble_context, 0 /* This version never supported Coded PHY */);
     pi = proto_tree_add_uint(tree, hf_nordic_ble_packet_time, tvb, offset, 4, packet_time);
     proto_item_set_generated(pi);
 
+    offset += 4;
+
     if (!pinfo->fd->visited) {
-        previous_ble_packet_time = packet_time;
+        packet_times_context->packet_time = packet_time;
+        packet_times_context->first_frame_seen = TRUE;
     }
 
     return offset;
 }
 
-typedef struct
-{
-    guint32 packet_end_time;
-    guint32 packet_start_time;
-} packet_times_t;
-
 static gint
 dissect_ble_timestamp(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree, nordic_ble_context_t *nordic_ble_context)
 {
-    static packet_times_t last_packet_times;
-
     guint32 delta_time, delta_time_ss, packet_time;
     guint32 timestamp, last_packet_end_time, last_packet_start_time;
     proto_item *item;
+    packet_time_context_t *packet_times_context;
+
+    packet_times_context = packet_times_get(pinfo);
+    if (!packet_times_context) {
+        packet_times_context = packet_times_insert(pinfo);
+    }
 
     proto_tree_add_item_ret_uint(tree, hf_nordic_ble_time, tvb, offset, 4, ENC_LITTLE_ENDIAN, &timestamp);
 
     if (!pinfo->fd->visited) {
-
         packet_times_t *saved_packet_times = wmem_new0(wmem_file_scope(), packet_times_t);
-        memcpy(saved_packet_times, &last_packet_times, sizeof(packet_times_t));
+
+        saved_packet_times->packet_end_time = packet_times_context->packet_end_time;
+        saved_packet_times->packet_start_time = packet_times_context->packet_start_time;
         p_add_proto_data(wmem_file_scope(), pinfo, proto_nordic_ble, 0, saved_packet_times);
 
         /* First time visiting this packet, store previous BLE packet time */
-        last_packet_end_time = last_packet_times.packet_end_time;
-        last_packet_start_time = last_packet_times.packet_start_time;
+        last_packet_end_time = packet_times_context->packet_end_time;
+        last_packet_start_time = packet_times_context->packet_start_time;
     } else {
         packet_times_t* saved_packet_times = (packet_times_t *)p_get_proto_data(wmem_file_scope(), pinfo, proto_nordic_ble, 0);
 
@@ -543,8 +599,9 @@ dissect_ble_timestamp(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree
 
     if (!pinfo->fd->visited) {
 
-        last_packet_times.packet_start_time = timestamp;
-        last_packet_times.packet_end_time = timestamp + packet_time;
+        packet_times_context->packet_start_time = timestamp;
+        packet_times_context->packet_end_time = timestamp + packet_time;
+        packet_times_context->first_frame_seen = TRUE;
     }
 
     offset += 4;
@@ -618,7 +675,7 @@ static gint
 dissect_packet(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree, nordic_ble_context_t *nordic_ble_context, btle_context_t *context)
 {
     gint32 rssi;
-    guint32 channel;
+    guint32 channel, event_counter;
 
     if (nordic_ble_context->protover == 0) {
         // Event packet length is fixed for the legacy version
@@ -641,8 +698,11 @@ dissect_packet(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree,
     proto_tree_add_int(tree, hf_nordic_ble_rssi, tvb, offset, 1, rssi);
     offset += 1;
 
-    proto_tree_add_item(tree, hf_nordic_ble_event_counter, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item_ret_uint(tree, hf_nordic_ble_event_counter, tvb, offset, 2, ENC_LITTLE_ENDIAN, &event_counter);
     offset += 2;
+
+    context->event_counter = event_counter;
+    context->event_counter_valid = 1;
 
     if (nordic_ble_context->protover < 3) {
         offset = dissect_ble_delta_time(tvb, offset, pinfo, tree, nordic_ble_context);
@@ -696,7 +756,7 @@ dissect_nordic_ble(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *da
     gint               offset;
     gboolean           bad_length = FALSE;
 
-    context = wmem_new0(wmem_packet_scope(), btle_context_t);
+    context = wmem_new0(pinfo->pool, btle_context_t);
 
     offset = dissect_header(tvb, pinfo, tree, context, &bad_length);
     payload_tvb = tvb_new_subset_length_caplen(tvb, offset, -1, tvb_captured_length(tvb) - offset);
@@ -706,7 +766,13 @@ dissect_nordic_ble(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *da
     }
 
     if ((context->mic_checked_at_capture) && (!context->mic_valid_at_capture)) {
-        col_add_str(pinfo->cinfo, COL_INFO, "Encrypted packet decrypted incorrectly (bad MIC)");
+        col_set_str(pinfo->cinfo, COL_INFO, "Encrypted packet decrypted incorrectly");
+        if (!context->crc_valid_at_capture) {
+            /* CRC is bad */
+            col_append_str(pinfo->cinfo, COL_INFO, " (bad CRC)");
+        } else {
+            col_append_str(pinfo->cinfo, COL_INFO, " (bad MIC)");
+        }
     }
 
     if (debug_handle) {
@@ -772,7 +838,7 @@ proto_register_nordic_ble(void)
         },
         { &hf_nordic_ble_crcok,
             { "CRC", "nordic_ble.crcok",
-                FT_BOOLEAN, 8, TFS(&ok_incorrect), 0x01,
+                FT_BOOLEAN, 8, TFS(&tfs_ok_error), 0x01,
                 "Cyclic Redundancy Check state", HFILL }
         },
         { &hf_nordic_ble_direction,
@@ -802,7 +868,7 @@ proto_register_nordic_ble(void)
         },
         { &hf_nordic_ble_micok,
             { "MIC", "nordic_ble.micok",
-                FT_BOOLEAN, 8, TFS(&ok_incorrect), 0x08,
+                FT_BOOLEAN, 8, TFS(&tfs_ok_error), 0x08,
                 "Message Integrity Check state", HFILL }
         },
         { &hf_nordic_ble_mic_not_relevant,
@@ -810,9 +876,9 @@ proto_register_nordic_ble(void)
                 FT_UINT8, BASE_DEC, NULL, 0x08,
                 "Message Integrity Check state is only relevant when encrypted", HFILL }
         },
-        { &hf_nordic_ble_flag_reserved3,
-            { "Reserved", "nordic_ble.flag_reserved3",
-                FT_UINT8, BASE_DEC, NULL, 0x08,
+        { &hf_nordic_ble_address_resolved,
+            { "Address Resolved", "nordic_ble.address_resolved",
+                FT_BOOLEAN, 8, TFS(&tfs_yes_no), 0x08,
                 NULL, HFILL }
         },
         { &hf_nordic_ble_le_phy,
@@ -826,7 +892,7 @@ proto_register_nordic_ble(void)
                 "Reserved for Future Use", HFILL }
         },
         { &hf_nordic_ble_channel,
-            { "Channel", "nordic_ble.channel",
+            { "Channel Index", "nordic_ble.channel",
                 FT_UINT8, BASE_DEC, NULL, 0x0,
                 NULL, HFILL }
         },
@@ -877,9 +943,11 @@ proto_register_nordic_ble(void)
 
     expert_module_t *expert_nordic_ble;
 
-    proto_nordic_ble = proto_register_protocol("Nordic BLE Sniffer", "NORDIC_BLE", "nordic_ble");
+    packet_time_context_tree = wmem_tree_new_autoreset(wmem_epan_scope(), wmem_file_scope());
 
-    register_dissector("nordic_ble", dissect_nordic_ble, proto_nordic_ble);
+    proto_nordic_ble = proto_register_protocol("nRF Sniffer for Bluetooth LE", "NORDIC_BLE", "nordic_ble");
+
+    nordic_ble_handle = register_dissector("nordic_ble", dissect_nordic_ble, proto_nordic_ble);
 
     expert_nordic_ble = expert_register_protocol(proto_nordic_ble);
     expert_register_field_array(expert_nordic_ble, ei, array_length(ei));
@@ -891,10 +959,6 @@ proto_register_nordic_ble(void)
 void
 proto_reg_handoff_nordic_ble(void)
 {
-    dissector_handle_t nordic_ble_handle;
-
-    nordic_ble_handle = create_dissector_handle(dissect_nordic_ble, proto_nordic_ble);
-
     btle_dissector_handle = find_dissector("btle");
     debug_handle = find_dissector("nordic_debug");
 

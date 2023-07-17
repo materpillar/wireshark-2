@@ -1,4 +1,4 @@
-/* profile_tree_view.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -49,7 +49,7 @@ public:
     void selectRow(int row);
     bool activeEdit();
 
-Q_SIGNALS:
+signals:
     void itemUpdated();
 
     // QWidget interface

@@ -17,6 +17,7 @@
 #include <wsutil/wsgcrypt.h>
 #include <wsutil/sober128.h>
 
+static dissector_handle_t corosync_totemnet_handle;
 static dissector_handle_t corosync_totemsrp_handle;
 
 /* This dissector deals packets defined in totemnet.c of corosync
@@ -137,7 +138,7 @@ On 12/14/2010 08:04 AM, Masatake YAMATO wrote:
 >>>>   Honza
 >>> I got the similar comment from wireshark developer.
 >>> Please, read the discussion:
->>>     https://bugs.wireshark.org/bugzilla/show_bug.cgi?id=3232
+>>>     https://gitlab.com/wireshark/wireshark/-/issues/3232
 >>>
 >>
 >> I've read that thread long time before I've sent previous mail, so
@@ -214,7 +215,7 @@ nnn>>
 >
 >>> licensed in 3-clause BSD, as you know. I'd like to change the license
 >>> to merge my code to upstream project. I cannot do it in this context.
->>> See https://bugs.wireshark.org/bugzilla/show_bug.cgi?id=3232#c13
+>>> See https://gitlab.com/wireshark/wireshark/-/issues/3232#c13
 >>> Thank you.
 >>
 >> Regards,
@@ -279,17 +280,17 @@ dissect_corosynec_totemnet_with_decryption(tvbuff_t *tvb,
   memset(private_key, 0, sizeof(private_key));
 
   private_key_len = (strlen(key_for_trial)+4) & 0xFC;
-  g_strlcpy(private_key, key_for_trial, private_key_len);
+  (void) g_strlcpy(private_key, key_for_trial, private_key_len);
 
   /*
    * Generate MAC, CIPHER, IV keys from private key
    */
-  memset (keys, 0, sizeof(keys));
-  sober128_start (&keygen_prng_state);
+  memset(keys, 0, sizeof(keys));
+  sober128_start(&keygen_prng_state);
   sober128_add_entropy(private_key,
-                                  (unsigned long)private_key_len, &keygen_prng_state);
-  sober128_add_entropy (salt, SALT_SIZE, &keygen_prng_state);
-  sober128_read (keys, sizeof (keys), &keygen_prng_state);
+                       (unsigned long)private_key_len, &keygen_prng_state);
+  sober128_add_entropy(salt, SALT_SIZE, &keygen_prng_state);
+  sober128_read(keys, sizeof (keys), &keygen_prng_state);
 
   /*
    * Setup stream cipher
@@ -312,9 +313,9 @@ dissect_corosynec_totemnet_with_decryption(tvbuff_t *tvb,
    * Decrypt the contents of the message with the cipher key
    */
 
-  sober128_read (io_base + HASH_SHA1_LENGTH + SALT_SIZE,
-                            io_len - (HASH_SHA1_LENGTH + SALT_SIZE),
-                            &stream_prng_state);
+  sober128_read(io_base + HASH_SHA1_LENGTH + SALT_SIZE,
+                io_len - (HASH_SHA1_LENGTH + SALT_SIZE),
+                &stream_prng_state);
 
 
   /*
@@ -451,18 +452,17 @@ proto_register_corosync_totemnet(void)
                                    (const gchar **)&corosync_totemnet_private_keys);
 
   register_shutdown_routine(corosync_totemnet_shutdown);
+
+  corosync_totemnet_handle = register_dissector("corosync_totemnet", dissect_corosynec_totemnet, proto_corosync_totemnet);
 }
 
 void
 proto_reg_handoff_corosync_totemnet(void)
 {
   static gboolean initialized = FALSE;
-  static dissector_handle_t corosync_totemnet_handle;
-
 
   if (!initialized)
   {
-    corosync_totemnet_handle = create_dissector_handle(dissect_corosynec_totemnet, proto_corosync_totemnet);
     corosync_totemsrp_handle = find_dissector_add_dependency("corosync_totemsrp", proto_corosync_totemnet);
 
     dissector_add_uint_range_with_preference("udp.port", PORT_COROSYNC_TOTEMNET_RANGE, corosync_totemnet_handle);

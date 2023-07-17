@@ -71,6 +71,7 @@ enum{
 
 struct sbc_ap_private_data {
   guint8 data_coding_scheme;
+  e212_number_type_t number_type;
 };
 
 /* Global variables */
@@ -196,7 +197,7 @@ void proto_register_sbc_ap(void) {
         NULL, HFILL }},
     { &hf_sbc_ap_Warning_Message_Contents_decoded_page,
       { "Decoded Page", "sbc-ap.WarningMessageContents.decoded_page",
-        FT_STRING, STR_UNICODE, NULL, 0,
+        FT_STRING, BASE_NONE, NULL, 0,
         NULL, HFILL }},
 #include "packet-sbc-ap-hfarr.c"
   };
@@ -218,6 +219,8 @@ void proto_register_sbc_ap(void) {
   proto_register_field_array(proto_sbc_ap, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
 
+  /* Register dissector */
+  sbc_ap_handle = register_dissector(PFNAME, dissect_sbc_ap, proto_sbc_ap);
 
   /* Register dissector tables */
   sbc_ap_ies_dissector_table = register_dissector_table("sbc_ap.ies", "SBC-AP-PROTOCOL-IES", proto_sbc_ap, FT_UINT32, BASE_DEC);
@@ -238,7 +241,6 @@ proto_reg_handoff_sbc_ap(void)
 	static guint SctpPort;
 
     if( !inited ) {
-        sbc_ap_handle = create_dissector_handle(dissect_sbc_ap, proto_sbc_ap);
         dissector_add_uint("sctp.ppi", SBC_AP_PAYLOAD_PROTOCOL_ID,   sbc_ap_handle);
         inited = TRUE;
 #include "packet-sbc-ap-dis-tab.c"

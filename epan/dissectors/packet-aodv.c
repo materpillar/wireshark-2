@@ -32,6 +32,7 @@
  */
 void proto_register_aodv(void);
 void proto_reg_handoff_aodv(void);
+static dissector_handle_t aodv_handle;
 
 #define INET6_ADDRLEN   16
 #define UDP_PORT_AODV   654
@@ -212,7 +213,7 @@ dissect_aodv_rreq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *aodv_tree,
     offset += 4;
 
     if (is_ipv6) {
-        dest_addr_v6 = tvb_ip6_to_str(tvb, offset);
+        dest_addr_v6 = tvb_ip6_to_str(pinfo->pool, tvb, offset);
         if (aodv_tree) {
             proto_tree_add_item(aodv_tree, hf_aodv_dest_ipv6, tvb, offset,
                                 INET6_ADDRLEN, ENC_NA);
@@ -221,7 +222,7 @@ dissect_aodv_rreq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *aodv_tree,
         col_append_fstr(pinfo->cinfo, COL_INFO, ", D: %s", dest_addr_v6);
         offset += INET6_ADDRLEN;
     } else {
-        dest_addr_v4 = tvb_ip_to_str(tvb, offset);
+        dest_addr_v4 = tvb_ip_to_str(pinfo->pool, tvb, offset);
         if (aodv_tree) {
             proto_tree_add_item(aodv_tree, hf_aodv_dest_ip, tvb, offset, 4,
                                 ENC_BIG_ENDIAN);
@@ -237,7 +238,7 @@ dissect_aodv_rreq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *aodv_tree,
     offset += 4;
 
     if (is_ipv6) {
-        orig_addr_v6 = tvb_ip6_to_str(tvb, offset);
+        orig_addr_v6 = tvb_ip6_to_str(pinfo->pool, tvb, offset);
         if (aodv_tree) {
             proto_tree_add_item(aodv_tree, hf_aodv_orig_ipv6, tvb, offset,
                                 INET6_ADDRLEN, ENC_NA);
@@ -246,7 +247,7 @@ dissect_aodv_rreq(tvbuff_t *tvb, packet_info *pinfo, proto_tree *aodv_tree,
         col_append_fstr(pinfo->cinfo, COL_INFO, ", O: %s", orig_addr_v6);
         offset += INET6_ADDRLEN;
     } else {
-        orig_addr_v4 = tvb_ip_to_str(tvb, offset);
+        orig_addr_v4 = tvb_ip_to_str(pinfo->pool, tvb, offset);
         if (aodv_tree) {
             proto_tree_add_item(aodv_tree, hf_aodv_orig_ip, tvb, offset, 4,
                                 ENC_BIG_ENDIAN);
@@ -310,7 +311,7 @@ dissect_aodv_rrep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *aodv_tree,
     offset += 1;
 
     if (is_ipv6) {
-        dest_addr_v6 = tvb_ip6_to_str(tvb, offset);
+        dest_addr_v6 = tvb_ip6_to_str(pinfo->pool, tvb, offset);
         if (aodv_tree) {
             proto_tree_add_item(aodv_tree, hf_aodv_dest_ipv6, tvb, offset,
                                 INET6_ADDRLEN, ENC_NA);
@@ -320,7 +321,7 @@ dissect_aodv_rrep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *aodv_tree,
         col_append_fstr(pinfo->cinfo, COL_INFO, ", D: %s", dest_addr_v6);
         offset += INET6_ADDRLEN;
     } else {
-        dest_addr_v4 = tvb_ip_to_str(tvb, offset);
+        dest_addr_v4 = tvb_ip_to_str(pinfo->pool, tvb, offset);
         if (aodv_tree) {
             proto_tree_add_item(aodv_tree, hf_aodv_dest_ip, tvb, offset, 4,
                                 ENC_BIG_ENDIAN);
@@ -337,7 +338,7 @@ dissect_aodv_rrep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *aodv_tree,
     offset += 4;
 
     if (is_ipv6) {
-        orig_addr_v6 = tvb_ip6_to_str(tvb, offset);
+        orig_addr_v6 = tvb_ip6_to_str(pinfo->pool, tvb, offset);
         if (aodv_tree) {
             proto_tree_add_item(aodv_tree, hf_aodv_orig_ipv6, tvb, offset,
                                 INET6_ADDRLEN, ENC_NA);
@@ -346,7 +347,7 @@ dissect_aodv_rrep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *aodv_tree,
         col_append_fstr(pinfo->cinfo, COL_INFO, ", O: %s", orig_addr_v6);
         offset += INET6_ADDRLEN;
     } else {
-        orig_addr_v4 = tvb_ip_to_str(tvb, offset);
+        orig_addr_v4 = tvb_ip_to_str(pinfo->pool, tvb, offset);
         if (aodv_tree) {
             proto_tree_add_item(aodv_tree, hf_aodv_orig_ip, tvb, offset, 4,
                                 ENC_BIG_ENDIAN);
@@ -471,7 +472,7 @@ dissect_aodv_draft_01_v6_rreq(tvbuff_t *tvb, packet_info *pinfo,
                             orig_seqno);
     offset += 4;
 
-    dest_addr_v6 = tvb_ip6_to_str(tvb, offset);
+    dest_addr_v6 = tvb_ip6_to_str(pinfo->pool, tvb, offset);
     if (aodv_tree) {
         proto_tree_add_item(aodv_tree, hf_aodv_dest_ipv6, tvb, offset,
                             INET6_ADDRLEN, ENC_NA);
@@ -481,7 +482,7 @@ dissect_aodv_draft_01_v6_rreq(tvbuff_t *tvb, packet_info *pinfo,
     col_append_fstr(pinfo->cinfo, COL_INFO, ", D: %s", dest_addr_v6);
     offset += INET6_ADDRLEN;
 
-    orig_addr_v6 = tvb_ip6_to_str(tvb, offset);
+    orig_addr_v6 = tvb_ip6_to_str(pinfo->pool, tvb, offset);
     if (aodv_tree) {
         proto_tree_add_item(aodv_tree, hf_aodv_orig_ipv6, tvb, offset,
                             INET6_ADDRLEN, ENC_NA);
@@ -541,7 +542,7 @@ dissect_aodv_draft_01_v6_rrep(tvbuff_t *tvb, packet_info *pinfo,
                             dest_seqno);
     offset += 4;
 
-    dest_addr_v6 = tvb_ip6_to_str(tvb, offset);
+    dest_addr_v6 = tvb_ip6_to_str(pinfo->pool, tvb, offset);
     if (aodv_tree) {
         proto_tree_add_item(aodv_tree, hf_aodv_dest_ipv6, tvb, offset,
                             INET6_ADDRLEN, ENC_NA);
@@ -551,7 +552,7 @@ dissect_aodv_draft_01_v6_rrep(tvbuff_t *tvb, packet_info *pinfo,
     col_append_fstr(pinfo->cinfo, COL_INFO, ", D: %s", dest_addr_v6);
     offset += INET6_ADDRLEN;
 
-    orig_addr_v6 = tvb_ip6_to_str(tvb, offset);
+    orig_addr_v6 = tvb_ip6_to_str(pinfo->pool, tvb, offset);
     if (aodv_tree) {
         proto_tree_add_item(aodv_tree, hf_aodv_orig_ipv6, tvb, offset,
                             INET6_ADDRLEN, ENC_NA);
@@ -852,6 +853,7 @@ proto_register_aodv(void)
 
 /* Register the protocol name and description */
     proto_aodv = proto_register_protocol("Ad hoc On-demand Distance Vector Routing Protocol", "AODV", "aodv");
+    aodv_handle = register_dissector("aodv", dissect_aodv, proto_aodv);
 
 /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_aodv, hf, array_length(hf));
@@ -864,10 +866,6 @@ proto_register_aodv(void)
 void
 proto_reg_handoff_aodv(void)
 {
-    dissector_handle_t aodv_handle;
-
-    aodv_handle = create_dissector_handle(dissect_aodv,
-                                              proto_aodv);
     dissector_add_uint_with_preference("udp.port", UDP_PORT_AODV, aodv_handle);
 }
 

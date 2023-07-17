@@ -383,20 +383,20 @@ static gchar *print_tsap(tvbuff_t *tvb, int offset, int length)
   cur=(gchar *)wmem_alloc(wmem_packet_scope(), MAX_TSAP_LEN * 2 + 3);
   cur[0] = '\0';
   if (length <= 0 || length > MAX_TSAP_LEN)
-    g_snprintf(cur, MAX_TSAP_LEN * 2 + 3, "<unsupported TSAP length>");
+    snprintf(cur, MAX_TSAP_LEN * 2 + 3, "<unsupported TSAP length>");
   else {
     allprintable = tvb_ascii_isprint(tvb, offset, length);
     if (!allprintable) {
-      returned_length = g_snprintf(cur, MAX_TSAP_LEN * 2 + 3, "0x");
+      returned_length = snprintf(cur, MAX_TSAP_LEN * 2 + 3, "0x");
       idx += MIN(returned_length, MAX_TSAP_LEN * 2 + 3 - 1);
     }
     while (length != 0) {
       if (allprintable) {
-        returned_length = g_snprintf(&cur[idx], MAX_TSAP_LEN * 2 + 3 - idx,
+        returned_length = snprintf(&cur[idx], MAX_TSAP_LEN * 2 + 3 - idx,
                                      "%c", *tsap ++);
         idx += MIN(returned_length, MAX_TSAP_LEN * 2 + 3 - idx - 1);
       } else {
-        returned_length = g_snprintf(&cur[idx], MAX_TSAP_LEN * 2 + 3 - idx,
+        returned_length = snprintf(&cur[idx], MAX_TSAP_LEN * 2 + 3 - idx,
                                      "%02x", *tsap ++);
         idx += MIN(returned_length, MAX_TSAP_LEN * 2 + 3 - idx - 1);
       }
@@ -407,7 +407,7 @@ static gchar *print_tsap(tvbuff_t *tvb, int offset, int length)
 
 } /* print_tsap */
 
-static const true_false_string tfs_vp_opt_sel_class1_use = { "Receipt confirmation", "explicit AK variant" };
+static const true_false_string tfs_vp_opt_sel_class1_use = { "Receipt confirmation", "Explicit AK variant" };
 
 static gboolean ositp_decode_var_part(tvbuff_t *tvb, int offset, int vp_length,
                                       int class_option, int tpdu_len,
@@ -2075,7 +2075,7 @@ static gint dissect_ositp_internal(tvbuff_t *tvb, packet_info *pinfo,
 
   /* Initialize the COL_INFO field; each of the TPDUs will have its
      information appended. */
-  col_set_str(pinfo->cinfo, COL_INFO, "");
+  col_clear(pinfo->cinfo, COL_INFO);
 
   while (tvb_offset_exists(tvb, offset)) {
     if (!first_tpdu) {
@@ -2366,7 +2366,7 @@ void proto_register_cotp(void)
 
   prefs_register_bool_preference(cotp_module, "decode_atn", "Decode ATN TPDUs",
                                  "Whether to decode OSI TPDUs with ATN "
-                                 "(Aereonautical Telecommunications Network) "
+                                 "(Aeronautical Telecommunications Network) "
                                  "extensions. To use this option, you must "
                                  "also enable \"Always try to decode NSDU as "
                                  "transport PDUs\" in the CLNP protocol "

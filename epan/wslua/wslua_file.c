@@ -12,6 +12,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
+#include "config.h"
 
 #include "wslua_file_common.h"
 
@@ -35,7 +36,7 @@ WSLUA_CLASS_DEFINE(File,FAIL_ON_NULL_OR_EXPIRED("File"));
     functions (e.g., `read_open`, `read`, `write`, etc.).  This behaves similarly to the
     Lua `io` library's `file` object, returned when calling `io.open()`, *except*
     in this case you cannot call `file:close()`, `file:open()`, nor `file:setvbuf()`,
-    since Wireshark/tshark manages the opening and closing of files.
+    since Wireshark/TShark manages the opening and closing of files.
     You also cannot use the '`io`' library itself on this object, i.e. you cannot
     do `io.read(file, 4)`.  Instead, use this `File` with the object-oriented style
     calling its methods, i.e. `myfile:read(4)`. (see later example)
@@ -277,12 +278,12 @@ WSLUA_METHOD File_read(lua_State* L) {
 
     /* shiftFile() doesn't verify things like expired */
     if (f->expired) {
-        g_warning("Error in File read: Lua File has expired");
+        ws_warning("Error in File read: Lua File has expired");
         return 0;
     }
 
     if (!file_is_reader(f)) {
-        g_warning("Error in File read: this File object instance is for writing only");
+        ws_warning("Error in File read: this File object instance is for writing only");
         return 0;
     }
 
@@ -338,7 +339,7 @@ WSLUA_METHOD File_seek(lua_State* L) {
     File f = checkFile(L,1);
     int op = luaL_checkoption(L, 2, "cur", modenames);
     gint64 offset = (gint64) luaL_optlong(L, 3, 0);
-    int err = WTAP_ERR_INTERNAL;
+    int err;
 
 
     if (file_is_reader(f)) {
@@ -399,7 +400,7 @@ WSLUA_METHOD File_lines(lua_State* L) {
         return luaL_error(L, "Error getting File handle for lines");
 
     if (!file_is_reader(f)) {
-        g_warning("Error in File read: this File object instance is for writing only");
+        ws_warning("Error in File read: this File object instance is for writing only");
         return 0;
     }
 
@@ -421,7 +422,7 @@ WSLUA_METHOD File_write(lua_State* L) {
     int err = 0;
 
     if (!f->wdh) {
-        g_warning("Error in File read: this File object instance is for reading only");
+        ws_warning("Error in File read: this File object instance is for reading only");
         return 0;
     }
 

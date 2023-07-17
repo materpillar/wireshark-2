@@ -15,15 +15,20 @@
  * with secure streams and easy firewall traversal, bringing the best
  * quality live video over the worst networks.
  *
- * http://www.srtalliance.org
+ * Internet draft:
+ * https://datatracker.ietf.org/doc/html/draft-sharabayko-srt-01
+ *
+ * Open-source implementation:
+ * https://github.com/Haivision/srt
  */
 
 #include <config.h>
-#include <wsutil/str_util.h>
 
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/conversation.h>
+#include <wsutil/str_util.h>
+#include <wsutil/inet_addr.h>
 
 /* Prototypes */
 void proto_reg_handoff_srt(void);
@@ -435,17 +440,64 @@ static void dissect_srt_hs_ext_field(proto_tree* tree,
 }
 
 
+/*
+ * UTF-8 string packed as 32 bit little endian words (what?!)
+ * https://datatracker.ietf.org/doc/html/draft-sharabayko-srt-01#section-3.2.1.3
+ *
+ * THe spec says
+ *
+ *     The actual size is determined by the Extension Length field,
+ *     which defines the length in four byte blocks.  If the actual
+ *     payload is less than the declared length, the remaining bytes
+ *     are set to zeros.
+ *
+ *     The content is stored as 32-bit little endian words.
+ *
+ * This means that the octets of the string are in the rather peculiar
+ * order:
+ *
+ *    octet 3
+ *    octet 2
+ *    octet 1
+ *    octet 0
+ *    octet 8
+ *    octet 7
+ *    octet 6
+ *    octet 5
+ *
+ * and so on, with null padding (not null termination).
+ */
 static void format_text_reorder_32(proto_tree* tree, tvbuff_t* tvb, int hfinfo, int baseoff, int blocklen)
 {
-    wmem_strbuf_t *sid = wmem_strbuf_new(wmem_packet_scope(), "");
+    wmem_strbuf_t *sid = wmem_strbuf_create(wmem_packet_scope());
     for (int ii = 0; ii < blocklen; ii += 4)
     {
+        //
+        // Yes, this is fetching the 32-bit word as big-endian
+        // rather than little-endian.
+        //
+        // However, it's then taking the low-order byte of the
+        // result as the first octet, followed by the byte above
+        // that, followed by the byte above that, followed by
+        // the high-order byte.
+        //
+        // This is equivalent t fetching the 32-bit word as little-endian
+        // and then taking the high-order byte of the result as the
+        // first octet, etc.
+        //
+        // And both of those implement what's described above.
+        //
+        // No, I have no idea why they chose this representation for
+        // strings.
+        //
         const guint32 u = tvb_get_ntohl(tvb, baseoff + ii);
         wmem_strbuf_append_c(sid, 0xFF & (u >>  0));
         wmem_strbuf_append_c(sid, 0xFF & (u >>  8));
         wmem_strbuf_append_c(sid, 0xFF & (u >> 16));
         wmem_strbuf_append_c(sid, 0xFF & (u >> 24));
     }
+    if (!wmem_strbuf_utf8_validate(sid, NULL))
+        wmem_strbuf_utf8_make_valid(sid);
     proto_tree_add_string(tree, hfinfo, tvb,
                           baseoff, blocklen, wmem_strbuf_get_str(sid));
 }
@@ -685,6 +737,21 @@ dissect_srt_control_packet(tvbuff_t *tvb, packet_info* pinfo,
                 {
                     proto_item_set_len(srt_item, (4 + 4) * 4);
                 }
+            }
+        }
+        break;
+    case UMSG_DROPREQ:
+        {
+            guint len = tvb_reported_length(tvb);
+            if (len > (4 + 0) * 4)
+            {
+                guint lo = tvb_get_ntohl(tvb, (4 + 0) * 4);
+                guint hi = tvb_get_ntohl(tvb, (4 + 1) * 4);
+
+                proto_tree_add_expert_format(tree, pinfo, &ei_srt_nak_seqno,
+                        tvb, 16, 8, "Drop sequence range: %u-%u",
+                        lo, hi);
+                proto_item_set_len(srt_item, (gint) len);
             }
         }
         break;

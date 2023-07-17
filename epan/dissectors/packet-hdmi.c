@@ -24,6 +24,7 @@ void proto_reg_handoff_hdmi(void);
 
 static int proto_hdmi  = -1;
 
+static dissector_handle_t hdmi_handle;
 static dissector_handle_t hdcp_handle;
 
 static gint ett_hdmi = -1;
@@ -196,7 +197,7 @@ dissect_hdmi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
 static void
 hdmi_fmt_edid_version( gchar *result, guint32 revision )
 {
-   g_snprintf( result, ITEM_LABEL_LENGTH, "%d.%02d", (guint8)(( revision & 0xFF00 ) >> 8), (guint8)(revision & 0xFF) );
+   snprintf( result, ITEM_LABEL_LENGTH, "%d.%02d", (guint8)(( revision & 0xFF00 ) >> 8), (guint8)(revision & 0xFF) );
 }
 
 void
@@ -214,7 +215,7 @@ proto_register_hdmi(void)
                 FT_UINT64, BASE_HEX, NULL, 0, NULL, HFILL } },
         { &hf_hdmi_edid_manf_id,
             { "Manufacturer ID", "hdmi.edid.manf_id",
-                FT_STRING, STR_ASCII, NULL, 0, NULL, HFILL } },
+                FT_STRING, BASE_NONE, NULL, 0, NULL, HFILL } },
         { &hf_hdmi_edid_manf_prod_code,
             { "Manufacturer product code", "hdmi.edid.manf_prod_code",
                 FT_UINT16, BASE_HEX, NULL, 0, NULL, HFILL } },
@@ -243,6 +244,7 @@ proto_register_hdmi(void)
 
     proto_hdmi = proto_register_protocol(
             "High-Definition Multimedia Interface", "HDMI", "hdmi");
+    hdmi_handle = register_dissector("hdmi",  dissect_hdmi, proto_hdmi );
 
     proto_register_field_array(proto_hdmi, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
@@ -252,11 +254,7 @@ proto_register_hdmi(void)
 void
 proto_reg_handoff_hdmi(void)
 {
-    dissector_handle_t hdmi_handle;
-
     hdcp_handle = find_dissector_add_dependency("hdcp", proto_hdmi);
-
-    hdmi_handle = create_dissector_handle( dissect_hdmi, proto_hdmi );
     dissector_add_for_decode_as("i2c.message", hdmi_handle );
 }
 

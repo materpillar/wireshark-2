@@ -12,11 +12,11 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
+#include "config.h"
 
 #include "wslua_file_common.h"
 
 #include <epan/addr_resolv.h>
-#include <wiretap/pcapng.h>
 
 
 /* WSLUA_CONTINUE_MODULE File */
@@ -27,7 +27,7 @@ WSLUA_CLASS_DEFINE(CaptureInfo,FAIL_ON_NULL_OR_EXPIRED("CaptureInfo"));
     A `CaptureInfo` object, passed into Lua as an argument by `FileHandler` callback
     function `read_open()`, `read()`, `seek_read()`, `seq_read_close()`, and `read_close()`.
     This object represents capture file data and meta-data (data about the
-    capture file) being read into Wireshark/Tshark.
+    capture file) being read into Wireshark/TShark.
 
     This object's fields can be written-to by Lua during the read-based function callbacks.
     In other words, when the Lua plugin's `FileHandler.read_open()` function is invoked, a
@@ -190,7 +190,7 @@ static int CaptureInfo_set_hosts(lua_State* L) {
             }
             name = luaL_checklstring(L,-1,&name_len);
 
-            wth->add_new_ipv4(v4_addr, name);
+            wth->add_new_ipv4(v4_addr, name, FALSE);
 
             /* removes 'value'; keeps 'key' for next iteration */
             lua_pop(L, 1);
@@ -233,7 +233,7 @@ static int CaptureInfo_set_hosts(lua_State* L) {
             }
             name = luaL_checklstring(L,-1,&name_len);
 
-            wth->add_new_ipv6((const void *)(&v6_addr), name);
+            wth->add_new_ipv6((const void *)(&v6_addr), name, FALSE);
 
             /* removes 'value'; keeps 'key' for next iteration */
             lua_pop(L, 1);
@@ -303,7 +303,7 @@ WSLUA_CLASS_DEFINE(CaptureInfoConst,FAIL_ON_NULL_OR_EXPIRED("CaptureInfoConst"))
     function `write_open()`.
 
     This object represents capture file data and meta-data (data about the
-    capture file) for the current capture in Wireshark/Tshark.
+    capture file) for the current capture in Wireshark/TShark.
 
     This object's fields are read-from when used by `write_open` function callback.
     In other words, when the Lua plugin's FileHandler `write_open` function is invoked, a
@@ -337,7 +337,7 @@ WSLUA_METAMETHOD CaptureInfoConst__tostring(lua_State* L) {
     } else {
         wtap_dumper *wdh = fi->wdh;
         lua_pushfstring(L, "CaptureInfoConst: file_type_subtype=%d, snaplen=%d, encap=%d, compression_type=%d",
-            wdh->file_type_subtype, wdh->snaplen, wdh->encap, wdh->compression_type);
+            wdh->file_type_subtype, wdh->snaplen, wdh->file_encap, wdh->compression_type);
     }
 
     WSLUA_RETURN(1); /* String of debug information. */
@@ -355,7 +355,7 @@ WSLUA_ATTRIBUTE_NAMED_NUMBER_GETTER(CaptureInfoConst,snapshot_length,wdh->snaple
 
     See `wtap_encaps` in init.lua for available types.  It is set to `wtap_encaps.PER_PACKET` if packets can
     have different types, in which case each Frame identifies its type, in `FrameInfo.packet_encap`. */
-WSLUA_ATTRIBUTE_NAMED_NUMBER_GETTER(CaptureInfoConst,encap,wdh->encap);
+WSLUA_ATTRIBUTE_NAMED_NUMBER_GETTER(CaptureInfoConst,encap,wdh->file_encap);
 
 /* WSLUA_ATTRIBUTE CaptureInfoConst_comment RW A comment for the whole capture file, if the
     `wtap_presence_flags.COMMENTS` was set in the presence flags; nil if there is no comment. */

@@ -14,7 +14,7 @@
 #include <extcap_options_dialog.h>
 #include <ui_extcap_options_dialog.h>
 
-#include <wireshark_application.h>
+#include <main_application.h>
 
 #include <QMessageBox>
 #include <QHash>
@@ -47,29 +47,35 @@
 #include <epan/prefs.h>
 #include <ui/preference_utils.h>
 
-#include <ui/qt/wireshark_application.h>
+#include <ui/qt/main_application.h>
+#include <ui/qt/utils/stock_icon.h>
 #include <ui/qt/utils/variant_pointer.h>
 
 #include <ui/qt/extcap_argument.h>
 #include <ui/qt/extcap_argument_file.h>
 #include <ui/qt/extcap_argument_multiselect.h>
 
-ExtcapOptionsDialog::ExtcapOptionsDialog(QWidget *parent) :
+ExtcapOptionsDialog::ExtcapOptionsDialog(bool startCaptureOnClose, QWidget *parent) :
     QDialog(parent),
     ui(new Ui::ExtcapOptionsDialog),
     device_name(""),
-    device_idx(0)
+    device_idx(0),
+    defaultValueIcon_(StockIcon("x-reset"))
 {
     ui->setupUi(this);
 
-    setWindowTitle(wsApp->windowTitleString(tr("Interface Options")));
+    setWindowTitle(mainApp->windowTitleString(tr("Interface Options")));
 
     ui->checkSaveOnStart->setCheckState(prefs.extcap_save_on_start ? Qt::Checked : Qt::Unchecked);
 
-    ui->buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Start"));
+    if (startCaptureOnClose) {
+        ui->buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Start"));
+    } else {
+        ui->buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Save"));
+    }
 }
 
-ExtcapOptionsDialog * ExtcapOptionsDialog::createForDevice(QString &dev_name, QWidget *parent)
+ExtcapOptionsDialog * ExtcapOptionsDialog::createForDevice(QString &dev_name, bool startCaptureOnClose, QWidget *parent)
 {
     interface_t *device;
     ExtcapOptionsDialog * resultDialog = NULL;
@@ -92,11 +98,11 @@ ExtcapOptionsDialog * ExtcapOptionsDialog::createForDevice(QString &dev_name, QW
     if (! dev_found)
         return NULL;
 
-    resultDialog = new ExtcapOptionsDialog(parent);
+    resultDialog = new ExtcapOptionsDialog(startCaptureOnClose, parent);
     resultDialog->device_name = QString(dev_name);
     resultDialog->device_idx = if_idx;
 
-    resultDialog->setWindowTitle(wsApp->windowTitleString(tr("Interface Options") + ": " + device->display_name));
+    resultDialog->setWindowTitle(mainApp->windowTitleString(tr("Interface Options") + ": " + device->display_name));
 
     resultDialog->updateWidgets();
 
@@ -266,7 +272,7 @@ void ExtcapOptionsDialog::updateWidgets()
         ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(true);
         return;
     }
-    ui->checkSaveOnStart->setText(tr("Save parameter(s) on capture start", "", extcapArguments.count()));
+    ui->checkSaveOnStart->setText(tr("Save parameter(s) on capture start", "", static_cast<int>(extcapArguments.count())));
 
     QStringList groupKeys;
     QString defaultKeyName(tr("Default"));
@@ -331,14 +337,22 @@ void ExtcapOptionsDialog::updateWidgets()
             editWidget = argument->createEditor((QWidget *) this);
             if (editWidget != NULL)
             {
-                editWidget->setProperty(QString("extcap").toLocal8Bit(), VariantPointer<ExtcapArgument>::asQVariant(argument));
+                editWidget->setProperty("extcap", VariantPointer<ExtcapArgument>::asQVariant(argument));
                 layout->addWidget(editWidget, counter, 1, Qt::AlignVCenter);
+
+                if (argument->isSetDefaultValueSupported())
+                {
+                    QPushButton *button = new QPushButton(defaultValueIcon_,"");
+                    button->setToolTip(tr("Restore default value of the item"));
+                    layout->addWidget(button, counter, 2, Qt::AlignVCenter);
+                    connect(button, SIGNAL(clicked()), argument, SLOT(setDefaultValue()));
+                }
             }
 
             if (argument->isRequired() && ! argument->isValid())
                 allowStart = false;
 
-            connect(argument, SIGNAL(valueChanged()), this, SLOT(anyValueChanged()));
+            connect(argument, &ExtcapArgument::valueChanged, this, &ExtcapOptionsDialog::anyValueChanged);
 
             counter++;
         }
@@ -397,7 +411,7 @@ void ExtcapOptionsDialog::on_buttonBox_helpRequested()
     interface_help = QString(extcap_get_help_for_ifname(device->name));
     /* The extcap interface didn't provide an help. Let's go with the default */
     if (interface_help.isEmpty()) {
-        wsApp->helpTopicAction(HELP_EXTCAP_OPTIONS_DIALOG);
+        mainApp->helpTopicAction(HELP_EXTCAP_OPTIONS_DIALOG);
         return;
     }
 
@@ -405,11 +419,12 @@ void ExtcapOptionsDialog::on_buttonBox_helpRequested()
 
     /* Check the existence for a local file */
     if (help_url.isLocalFile()) {
-        QFileInfo help_file(help_url.toLocalFile());
+        QString local_path = help_url.toLocalFile();
+        QFileInfo help_file(local_path);
         if (!help_file.exists()) {
             QMessageBox::warning(this, tr("Extcap Help cannot be found"),
                 QString(tr("The help for the extcap interface %1 cannot be found. Given file: %2"))
-                    .arg(device->name).arg(help_url.path()),
+                    .arg(device->name).arg(QDir::toNativeSeparators(local_path)),
                 QMessageBox::Ok);
             return;
         }
@@ -433,22 +448,47 @@ bool ExtcapOptionsDialog::saveOptionToCaptureInfo()
     {
         QString call = (*iter)->call();
         QString value = (*iter)->value();
+        QString prefValue = (*iter)->prefValue();
 
         if ((*iter)->argument()->arg_type != EXTCAP_ARG_BOOLFLAG && value.length() == 0)
             continue;
 
-        if (call.length() <= 0)
+        if (call.length() <= 0) {
+            /* BOOLFLAG was cleared, make its value empty */
+            if ((*iter)->argument()->arg_type == EXTCAP_ARG_BOOLFLAG) {
+                *(*iter)->argument()->pref_valptr[0] = 0;
+            }
             continue;
+        }
 
-        if (value.compare((*iter)->defaultValue()) == 0)
+        if (value.compare((*iter)->defaultValue()) == 0) {
+            extcap_arg *arg = (*iter)->argument();
+
+            // If previous value is not default, set it to default value
+            if (arg->default_complex != NULL && arg->default_complex->_val != NULL) {
+                g_free(*arg->pref_valptr);
+                *arg->pref_valptr = g_strdup(arg->default_complex->_val);
+            } else {
+                // Set empty value if there is no default value
+                *arg->pref_valptr[0] = 0;
+            }
             continue;
+        }
 
-        gchar * call_string = g_strdup(call.toStdString().c_str());
+        gchar * call_string = qstring_strdup(call);
         gchar * value_string = NULL;
         if (value.length() > 0)
-            value_string = g_strdup(value.toStdString().c_str());
+            value_string = qstring_strdup(value);
 
         g_hash_table_insert(ret_args, call_string, value_string);
+
+        // For current value we need strdup even it is empty
+        value_string = qstring_strdup(prefValue);
+        // Update current value with new value
+        // We use prefValue because for bool/boolflag it returns value
+        // even it is false
+        g_free(*(*iter)->argument()->pref_valptr);
+        *(*iter)->argument()->pref_valptr = value_string;
     }
 
     if (device->external_cap_args_settings != NULL)
@@ -466,14 +506,12 @@ void ExtcapOptionsDialog::on_buttonBox_clicked(QAbstractButton *button)
 
 void ExtcapOptionsDialog::resetValues()
 {
-    ExtcapArgumentList::const_iterator iter;
-    QString value;
-    bool doStore = false;
-
     int count = ui->verticalLayout->count();
     if (count > 0)
     {
         QList<QLayout *> layouts;
+
+        /* Find all layouts */
         if (qobject_cast<QTabWidget *>(ui->verticalLayout->itemAt(0)->widget()))
         {
             QTabWidget * tabs = qobject_cast<QTabWidget *>(ui->verticalLayout->itemAt(0)->widget());
@@ -485,12 +523,14 @@ void ExtcapOptionsDialog::resetValues()
         else
             layouts.append(ui->verticalLayout->itemAt(0)->layout());
 
+        /* Loop over all layouts */
         for (int cnt = 0; cnt < layouts.count(); cnt++)
         {
             QGridLayout * layout = qobject_cast<QGridLayout *>(layouts.at(cnt));
             if (! layout)
                 continue;
 
+            /* Loop over all widgets in column 1 on layout */
             for (int row = 0; row < layout->rowCount(); row++)
             {
                 QWidget * child = Q_NULLPTR;
@@ -501,7 +541,7 @@ void ExtcapOptionsDialog::resetValues()
                 {
                     /* Don't need labels, the edit widget contains the extcapargument property value */
                     ExtcapArgument * arg = 0;
-                    QVariant prop = child->property(QString("extcap").toLocal8Bit());
+                    QVariant prop = child->property("extcap");
 
                     if (prop.isValid())
                     {
@@ -510,22 +550,7 @@ void ExtcapOptionsDialog::resetValues()
                         /* value<> can fail */
                         if (arg)
                         {
-                            arg->resetValue();
-
-                            /* replacing the edit widget after resetting will lead to default value */
-                            QWidget * newWidget = arg->createEditor((QWidget *) this);
-                            if (newWidget != NULL)
-                            {
-                                newWidget->setProperty(QString("extcap").toLocal8Bit(), VariantPointer<ExtcapArgument>::asQVariant(arg));
-                                QLayoutItem * oldItem = layout->replaceWidget(child, newWidget);
-                                if (oldItem)
-                                {
-                                    delete child;
-                                    delete oldItem;
-                                }
-                            }
-
-                            doStore = true;
+                            arg->setDefaultValue();
                         }
                     }
                 }
@@ -533,12 +558,8 @@ void ExtcapOptionsDialog::resetValues()
 
         }
 
-        /* this stores all values to the preferences */
-        if (doStore)
-        {
-            storeValues();
-            anyValueChanged();
-        }
+        /* Values are stored when dialog is commited, just check validity*/
+        anyValueChanged();
     }
 }
 
@@ -562,7 +583,9 @@ GHashTable *ExtcapOptionsDialog::getArgumentSettings(bool useCallsAsKey, bool in
         if (dynamic_cast<ExtArgBool *>((*iter)) != NULL)
         {
             value = ((ExtArgBool *)*iter)->prefValue();
-            isBoolflag = true;
+            // For boolflag there should be no value
+            if ((*iter)->argument()->arg_type != EXTCAP_ARG_BOOLFLAG)
+                isBoolflag = true;
         }
         else if (dynamic_cast<ExtArgRadio *>((*iter)) != NULL)
         {
@@ -601,9 +624,9 @@ GHashTable *ExtcapOptionsDialog::getArgumentSettings(bool useCallsAsKey, bool in
 
         if ((key.length() > 0) && (includeEmptyValues || isBoolflag || value.length() > 0) )
         {
-            gchar * val = g_strdup(value.toStdString().c_str());
+            gchar * val = qstring_strdup(value);
 
-            g_hash_table_insert(entries, g_strdup(key.toStdString().c_str()), val);
+            g_hash_table_insert(entries, qstring_strdup(key), val);
         }
     }
 
@@ -617,7 +640,7 @@ void ExtcapOptionsDialog::storeValues()
     if (g_hash_table_size(entries) > 0)
     {
         if (prefs_store_ext_multiple("extcap", entries))
-            wsApp->emitAppSignal(WiresharkApplication::PreferencesChanged);
+            mainApp->emitAppSignal(MainApplication::PreferencesChanged);
 
     }
 }
@@ -677,16 +700,3 @@ ExtcapValueList ExtcapOptionsDialog::loadValuesFor(int argNum, QString argumentN
 
     return elements;
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

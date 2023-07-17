@@ -89,12 +89,12 @@ static gint ett_usbip_dev = -1;
 static gint ett_usbip_intf = -1;
 
 enum usb_device_speed {
-        USB_SPEED_UNKNOWN = 0,                  /* enumerating */
-        USB_SPEED_LOW,                          /* usb 1.0 */
-        USB_SPEED_FULL,                         /* usb 1.1 */
-        USB_SPEED_HIGH,                         /* usb 2.0 */
-        USB_SPEED_WIRELESS,                     /* wireless (usb 2.5) */
-        USB_SPEED_SUPER,                        /* usb 3.0 */
+        USBIP_SPEED_UNKNOWN = 0,                  /* enumerating */
+        USBIP_SPEED_LOW,                          /* usb 1.0 */
+        USBIP_SPEED_FULL,                         /* usb 1.1 */
+        USBIP_SPEED_HIGH,                         /* usb 2.0 */
+        USBIP_SPEED_WIRELESS,                     /* wireless (usb 2.5) */
+        USBIP_SPEED_SUPER,                        /* usb 3.0 */
 };
 
 #define USBIP_SUPPORTED_VERSION 0x111
@@ -137,12 +137,12 @@ static const value_string usbip_urb_vals[] = {
 };
 
 static const value_string usbip_speed_vals[] = {
-    {USB_SPEED_UNKNOWN,  "Speed Unknown"                                   },
-    {USB_SPEED_LOW,      "Low Speed"                                       },
-    {USB_SPEED_FULL,     "Full Speed"                                      },
-    {USB_SPEED_HIGH,     "High Speed"                                      },
-    {USB_SPEED_WIRELESS, "Wireless Speed"                                  },
-    {USB_SPEED_SUPER,    "Super Speed"                                     },
+    {USBIP_SPEED_UNKNOWN,  "Speed Unknown"                                   },
+    {USBIP_SPEED_LOW,      "Low Speed"                                       },
+    {USBIP_SPEED_FULL,     "Full Speed"                                      },
+    {USBIP_SPEED_HIGH,     "High Speed"                                      },
+    {USBIP_SPEED_WIRELESS, "Wireless Speed"                                  },
+    {USBIP_SPEED_SUPER,    "Super Speed"                                     },
     {0,                  NULL                                              }
 };
 
@@ -547,7 +547,7 @@ usbip_dissect_urb(packet_info *pinfo, tvbuff_t *tvb, proto_tree *tree,
     }
 
     if (!usbip_trans) {
-        usbip_trans = wmem_new(wmem_packet_scope(), usbip_transaction_t);
+        usbip_trans = wmem_new(pinfo->pool, usbip_transaction_t);
         usbip_trans->cmd_frame = 0;
         usbip_trans->ret_frame = 0;
         usbip_trans->devid = 0;
@@ -773,16 +773,24 @@ get_usbip_message_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset,
 
         case OP_CMD_SUBMIT: {
             int expected_size = USBIP_HEADER_LEN;
+            int actual_length = tvb_get_ntohl(tvb, offset + 0x18);
+            int dir = tvb_get_ntohl(tvb, offset + 0xc);
+            int n_iso = tvb_get_ntohl(tvb, offset + 0x20);
 
-            if (tvb_get_ntohl(tvb, offset + 0xc) == USBIP_DIR_OUT)
-                expected_size += tvb_get_ntohl(tvb, offset + 0x18);
+            if (dir == USBIP_DIR_OUT)
+                expected_size += actual_length;
 
-            expected_size += tvb_get_ntohl(tvb, offset + 0x20) * 4 * 4;
+            if (n_iso > 0)
+                expected_size += n_iso * 4 * 4;
+
             return expected_size;
         }
 
         case OP_RET_SUBMIT: {
             int expected_size = USBIP_HEADER_LEN;
+            int actual_length = tvb_get_ntohl(tvb, offset + 0x18);
+            int n_iso = tvb_get_ntohl(tvb, offset + 0x20);
+
             usbip_transaction_t *usbip_trans = NULL;
             usbip_conv_info_t *usbip_info = usbip_get_usbip_conv(pinfo);
             guint32 status = tvb_get_ntohl(tvb, offset + 0x14);
@@ -792,11 +800,13 @@ get_usbip_message_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset,
                     usbip_info->pdus, tvb_get_ntohl(tvb, offset + 4));
 
                 if (usbip_trans && usbip_trans->dir == USBIP_DIR_IN && status == 0)
-                    expected_size += tvb_get_ntohl(tvb, offset + 0x18);
+                    expected_size += actual_length;
             }
 
-            if (status == 0)
-                expected_size += tvb_get_ntohl(tvb, offset + 0x20) * 4 * 4;
+            if (status == 0) {
+                if (n_iso >= 0)
+                    expected_size += n_iso * 4 * 4;
+            }
             else
                 expected_size = tvb_captured_length(tvb);
 
@@ -993,12 +1003,12 @@ proto_register_usbip(void)
 
         {&hf_usbip_direction,
          {"Direction",                     "usbip.endpoint_number.direction",
-          FT_UINT8, BASE_HEX, VALS(usb_endpoint_direction_vals), 0x1,
+          FT_UINT32, BASE_HEX, VALS(usb_endpoint_direction_vals), 0x00000001,
           "USB endpoint direction", HFILL}},
 
         {&hf_usbip_ep,
          {"Endpoint",                      "usbip.endpoint_number",
-          FT_UINT8, BASE_HEX, NULL, 0xf,
+          FT_UINT32, BASE_HEX, NULL, 0x0000000f,
           "USB endpoint number", HFILL}},
 
         {&hf_usbip_transfer_flags,

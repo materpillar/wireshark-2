@@ -16,8 +16,8 @@
 #include <string.h>
 #include <epan/packet.h>
 #include <epan/timestamp.h>
-#include <epan/strutil.h>
-#include <ui/cmdarg_err.h>
+#include <wsutil/str_util.h>
+#include <wsutil/cmdarg_err.h>
 #include <ui/cli/tshark-tap.h>
 
 typedef struct _io_users_t {
@@ -58,6 +58,12 @@ iousers_draw(void *arg)
 		printf("%s                                               | Frames  Size  | | Frames  Size  | | Frames  Size  |     Start      |              |\n",
 			display_ports ? "            " : "");
 		break;
+	case TS_EPOCH:
+		printf("%s                                               |       <-      | |       ->      | |     Total     |       Relative       |   Duration   |\n",
+			display_ports ? "            " : "");
+		printf("%s                                               | Frames  Bytes | | Frames  Bytes | | Frames  Bytes |         Start        |              |\n",
+			display_ports ? "            " : "");
+		break;
 	case TS_RELATIVE:
 	case TS_NOT_SET:
 	default:
@@ -92,22 +98,22 @@ iousers_draw(void *arg)
 			if (tot_frames == last_frames) {
 				char *rx_bytes, *tx_bytes, *total_bytes;
 
-				rx_bytes = format_size_wmem(NULL, iui->rx_bytes, (format_size_flags_e)(format_size_unit_bytes|format_size_suffix_no_space));
-				tx_bytes = format_size_wmem(NULL, iui->tx_bytes, (format_size_flags_e)(format_size_unit_bytes|format_size_suffix_no_space));
-				total_bytes = format_size_wmem(NULL, iui->tx_bytes + iui->rx_bytes, (format_size_flags_e)(format_size_unit_bytes|format_size_suffix_no_space));
+				rx_bytes = format_size(iui->rx_bytes, FORMAT_SIZE_UNIT_BYTES, 0);
+				tx_bytes = format_size(iui->tx_bytes, FORMAT_SIZE_UNIT_BYTES, 0);
+				total_bytes = format_size(iui->tx_bytes + iui->rx_bytes, FORMAT_SIZE_UNIT_BYTES, 0);
 
 				/* XXX - TODO: make name / port resolution configurable (through gbl_resolv_flags?) */
 				src_addr = get_conversation_address(NULL, &iui->src_address, TRUE);
 				dst_addr = get_conversation_address(NULL, &iui->dst_address, TRUE);
 				if (display_ports) {
 					char *src, *dst, *src_port, *dst_port;
-					src_port = get_conversation_port(NULL, iui->src_port, iui->etype, TRUE);
-					dst_port = get_conversation_port(NULL, iui->dst_port, iui->etype, TRUE);
+					src_port = get_conversation_port(NULL, iui->src_port, iui->ctype, TRUE);
+					dst_port = get_conversation_port(NULL, iui->dst_port, iui->ctype, TRUE);
 					src = wmem_strconcat(NULL, src_addr, ":", src_port, NULL);
 					dst = wmem_strconcat(NULL, dst_addr, ":", dst_port, NULL);
-					printf("%-26s <-> %-26s  %6" G_GINT64_MODIFIER "u %-9s"
-					       "  %6" G_GINT64_MODIFIER "u %-9s"
-					       "  %6" G_GINT64_MODIFIER "u %-9s  ",
+					printf("%-26s <-> %-26s  %6" PRIu64 " %-9s"
+					       "  %6" PRIu64 " %-9s"
+					       "  %6" PRIu64 " %-9s  ",
 						src, dst,
 						iui->rx_frames, rx_bytes,
 						iui->tx_frames, tx_bytes,
@@ -119,9 +125,9 @@ iousers_draw(void *arg)
 					wmem_free(NULL, src);
 					wmem_free(NULL, dst);
 				} else {
-					printf("%-20s <-> %-20s  %6" G_GINT64_MODIFIER "u %-9s"
-					       "  %6" G_GINT64_MODIFIER "u %-9s"
-					       "  %6" G_GINT64_MODIFIER "u %-9s  ",
+					printf("%-20s <-> %-20s  %6" PRIu64 " %-9s"
+					       "  %6" PRIu64 " %-9s"
+					       "  %6" PRIu64 " %-9s  ",
 						src_addr, dst_addr,
 						iui->rx_frames, rx_bytes,
 						iui->tx_frames, tx_bytes,
@@ -206,6 +212,9 @@ iousers_draw(void *arg)
 							 tm_time->tm_sec);
 					} else
 						printf("XXXX/XXX XX:XX:XX");
+					break;
+				case TS_EPOCH:
+					printf("%20.9f", nstime_to_sec(&iui->start_abs_time));
 					break;
 				case TS_RELATIVE:
 				case TS_NOT_SET:

@@ -1,4 +1,4 @@
-/* pref_models.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -29,7 +29,6 @@ public:
     QString getName() const {return name_;}
     pref_t* getPref() const {return pref_;}
     int getPrefType() const;
-    int getPrefGUIType() const;
     bool isPrefDefault() const;
     QString getPrefTypeName() const;
     module_t* getModule() const {return module_;}
@@ -94,8 +93,8 @@ private:
 class AdvancedPrefsModel : public QSortFilterProxyModel
 {
     Q_OBJECT
-public:
 
+public:
     explicit AdvancedPrefsModel(QObject * parent = Q_NULLPTR);
 
     enum AdvancedPrefsModelColumn {
@@ -127,11 +126,11 @@ protected:
 private:
 
     QString filter_;
+    const QChar passwordChar_;
 };
 
 class ModulePrefsModel : public QSortFilterProxyModel
 {
-    Q_OBJECT
 public:
 
     explicit ModulePrefsModel(QObject * parent = Q_NULLPTR);
@@ -162,16 +161,3 @@ private:
 extern pref_t *prefFromPrefPtr(void *pref_ptr);
 
 #endif // PREF_MODELS_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

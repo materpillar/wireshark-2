@@ -20,7 +20,9 @@
 
 #include <sys/types.h>     /* for gid_t */
 
-#include <caputils/capture_ifinfo.h>
+#include <capture/capture_ifinfo.h>
+#include "ringbuffer.h"
+#include <wsutil/wslog.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -42,9 +44,11 @@ extern "C" {
  * In short: we must not use 1 here, which is another reason to use
  * values outside the range of ASCII graphic characters.
  */
-#define LONGOPT_NUM_CAP_COMMENT   LONGOPT_BASE_CAPTURE+1
-#define LONGOPT_LIST_TSTAMP_TYPES LONGOPT_BASE_CAPTURE+2
-#define LONGOPT_SET_TSTAMP_TYPE   LONGOPT_BASE_CAPTURE+3
+#define LONGOPT_LIST_TSTAMP_TYPES LONGOPT_BASE_CAPTURE+1
+#define LONGOPT_SET_TSTAMP_TYPE   LONGOPT_BASE_CAPTURE+2
+#define LONGOPT_COMPRESS_TYPE     LONGOPT_BASE_CAPTURE+3
+#define LONGOPT_CAPTURE_TMPDIR    LONGOPT_BASE_CAPTURE+4
+#define LONGOPT_UPDATE_INTERVAL   LONGOPT_BASE_CAPTURE+5
 
 /*
  * Options for capturing common to all capturing programs.
@@ -57,7 +61,7 @@ extern "C" {
 
 #ifdef CAN_SET_CAPTURE_BUFFER_SIZE
 #define LONGOPT_BUFFER_SIZE \
-    {"buffer-size", required_argument, NULL, 'B'},
+    {"buffer-size", ws_required_argument, NULL, 'B'},
 #define OPTSTRING_B "B:"
 #else
 #define LONGOPT_BUFFER_SIZE
@@ -65,7 +69,7 @@ extern "C" {
 #endif
 
 #ifdef HAVE_PCAP_CREATE
-#define LONGOPT_MONITOR_MODE {"monitor-mode", no_argument, NULL, 'I'},
+#define LONGOPT_MONITOR_MODE {"monitor-mode", ws_no_argument, NULL, 'I'},
 #define OPTSTRING_I "I"
 #else
 #define LONGOPT_MONITOR_MODE
@@ -73,19 +77,21 @@ extern "C" {
 #endif
 
 #define LONGOPT_CAPTURE_COMMON \
-    {"capture-comment",       required_argument, NULL, LONGOPT_NUM_CAP_COMMENT}, \
-    {"autostop",              required_argument, NULL, 'a'}, \
-    {"ring-buffer",           required_argument, NULL, 'b'}, \
+    {"autostop",              ws_required_argument, NULL, 'a'}, \
+    {"ring-buffer",           ws_required_argument, NULL, 'b'}, \
     LONGOPT_BUFFER_SIZE \
-    {"list-interfaces",       no_argument,       NULL, 'D'}, \
-    {"interface",             required_argument, NULL, 'i'}, \
+    {"list-interfaces",       ws_no_argument,       NULL, 'D'}, \
+    {"interface",             ws_required_argument, NULL, 'i'}, \
     LONGOPT_MONITOR_MODE \
-    {"list-data-link-types",  no_argument,       NULL, 'L'}, \
-    {"no-promiscuous-mode",   no_argument,       NULL, 'p'}, \
-    {"snapshot-length",       required_argument, NULL, 's'}, \
-    {"linktype",              required_argument, NULL, 'y'}, \
-    {"list-time-stamp-types", no_argument,       NULL, LONGOPT_LIST_TSTAMP_TYPES}, \
-    {"time-stamp-type",       required_argument, NULL, LONGOPT_SET_TSTAMP_TYPE},
+    {"list-data-link-types",  ws_no_argument,       NULL, 'L'}, \
+    {"no-promiscuous-mode",   ws_no_argument,       NULL, 'p'}, \
+    {"snapshot-length",       ws_required_argument, NULL, 's'}, \
+    {"linktype",              ws_required_argument, NULL, 'y'}, \
+    {"list-time-stamp-types", ws_no_argument,       NULL, LONGOPT_LIST_TSTAMP_TYPES}, \
+    {"time-stamp-type",       ws_required_argument, NULL, LONGOPT_SET_TSTAMP_TYPE}, \
+    {"compress-type",         ws_required_argument, NULL, LONGOPT_COMPRESS_TYPE}, \
+    {"temp-dir",              ws_required_argument, NULL, LONGOPT_CAPTURE_TMPDIR},\
+    {"update-interval",       ws_required_argument, NULL, LONGOPT_UPDATE_INTERVAL},
 
 
 #define OPTSTRING_CAPTURE_COMMON \
@@ -194,6 +200,7 @@ typedef struct interface_options_tag {
     gchar            *descr;                /* a more user-friendly description of the interface; may be NULL if none */
     gchar            *hardware;             /* description of the hardware */
     gchar            *display_name;         /* the name displayed in the console and title bar */
+    gchar            *ifname;               /* if not null, name to use instead of the interface naem in IDBs */
     gchar            *cfilter;
     gboolean          has_snaplen;
     int               snaplen;
@@ -205,7 +212,9 @@ typedef struct interface_options_tag {
     GHashTable       *extcap_args;
     GPid              extcap_pid;           /* pid of running process or WS_INVALID_PID */
     gpointer          extcap_pipedata;
-    guint             extcap_child_watch;
+    GString          *extcap_stderr;
+    guint             extcap_stdout_watch;
+    guint             extcap_stderr_watch;
 #ifdef _WIN32
     HANDLE            extcap_pipe_h;
     HANDLE            extcap_control_in_h;
@@ -273,6 +282,7 @@ typedef struct capture_options_tag {
     gchar             *save_file;             /**< the capture file name */
     gboolean           group_read_access;     /**< TRUE is group read permission needs to be set */
     gboolean           use_pcapng;            /**< TRUE if file format is pcapng */
+    guint              update_interval;       /**< Time in milliseconds. How often to notify parent of new packet counts, check file duration, etc. */
 
     /* GUI related */
     gboolean           real_time_mode;        /**< Update list of packets in real time */
@@ -292,6 +302,7 @@ typedef struct capture_options_tag {
     int                file_packets;          /**< Switch file after n packets */
     gboolean           has_ring_num_files;    /**< TRUE if ring num_files specified */
     guint32            ring_num_files;        /**< Number of multiple buffer files */
+    gboolean           has_nametimenum;       /**< TRUE if file name has date part before num part  */
 
     /* autostop conditions */
     gboolean           has_autostop_files;    /**< TRUE if maximum number of capture files
@@ -301,6 +312,9 @@ typedef struct capture_options_tag {
     gboolean           has_autostop_packets;  /**< TRUE if maximum packet count is
                                                    specified */
     int                autostop_packets;      /**< Maximum packet count */
+    gboolean           has_autostop_written_packets;  /**< TRUE if maximum packet count is
+                                                   specified */
+    int                autostop_written_packets;      /**< Maximum packet count */
     gboolean           has_autostop_filesize; /**< TRUE if maximum capture file size
                                                    is specified */
     guint32            autostop_filesize;     /**< Maximum capture file size in kB */
@@ -308,15 +322,19 @@ typedef struct capture_options_tag {
                                                    is specified */
     gdouble            autostop_duration;     /**< Maximum capture duration */
 
-    gchar             *capture_comment;       /** capture comment to write to the
-                                                  output file */
     gboolean           print_file_names;      /**< TRUE if printing names of completed
                                                    files as we close them */
     gchar             *print_name_to;         /**< output file name */
+    gchar             *temp_dir;              /**< temporary directory path */
 
     /* internally used (don't touch from outside) */
     gboolean           output_to_pipe;        /**< save_file is a pipe (named or stdout) */
     gboolean           capture_child;         /**< hidden option: Wireshark child mode */
+    gboolean           stop_after_extcaps;    /**< request dumpcap stop after last extcap */
+    gboolean           wait_for_extcap_cbs;   /**< extcaps terminated, waiting for callbacks */
+    gchar             *compress_type;         /**< compress type */
+    gchar             *closed_msg;            /**< Dumpcap capture closed message */
+    guint              extcap_terminate_id;   /**< extcap process termination source ID */
 } capture_options;
 
 /* initialize the capture_options with some reasonable values */
@@ -329,21 +347,22 @@ capture_opts_cleanup(capture_options *capture_opts);
 
 /* set a command line option value */
 extern int
-capture_opts_add_opt(capture_options *capture_opts, int opt, const char *optarg, gboolean *start_capture);
+capture_opts_add_opt(capture_options *capture_opts, int opt, const char *ws_optarg);
 
 /* log content of capture_opts */
 extern void
-capture_opts_log(const char *log_domain, GLogLevelFlags log_level, capture_options *capture_opts);
+capture_opts_log(const char *domain, enum ws_log_level level, capture_options *capture_opts);
 
 enum caps_query {
-    CAPS_MONITOR_MODE          = 0x1,
-    CAPS_QUERY_LINK_TYPES      = 0x2,
-    CAPS_QUERY_TIMESTAMP_TYPES = 0x4
+    CAPS_QUERY_LINK_TYPES      = 0x1,
+    CAPS_QUERY_TIMESTAMP_TYPES = 0x2
 };
 
 /* print interface capabilities, including link layer types */
-extern void
-capture_opts_print_if_capabilities(if_capabilities_t *caps, char *name, int queries);
+extern int
+capture_opts_print_if_capabilities(if_capabilities_t *caps,
+                                   interface_options *interface_opts,
+                                   int queries);
 
 /* print list of interfaces */
 extern void
@@ -373,6 +392,9 @@ capture_opts_free_interface_t(interface_t *device);
 
 /* Default capture buffer size in Mbytes. */
 #define DEFAULT_CAPTURE_BUFFER_SIZE 2
+
+/* Default update interval in milliseconds */
+#define DEFAULT_UPDATE_INTERVAL 100
 
 #ifdef __cplusplus
 }

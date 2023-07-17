@@ -241,7 +241,7 @@ dissect_wfd_subelem_session_info(packet_info *pinfo, proto_tree *tree,
 
     proto_tree_add_item(descr, hf_wfd_subelem_session_dev_addr, tvb, offset, 6,
                         ENC_NA);
-    proto_item_append_text(descr, ": %s", tvb_ether_to_str(tvb, offset));
+    proto_item_append_text(descr, ": %s", tvb_ether_to_str(pinfo->pool, tvb, offset));
     offset += 6;
 
     proto_tree_add_item(descr, hf_wfd_subelem_session_assoc_bssid,
@@ -589,7 +589,7 @@ proto_register_wifi_display(void)
     { &hf_wfd_subelem_ext_capab_standby_resume_control,
       { "Standby and Resume Control",
         "wifi_display.subelem.ext_capab.standby_resume_control",
-        FT_BOOLEAN, 16, TFS (&tfs_supported_not_supported), 0x008, NULL, HFILL }},
+        FT_BOOLEAN, 16, TFS (&tfs_supported_not_supported), 0x0008, NULL, HFILL }},
     { &hf_wfd_subelem_ext_capab_tdls_persistent,
       { "TDLS Persistent",
         "wifi_display.subelem.ext_capab.tdls_persistent",

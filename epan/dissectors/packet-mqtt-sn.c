@@ -314,7 +314,7 @@ static void dissect_mqttsn_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
                 /* Gateway Address is only present if message is sent by client. */
                 if (offset < mqttsn_msg_len)
                 {
-                    proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_gw_addr, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                    proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_gw_addr, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 }
                 break;
 
@@ -325,7 +325,7 @@ static void dissect_mqttsn_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
                 offset += 1;
                 proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_keep_alive, tvb, offset, 2, ENC_BIG_ENDIAN);
                 offset += 2;
-                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_client_id, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_client_id, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 break;
 
             /* Connection Acknowledgement */
@@ -343,13 +343,13 @@ static void dissect_mqttsn_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
             /* Will Topic */
             case MQTTSN_WILLTOPIC:
                 /* | 1:n - Will topic | */
-                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_will_topic, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_will_topic, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 break;
 
             /* Will Message */
             case MQTTSN_WILLMSG:
                 /* | 1:n - Will message | */
-                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_will_msg, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_will_msg, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 break;
 
             /* Register */
@@ -359,7 +359,7 @@ static void dissect_mqttsn_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
                 offset += 2;
                 proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_msg_id, tvb, offset, 2, ENC_BIG_ENDIAN);
                 offset += 2;
-                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_topic, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_topic, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 break;
 
             /* Register Acknowledgement */
@@ -379,7 +379,7 @@ static void dissect_mqttsn_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
                 offset += 2;
                 proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_msg_id, tvb, offset, 2, ENC_BIG_ENDIAN);
                 offset += 2;
-                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_pub_msg, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_pub_msg, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 break;
 
             /* Publish Acknowledgement */
@@ -406,7 +406,7 @@ static void dissect_mqttsn_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
                 /* | 1,2 - Message ID | 5:n - Topic name _OR_ 5,6 - Topic ID | */
                 proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_msg_id, tvb, offset, 2, ENC_BIG_ENDIAN);
                 offset += 2;
-                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_topic_name_or_id, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_topic_name_or_id, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 break;
 
             /* Subscribe Acknowledgment */
@@ -430,7 +430,7 @@ static void dissect_mqttsn_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
                 /* | 1:n - Client ID (optional) | */
                 if (offset < mqttsn_msg_len)
                 {
-                    proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_client_id, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                    proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_client_id, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 }
                 break;
 
@@ -451,13 +451,13 @@ static void dissect_mqttsn_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
             /* Will Topic Update */
             case MQTTSN_WILLTOPICUPD:
                 /* | 1:n - Will topic | */
-                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_will_topic, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_will_topic, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 break;
 
             /* Will Message Update */
             case MQTTSN_WILLMSGUPD:
                 /* | 1:n - Will message | */
-                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_will_msg, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII|ENC_NA);
+                proto_tree_add_item(mqttsn_msg_tree, hf_mqttsn_will_msg, tvb, offset, (mqttsn_msg_len - offset), ENC_ASCII);
                 break;
 
             /* Will Topic Response + Will Message Response */
@@ -675,7 +675,7 @@ void proto_register_mqttsn(void)
     proto_mqttsn = proto_register_protocol("MQ Telemetry Transport Protocol for Sensor Networks", "MQTT-SN", "mqttsn");
 
     /* Create the dissector handle. */
-    mqttsn_handle = create_dissector_handle(dissect_mqttsn, proto_mqttsn);
+    mqttsn_handle = register_dissector("mqttsn", dissect_mqttsn, proto_mqttsn);
 
     /* Register fields and subtrees. */
     proto_register_field_array(proto_mqttsn, hf_mqttsn, array_length(hf_mqttsn));

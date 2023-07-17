@@ -851,7 +851,7 @@ static void dissect_h248_annexc_SDP_M(proto_tree* tree, tvbuff_t* tvb, packet_in
 			next_offset = tvb_find_guint8(param_tvb, offset, -1, ' ');
 			if (next_offset > 0){
 				tokenlen = next_offset - offset;
-				port_str = tvb_get_string_enc(wmem_packet_scope(), param_tvb, offset, tokenlen, ENC_UTF_8 | ENC_NA);
+				port_str = tvb_get_string_enc(pinfo->pool, param_tvb, offset, tokenlen, ENC_UTF_8 | ENC_NA);
 				if (g_ascii_isdigit(port_str[0])) {
 					gint32 port = -1;
 					gboolean port_valid;
@@ -867,7 +867,7 @@ static void dissect_h248_annexc_SDP_M(proto_tree* tree, tvbuff_t* tvb, packet_in
 	}
 }
 
-gboolean h248_c_implicit = TRUE;
+static gboolean h248_c_implicit = TRUE;
 
 static h248_pkg_param_t h248_annexc_package_properties[] = {
 	{ 0x1001, &hf_h248_pkg_annexc_media, h248_param_ber_integer, NULL },
@@ -1319,7 +1319,7 @@ void proto_register_h248_annex_c(void) {
 		    FT_UINT8, BASE_HEX, VALS(h248_pkg_annexc_tmrsr_values), 0,
 		    "Transmission Medium Requirement Subrate", HFILL }},
 		{ &hf_h248_pkg_annexc_contcheck,
-		  { "Continuity Check", "h248.annexc.tmsr",
+		  { "Continuity Check", "h248.annexc.contcheck",
 		    FT_UINT8, BASE_DEC, VALS(h248_pkg_annexc_contcheck_values), 0x0C,
 		    NULL, HFILL }},
 
@@ -1344,16 +1344,16 @@ void proto_register_h248_annex_c(void) {
 		    FT_UINT8, BASE_DEC, VALS(h248_pkg_annexc_syncasync_values), 0x80,
 		    "Synchronous/Asynchronous", HFILL }},
 		{ &hf_h248_pkg_annexc_negotiation,
-		  { "UPPC", "h248.annexc.negotiation",
+		  { "Negotiation", "h248.annexc.negotiation",
 		    FT_UINT8, BASE_DEC, VALS(h248_pkg_annexc_negotiation_values), 0x40,
-		    "Negotiation", HFILL }},
+		    NULL, HFILL }},
 
 		{ &hf_h248_pkg_annexc_userrate,
 		  { "Userrate", "h248.annexc.userrate",
 		    FT_UINT8, BASE_HEX, VALS(h248_pkg_annexc_userrate_values), 0x1f,
 		    "User Rate", HFILL }},
 		{ &hf_h248_pkg_annexc_intrate,
-		  { "UPPC", "h248.annexc.intrate",
+		  { "IntRate", "h248.annexc.intrate",
 		    FT_UINT8, BASE_HEX, VALS(h248_pkg_annexc_intrate_values), 0xc0,
 		    "Intermediate Rate", HFILL }},
 		{ &hf_h248_pkg_annexc_nictx,

@@ -24,6 +24,9 @@ void proto_register_mplstp_fm(void);
 void proto_reg_handoff_mplstp_lock(void);
 void proto_reg_handoff_mplstp_fm(void);
 
+static dissector_handle_t mplstp_lock_handle;
+static dissector_handle_t mplstp_fm_handle;
+
 /* MPLS-TP FM protocol specific variables */
 static gint proto_mplstp_fm     = -1;
 static gint ett_mplstp_fm       = -1;
@@ -236,14 +239,13 @@ proto_register_mplstp_lock(void)
 
   proto_register_field_array(proto_mplstp_lock, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
+
+  mplstp_lock_handle = register_dissector("mplstp_lock", dissect_mplstp_lock, proto_mplstp_lock);
 }
 
 void
 proto_reg_handoff_mplstp_lock(void)
 {
-  dissector_handle_t mplstp_lock_handle;
-
-  mplstp_lock_handle    = create_dissector_handle( dissect_mplstp_lock, proto_mplstp_lock );
   dissector_add_uint("pwach.channel_type", 0x0026, mplstp_lock_handle); /* KM: MPLSTP LOCK, RFC 6435 */
 }
 
@@ -298,17 +300,17 @@ proto_register_mplstp_fm(void)
 
     { &hf_mplstp_fm_flags,
       { "FM Flags", "mplstp_oam.flags",
-        FT_UINT8, BASE_HEX, NULL, 0x0000, "MPLS-TP FM Flags", HFILL}
+        FT_UINT8, BASE_HEX, NULL, 0x0, "MPLS-TP FM Flags", HFILL}
     },
 
     { &hf_mplstp_fm_flags_l,
       { "Link Down Indication", "mplstp_oam.flag_l",
-        FT_BOOLEAN, 8, NULL, 0x0002, NULL, HFILL}
+        FT_BOOLEAN, 8, NULL, 0x02, NULL, HFILL}
     },
 
     { &hf_mplstp_fm_flags_r,
       { "FM Condition Cleared", "mplstp_oam.flag_r",
-        FT_BOOLEAN, 8, NULL, 0x0001, "Fault Condition Cleared", HFILL}
+        FT_BOOLEAN, 8, NULL, 0x01, "Fault Condition Cleared", HFILL}
     },
   };
 
@@ -325,14 +327,13 @@ proto_register_mplstp_fm(void)
 
   proto_register_field_array(proto_mplstp_fm, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
+
+  mplstp_fm_handle = register_dissector("mplstp_fm",  dissect_mplstp_fm, proto_mplstp_fm );
 }
 
 void
 proto_reg_handoff_mplstp_fm(void)
 {
-  dissector_handle_t mplstp_fm_handle;
-
-  mplstp_fm_handle = create_dissector_handle( dissect_mplstp_fm, proto_mplstp_fm );
   dissector_add_uint("pwach.channel_type", PW_ACH_TYPE_MPLSTP_FM, mplstp_fm_handle);
 }
 

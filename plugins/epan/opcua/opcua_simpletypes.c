@@ -632,7 +632,7 @@ proto_item* parseString(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_,
     else
     {
         item = proto_tree_add_item(tree, hfIndex, tvb, *pOffset, 0, ENC_NA);
-        szValue = wmem_strdup_printf(wmem_packet_scope(), "[Invalid String] Invalid length: %d", iLen);
+        szValue = wmem_strdup_printf(pinfo->pool, "[Invalid String] Invalid length: %d", iLen);
         proto_item_append_text(item, "%s", szValue);
         proto_item_set_end(item, tvb, *pOffset + 4);
     }
@@ -758,7 +758,7 @@ proto_item* parseByteString(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo 
     else
     {
         item = proto_tree_add_item(tree, hfIndex, tvb, *pOffset, 0, ENC_NA);
-        szValue = wmem_strdup_printf(wmem_packet_scope(), "[Invalid ByteString] Invalid length: %d", iLen);
+        szValue = wmem_strdup_printf(pinfo->pool, "[Invalid ByteString] Invalid length: %d", iLen);
         proto_item_append_text(item, "%s", szValue);
         proto_item_set_end(item, tvb, *pOffset + 4);
     }
@@ -835,13 +835,13 @@ void parseDiagnosticInfo(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, gi
     {
         parseInt32(subtree, tvb, pinfo, &iOffset, hf_opcua_diag_namespace);
     }
-    if (EncodingMask & DIAGNOSTICINFO_ENCODINGMASK_LOCALIZEDTEXT_FLAG)
-    {
-        parseInt32(subtree, tvb, pinfo, &iOffset, hf_opcua_diag_localizedtext);
-    }
     if (EncodingMask & DIAGNOSTICINFO_ENCODINGMASK_LOCALE_FLAG)
     {
         parseInt32(subtree, tvb, pinfo, &iOffset, hf_opcua_diag_locale);
+    }
+    if (EncodingMask & DIAGNOSTICINFO_ENCODINGMASK_LOCALIZEDTEXT_FLAG)
+    {
+        parseInt32(subtree, tvb, pinfo, &iOffset, hf_opcua_diag_localizedtext);
     }
     if (EncodingMask & DIAGNOSTICINFO_ENCODINGMASK_ADDITIONALINFO_FLAG)
     {
@@ -1134,7 +1134,7 @@ void parseArrayComplex(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, gint
     for (i=0; i<iLen; i++)
     {
         char szNum[20];
-        g_snprintf(szNum, 20, "[%i]", i);
+        snprintf(szNum, 20, "[%i]", i);
         (*pParserFunction)(subtree, tvb, pinfo, pOffset, szNum);
     }
     proto_item_set_end(ti, tvb, *pOffset);
@@ -1218,7 +1218,7 @@ void parseExtensionObject(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, g
 
     /* add nodeid subtree */
     TypeId = getExtensionObjectType(tvb, &iOffset);
-    parseExpandedNodeId(extobj_tree, tvb, pinfo, &iOffset, "TypeId");
+    parseNodeId(extobj_tree, tvb, pinfo, &iOffset, "TypeId");
 
     /* parse encoding mask */
     EncodingMask = tvb_get_guint8(tvb, iOffset);

@@ -52,6 +52,8 @@
 void proto_register_x11(void);
 void proto_reg_handoff_x11(void);
 
+static dissector_handle_t x11_handle = NULL;
+
 #define cVALS(x) (const value_string*)(x)
 
 
@@ -1317,7 +1319,7 @@ static void colorFlags(tvbuff_t *tvb, int *offsetp, proto_tree *t)
 
       if (do_red_green_blue) {
             int sep = FALSE;
-            wmem_strbuf_t *buffer = wmem_strbuf_new_label(wmem_packet_scope());
+            wmem_strbuf_t *buffer = wmem_strbuf_create(wmem_packet_scope());
             wmem_strbuf_append(buffer, "flags: ");
 
             if (do_red_green_blue & 0x1) {
@@ -1515,7 +1517,7 @@ static void listOfColorItem(tvbuff_t *tvb, int *offsetp, proto_tree *t, int hf,
             wmem_strbuf_t *buffer;
             const char *sep;
 
-            buffer=wmem_strbuf_new_label(wmem_packet_scope());
+            buffer=wmem_strbuf_create(wmem_packet_scope());
             wmem_strbuf_append(buffer, "colorItem ");
             red = tvb_get_guint16(tvb, *offsetp + 4, byte_order);
             green = tvb_get_guint16(tvb, *offsetp + 6, byte_order);
@@ -2221,8 +2223,6 @@ static int stringIsActuallyAn8BitString(tvbuff_t *tvb, int offset, guint length)
       return TRUE;
 }
 
-#define UNREPL 0x00FFFD
-
 /* XXX - assumes that the string encoding is ASCII; even if 0x00 through
    0x7F are ASCII, 0x80 through 0xFF might not be, and even 0x00 through
    0x7F aren't necessarily ASCII. */
@@ -2231,7 +2231,7 @@ static char *tvb_get_ascii_string16(tvbuff_t *tvb, int offset, guint length)
       wmem_strbuf_t *str;
       guint8 ch;
 
-      str = wmem_strbuf_sized_new(wmem_packet_scope(), length + 1, 0);
+      str = wmem_strbuf_new_sized(wmem_packet_scope(), length + 1);
 
       while(length--) {
             offset++;
@@ -2239,7 +2239,7 @@ static char *tvb_get_ascii_string16(tvbuff_t *tvb, int offset, guint length)
             if (ch < 0x80)
                   wmem_strbuf_append_c(str, ch);
             else
-                  wmem_strbuf_append_unichar(str, UNREPL);
+                  wmem_strbuf_append_unichar_repl(str);
             offset++;
       }
       return wmem_strbuf_finalize(str);
@@ -5013,7 +5013,7 @@ static void dissect_x11_requests(tvbuff_t *tvb, packet_info *pinfo,
                    */
                   if (tmp > G_MAXINT32) {
                         ti = proto_tree_add_item(tree, proto_x11, tvb, offset, -1, ENC_NA);
-                        expert_add_info_format(pinfo, ti, &ei_x11_request_length, "Bogus request length (%"G_GINT64_MODIFIER"d)", tmp);
+                        expert_add_info_format(pinfo, ti, &ei_x11_request_length, "Bogus request length (%"PRId64")", tmp);
                         return;
                   }
                   plen = (gint)tmp;
@@ -5207,7 +5207,7 @@ dissect_x11_replies(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
              */
             if (x11_desegment && pinfo->can_desegment) {
                   /*
-                   * Yes - is the X11 reply header split across
+                   * Yes - is the X11 Reply or GenericEvent header split across
                    * segment boundaries?
                    */
                   if (length_remaining < 8) {
@@ -5279,6 +5279,24 @@ dissect_x11_replies(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                               THROW_ON(tmp_plen < 32, ReportedBoundsError);
                               HANDLE_REPLY(plen, length_remaining,
                                            "Reply", dissect_x11_reply);
+                              break;
+                        }
+
+                        case GenericEvent:
+                        {
+                              /* An Event, but with a length field like a Reply. */
+
+                              /* To avoid an "assert w/side-effect" warning,
+                               * use a non-volatile temp variable instead. */
+                              int tmp_plen;
+
+                              /* GenericEvent's length is also in units of four. */
+                              tmp_plen = plen = 32 + tvb_get_guint32(tvb, offset + 4, byte_order) * 4;
+                              /* If tmp_plen < 32, we got an overflow;
+                               * the event length is too long. */
+                              THROW_ON(tmp_plen < 32, ReportedBoundsError);
+                              HANDLE_REPLY(plen, length_remaining,
+                                           "Event", dissect_x11_event);
                               break;
                         }
 
@@ -6263,6 +6281,7 @@ void proto_register_x11(void)
 
 /* Register the protocol name and description */
       proto_x11 = proto_register_protocol("X11", "X11", "x11");
+      x11_handle = register_dissector("x11", dissect_x11, proto_x11);
 
 /* Required function calls to register the header fields and subtrees used */
       proto_register_field_array(proto_x11, hf, array_length(hf));
@@ -6288,10 +6307,6 @@ void proto_register_x11(void)
 void
 proto_reg_handoff_x11(void)
 {
-      dissector_handle_t x11_handle = NULL;
-
-      x11_handle = create_dissector_handle(dissect_x11, proto_x11);
-
       dissector_add_uint_range_with_preference("tcp.port",  DEFAULT_X11_PORT_RANGE, x11_handle);
 }
 

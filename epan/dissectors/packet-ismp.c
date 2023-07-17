@@ -21,6 +21,8 @@
 void proto_register_ismp(void);
 void proto_reg_handoff_ismp(void);
 
+static dissector_handle_t ismp_handle;
+
 /* Initialize the protocol and registered fields */
 static int proto_ismp = -1;
 static int hf_ismp_version = -1;
@@ -220,7 +222,7 @@ ipx_addr_to_str(const guint32 net, const guint8 *ad)
 	else {
 		buf = wmem_strdup_printf(wmem_packet_scope(), "%s.%s",
 				get_ipxnet_name(wmem_packet_scope(), net),
-				bytestring_to_str(wmem_packet_scope(), ad, 6, '\0'));
+				bytes_to_str_punct(wmem_packet_scope(), ad, 6, '\0'));
 	}
 	return buf;
 }
@@ -262,8 +264,8 @@ dissect_ismp_edp(tvbuff_t *tvb, packet_info *pinfo, int offset, proto_tree *ismp
 		edp_tree = proto_item_add_subtree(edp_ti, ett_ismp_edp);
 
 		col_add_fstr(pinfo->cinfo, COL_INFO, "MIP %s, MMAC %s, ifIdx %d",
-			tvb_ip_to_str(tvb, offset+2),
-			tvb_ether_to_str(tvb, offset+6),
+			tvb_ip_to_str(pinfo->pool, tvb, offset+2),
+			tvb_ether_to_str(pinfo->pool, tvb, offset+6),
 			tvb_get_ntohl(tvb, offset+12));
 
 		proto_tree_add_item(edp_tree, hf_ismp_edp_version, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -454,7 +456,7 @@ dissect_ismp_edp(tvbuff_t *tvb, packet_info *pinfo, int offset, proto_tree *ismp
 						case EDP_TUPLE_INT_NAME:
 							proto_tree_add_item(edp_tuples_leaf_tree, hf_ismp_interface_name, tvb, offset, tuple_length, ENC_NA|ENC_ASCII);
 							col_append_fstr(pinfo->cinfo, COL_INFO, ", ifName %s",
-								tvb_format_text(tvb, offset, tuple_length));
+								tvb_format_text(pinfo->pool, tvb, offset, tuple_length));
 							break;
 						case EDP_TUPLE_SYS_DESCRIPT:
 							proto_tree_add_item(edp_tuples_leaf_tree, hf_ismp_system_description, tvb, offset, tuple_length, ENC_NA|ENC_ASCII);
@@ -869,6 +871,8 @@ proto_register_ismp(void)
 	proto_register_subtree_array(ett, array_length(ett));
 	expert_ismp = expert_register_protocol(proto_ismp);
 	expert_register_field_array(expert_ismp, ei, array_length(ei));
+
+	ismp_handle = register_dissector("ismp", dissect_ismp, proto_ismp);
 }
 
 
@@ -879,10 +883,6 @@ proto_register_ismp(void)
 void
 proto_reg_handoff_ismp(void)
 {
-	dissector_handle_t ismp_handle;
-
-	ismp_handle = create_dissector_handle(dissect_ismp,
-	    proto_ismp);
 	dissector_add_uint("ethertype", ETHERTYPE_ISMP, ismp_handle);
 }
 

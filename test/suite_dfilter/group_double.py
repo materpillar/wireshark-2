@@ -2,13 +2,11 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-import unittest
-import fixtures
+import pytest
 from suite_dfilter.dfiltertest import *
 
 
-@fixtures.uses_fixtures
-class case_double(unittest.TestCase):
+class TestDfilterDouble:
 
     trace_file = "icmp.pcapng.gz"
 
@@ -19,6 +17,30 @@ class case_double(unittest.TestCase):
     def test_eq_2(self, checkDFilterCount):
         dfilter = "icmp.resptime == 492.205"
         checkDFilterCount(dfilter, 0)
+
+    def test_eq_3(self, checkDFilterCount):
+        dfilter = "icmp.resptime == 492204e-3"
+        checkDFilterCount(dfilter, 1)
+
+    def test_eq_4(self, checkDFilterCount):
+        dfilter = "icmp.resptime == 492205e-3"
+        checkDFilterCount(dfilter, 0)
+
+    def test_ne_1(self, checkDFilterCount):
+        dfilter = "icmp.resptime != 492.204"
+        checkDFilterCount(dfilter, 0)
+
+    def test_ne_2(self, checkDFilterCount):
+        dfilter = "icmp.resptime != 492.205"
+        checkDFilterCount(dfilter, 1)
+
+    def test_ne_3(self, checkDFilterCount):
+        dfilter = "icmp.resptime != 492204e-3"
+        checkDFilterCount(dfilter, 0)
+
+    def test_ne_4(self, checkDFilterCount):
+        dfilter = "icmp.resptime != 492205e-3"
+        checkDFilterCount(dfilter, 1)
 
     def test_gt_1(self, checkDFilterCount):
         dfilter = "icmp.resptime > 492"

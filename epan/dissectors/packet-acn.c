@@ -40,6 +40,8 @@
 void proto_register_acn(void);
 void proto_reg_handoff_acn(void);
 
+static dissector_handle_t acn_handle;
+
 /* pdu flags */
 #define ACN_PDU_FLAG_L     0x80
 #define ACN_PDU_FLAG_V     0x40
@@ -48,6 +50,7 @@ void proto_reg_handoff_acn(void);
 
 #define ACN_DMX_OPTION_P   0x80
 #define ACN_DMX_OPTION_S   0x40
+#define ACN_DMX_OPTION_F   0x20
 
 #define ACN_DMP_ADT_FLAG_V 0x80 /* V = Specifies whether address is a virtual address or not. */
 #define ACN_DMP_ADT_FLAG_R 0x40 /* R = Specifies whether address is relative to last valid address in packet or not. */
@@ -82,9 +85,11 @@ void proto_reg_handoff_acn(void);
 #define ACN_PROTOCOL_ID_DMX           0x00000003
 #define ACN_PROTOCOL_ID_DMX_2         0x00000004
 #define ACN_PROTOCOL_ID_RPT           0x00000005
+#define ACN_PROTOCOL_ID_EXTENDED      0x00000008
 #define ACN_PROTOCOL_ID_BROKER        0x00000009
 #define ACN_PROTOCOL_ID_LLRP          0x0000000A
 #define ACN_PROTOCOL_ID_EPT           0x0000000B
+#define ACN_PROTOCOL_ID_DMX_3         0x50430001
 
 #define ACN_ADDR_NULL                 0
 #define ACN_ADDR_IPV4                 1
@@ -218,6 +223,10 @@ void proto_reg_handoff_acn(void);
 #define ACN_DMP_REASON_CODE_NO_SUBSCRIPTIONS_SUPPORTED  11
 
 #define ACN_DMX_VECTOR      2
+
+#define ACN_DMX_EXT_SYNC_VECTOR 1
+#define ACN_DMX_EXT_DISCOVERY_VECTOR 2
+#define ACN_DMX_DISCOVERY_UNIVERSE_LIST_VECTOR 1
 
 #define ACN_PREF_DMX_DISPLAY_HEX  0
 #define ACN_PREF_DMX_DISPLAY_DEC  1
@@ -446,7 +455,7 @@ typedef struct
 #define ACTUAL_ADDRESS  0
 /* forward reference */
 static guint32 acn_add_address(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, const char *label);
-static int     dissect_acn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
+static int     dissect_acn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data);
 static int     dissect_rdmnet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 data_offset, gboolean is_udp);
 
 /* Global variables */
@@ -492,6 +501,8 @@ static gint ett_rdmnet_ept_base_pdu = -1;
 static gint ett_rdmnet_ept_data_pdu = -1;
 static gint ett_rdmnet_ept_data_vector_pdu = -1;
 static gint ett_rdmnet_ept_status_pdu = -1;
+
+static expert_field ei_acn_dmx_discovery_outofseq = EI_INIT;
 
 /*  Register fields */
 /* In alphabetical order */
@@ -577,15 +588,18 @@ static int hf_acn_adhoc_expiry = -1;
 static int hf_acn_sdt_vector = -1;
 
 static int hf_acn_dmx_vector = -1;
+static int hf_acn_dmx_extension_vector = -1;
 /* static int hf_acn_session_count = -1; */
 static int hf_acn_total_sequence_number = -1;
 static int hf_acn_dmx_source_name = -1;
 static int hf_acn_dmx_priority = -1;
-static int hf_acn_dmx_2_reserved = -1;
+static int hf_acn_dmx_2_sync_universe = -1;
+static int hf_acn_dmx_3_reserved = -1;
 static int hf_acn_dmx_sequence_number = -1;
 static int hf_acn_dmx_2_options = -1;
 static int hf_acn_dmx_2_option_p = -1;
 static int hf_acn_dmx_2_option_s = -1;
+static int hf_acn_dmx_2_option_f = -1;
 static int hf_acn_dmx_universe = -1;
 
 static int hf_acn_dmx_start_code = -1;
@@ -594,6 +608,21 @@ static int hf_acn_dmx_increment = -1;
 static int hf_acn_dmx_count = -1;
 static int hf_acn_dmx_2_start_code = -1;
 static int hf_acn_dmx_data = -1;
+
+static int hf_acn_postamble_key_fingerprint = -1;
+static int hf_acn_postamble_seq_type = -1;
+static int hf_acn_postamble_seq_hi = -1;
+static int hf_acn_postamble_seq_low = -1;
+static int hf_acn_postamble_message_digest = -1;
+
+static int hf_acn_dmx_discovery_framing_reserved = -1;
+static int hf_acn_dmx_discovery_page = -1;
+static int hf_acn_dmx_discovery_last_page = -1;
+static int hf_acn_dmx_discovery_vector = -1;
+static int hf_acn_dmx_discovery_universe_list = -1;
+
+static int hf_acn_dmx_sync_universe = -1;
+static int hf_acn_dmx_sync_reserved = -1;
 
 /* static int hf_acn_dmx_dmp_vector = -1; */
 
@@ -752,6 +781,8 @@ static const value_string acn_protocol_id_vals[] = {
   { ACN_PROTOCOL_ID_BROKER, "Broker Protocol" },
   { ACN_PROTOCOL_ID_LLRP,   "Low Level Recovery Protocol" },
   { ACN_PROTOCOL_ID_EPT,    "Extensible Packet Transport Protocol" },
+  { ACN_PROTOCOL_ID_DMX_3,  "Pathway Connectivity Secure DMX Protocol" },
+  { ACN_PROTOCOL_ID_EXTENDED, "Protocol Extension" },
   { 0,       NULL },
 };
 
@@ -808,6 +839,17 @@ static const value_string acn_sdt_vector_vals[] = {
 
 static const value_string acn_dmx_vector_vals[] = {
   { ACN_DMX_VECTOR,  "Streaming DMX"},
+  { 0,       NULL },
+};
+
+static const value_string acn_dmx_extension_vector_vals[] = {
+  { ACN_DMX_EXT_SYNC_VECTOR,        "Streaming DMX Sync"},
+  { ACN_DMX_EXT_DISCOVERY_VECTOR,   "Streaming DMX Discovery"},
+  { 0,       NULL },
+};
+
+static const value_string acn_dmx_discovery_vector_vals[] = {
+  { ACN_DMX_DISCOVERY_UNIVERSE_LIST_VECTOR,        "Source Universe List"},
   { 0,       NULL },
 };
 
@@ -2816,6 +2858,13 @@ static const value_string magic_ip_configuration_vals[] = {
   { 0, NULL }
 };
 
+static const value_string security_seq_type_vals[] = {
+  { 0, "Time (ms since epoch)" },
+  { 1, "Volatile" },
+  { 2, "Non-volatile" },
+  { 0, NULL }
+};
+
 static const value_string rdmnet_llrp_vector_vals[] = {
   { RDMNET_LLRP_VECTOR_PROBE_REQUEST, "LLRP probe request" },
   { RDMNET_LLRP_VECTOR_PROBE_REPLY,   "LLRP probe reply" },
@@ -3092,7 +3141,7 @@ dissect_magic(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       offset += 2;
 
       offset -= 7;
-      buffer = wmem_strdup_printf(wmem_packet_scope(), "%d.%d.%d.%d.%d.%d", major, minor, patch, aud, crit, build);
+      buffer = wmem_strdup_printf(pinfo->pool, "%d.%d.%d.%d.%d.%d", major, minor, patch, aud, crit, build);
       proto_tree_add_string(magic_tree, hf_magic_reply_version, tvb, offset, 7, buffer);
       offset += 7;
 
@@ -3136,7 +3185,7 @@ dissect_magic(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       offset += 2;
 
       offset -= 7;
-      buffer = wmem_strdup_printf(wmem_packet_scope(), "%d.%d.%d.%d.%d.%d", major, minor, patch, aud, crit, build);
+      buffer = wmem_strdup_printf(pinfo->pool, "%d.%d.%d.%d.%d.%d", major, minor, patch, aud, crit, build);
       proto_tree_add_string(magic_tree, hf_magic_reply_version, tvb, offset, 7, buffer);
       offset += 7;
 
@@ -3240,7 +3289,9 @@ is_acn(tvbuff_t *tvb)
   if (is_acn_or_rdmnet_over_udp(tvb, &protocol_id)) {
     if ((protocol_id == ACN_PROTOCOL_ID_DMX) ||
         (protocol_id == ACN_PROTOCOL_ID_DMX_2) ||
-        (protocol_id == ACN_PROTOCOL_ID_SDT))
+        (protocol_id == ACN_PROTOCOL_ID_DMX_3) ||
+        (protocol_id == ACN_PROTOCOL_ID_SDT) ||
+        (protocol_id == ACN_PROTOCOL_ID_EXTENDED))
       return TRUE;
   }
 
@@ -3273,7 +3324,7 @@ dissect_acn_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
    */
 
   if (is_acn(tvb)) {
-    dissect_acn(tvb, pinfo, tree);
+    dissect_acn(tvb, pinfo, tree, data);
     return TRUE;
   }
 
@@ -3334,6 +3385,10 @@ dissect_rdmnet_over_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
 static gboolean
 dissect_rdmnet_over_tcp_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
+  if (!is_rdmnet_over_tcp(tvb)) {
+    return FALSE;
+  }
+
   dissect_rdmnet_over_tcp(tvb, pinfo, tree, data);
   return TRUE;
 }
@@ -3466,7 +3521,7 @@ acn_add_address(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int off
       /* Add Address */
       proto_tree_add_item(addr_tree, hf_acn_ipv4, tvb, offset, 4, ENC_BIG_ENDIAN);
       /* Append port and address to tree item */
-      proto_item_append_text(pi, " %s, Port %d", tvb_address_to_str(wmem_packet_scope(), tvb, AT_IPv4, offset), port);
+      proto_item_append_text(pi, " %s, Port %d", tvb_address_to_str(pinfo->pool, tvb, AT_IPv4, offset), port);
       offset    += 4;
       break;
     case ACN_ADDR_IPV6:
@@ -3481,7 +3536,7 @@ acn_add_address(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int off
       /* Add Address */
       proto_tree_add_item(addr_tree, hf_acn_ipv6, tvb, offset, 16, ENC_NA);
       /* Append port and address to tree item */
-      proto_item_append_text(pi, " %s, Port %d", tvb_address_to_str(wmem_packet_scope(), tvb, AT_IPv6, offset), port);
+      proto_item_append_text(pi, " %s, Port %d", tvb_address_to_str(pinfo->pool, tvb, AT_IPv6, offset), port);
       offset    += 16;
       break;
     case ACN_ADDR_IPPORT:
@@ -3776,13 +3831,13 @@ acn_add_dmp_data(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int of
 
       switch (A) {
         case ACN_DMP_ADT_A_1: /* One octet address, (range: one octet address, increment, and count). */
-          buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%2.2X ->", data_address);
+          buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%2.2X ->", data_address);
           break;
         case ACN_DMP_ADT_A_2: /* Two octet address, (range: two octet address, increment, and count). */
-          buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%4.4X ->", data_address);
+          buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%4.4X ->", data_address);
           break;
         case ACN_DMP_ADT_A_4: /* Four octet address, (range: four octet address, increment, and count). */
-          buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%8.8X ->", data_address);
+          buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%8.8X ->", data_address);
           break;
         default: /* and ACN_DMP_ADT_A_R, this reserved....so it has no meaning yet */
           offset += data_size;
@@ -3807,7 +3862,7 @@ acn_add_dmp_data(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int of
           proto_tree_add_uint_format(tree, hf_acn_data32, tvb, offset, 4, data_value, "%s %8.8X", buffer, data_value);
           break;
         default:
-          default_buffer = wmem_strbuf_new(wmem_packet_scope(), "");
+          default_buffer = wmem_strbuf_new(pinfo->pool, "");
           /* build string of values */
           for (y=0; y<20 && y<data_size; y++) {
             data_value = tvb_get_guint8(tvb, offset+y);
@@ -3831,13 +3886,13 @@ acn_add_dmp_data(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int of
       for (x=0; x<adt->count; x++) {
         switch (A) {
           case ACN_DMP_ADT_A_1: /* One octet address, (range: one octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%2.2X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%2.2X ->", data_address);
             break;
           case ACN_DMP_ADT_A_2: /* Two octet address, (range: two octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%4.4X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%4.4X ->", data_address);
             break;
           case ACN_DMP_ADT_A_4: /* Four octet address, (range: four octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%8.8X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%8.8X ->", data_address);
             break;
           default: /* and ACN_DMP_ADT_A_R, this reserved....so it has no meaning yet */
             return offset;
@@ -3850,19 +3905,19 @@ acn_add_dmp_data(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int of
             break;
           case 2:
             data_value = tvb_get_ntohs(tvb, offset);
-            proto_tree_add_uint_format(tree, hf_acn_data8, tvb, offset, 2, data_value, "%s %4.4X", buffer, data_value);
+            proto_tree_add_uint_format(tree, hf_acn_data16, tvb, offset, 2, data_value, "%s %4.4X", buffer, data_value);
             break;
           case 3:
             data_value = tvb_get_ntoh24(tvb, offset);
-            proto_tree_add_uint_format(tree, hf_acn_data8, tvb, offset, 3, data_value, "%s %6.6X", buffer, data_value);
+            proto_tree_add_uint_format(tree, hf_acn_data24, tvb, offset, 3, data_value, "%s %6.6X", buffer, data_value);
             break;
           case 4:
             data_value = tvb_get_ntohl(tvb, offset);
-            proto_tree_add_uint_format(tree, hf_acn_data8, tvb, offset, 4, data_value, "%s %8.8X", buffer, data_value);
+            proto_tree_add_uint_format(tree, hf_acn_data32, tvb, offset, 4, data_value, "%s %8.8X", buffer, data_value);
             break;
           default:
             /* build string of values */
-            default_buffer = wmem_strbuf_new(wmem_packet_scope(), "");
+            default_buffer = wmem_strbuf_new(pinfo->pool, "");
             for (y=0; y<20 && y<data_size; y++) {
               data_value = tvb_get_guint8(tvb, offset+y);
               wmem_strbuf_append_printf(default_buffer, " %2.2X", data_value);
@@ -3886,13 +3941,13 @@ acn_add_dmp_data(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int of
       for (x=0; x<adt->count; x++) {
         switch (A) {
           case ACN_DMP_ADT_A_1: /* One octet address, (range: one octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%2.2X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%2.2X ->", data_address);
             break;
           case ACN_DMP_ADT_A_2: /* Two octet address, (range: two octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%4.4X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%4.4X ->", data_address);
             break;
           case ACN_DMP_ADT_A_4: /* Four octet address, (range: four octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%8.8X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%8.8X ->", data_address);
             break;
           default: /* and ACN_DMP_ADT_A_R, this reserved....so it has no meaning yet */
             return offset;
@@ -3905,19 +3960,19 @@ acn_add_dmp_data(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int of
             break;
           case 2:
             data_value = tvb_get_ntohs(tvb, offset);
-            proto_tree_add_uint_format(tree, hf_acn_data8, tvb, offset, 2, data_value, "%s %4.4X", buffer, data_value);
+            proto_tree_add_uint_format(tree, hf_acn_data16, tvb, offset, 2, data_value, "%s %4.4X", buffer, data_value);
             break;
           case 3:
             data_value = tvb_get_ntoh24(tvb, offset);
-            proto_tree_add_uint_format(tree, hf_acn_data8, tvb, offset, 3, data_value, "%s %6.6X", buffer, data_value);
+            proto_tree_add_uint_format(tree, hf_acn_data24, tvb, offset, 3, data_value, "%s %6.6X", buffer, data_value);
             break;
           case 4:
             data_value = tvb_get_ntohl(tvb, offset);
-            proto_tree_add_uint_format(tree, hf_acn_data8, tvb, offset, 4, data_value, "%s %8.8X", buffer, data_value);
+            proto_tree_add_uint_format(tree, hf_acn_data32, tvb, offset, 4, data_value, "%s %8.8X", buffer, data_value);
             break;
           default:
             /* build string of values */
-            default_buffer = wmem_strbuf_new(wmem_packet_scope(), "");
+            default_buffer = wmem_strbuf_new(pinfo->pool, "");
             for (y=0; y<20 && y<data_size; y++) {
               data_value = tvb_get_guint8(tvb, offset+y);
               wmem_strbuf_append_printf(default_buffer, " %2.2X", data_value);
@@ -3965,13 +4020,13 @@ acn_add_dmp_reason_codes(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
       data_address = adt->address;
       switch (A) {
         case ACN_DMP_ADT_A_1: /* One octet address, (range: one octet address, increment, and count). */
-          buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%2.2X ->", data_address);
+          buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%2.2X ->", data_address);
           break;
         case ACN_DMP_ADT_A_2: /* Two octet address, (range: two octet address, increment, and count). */
-          buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%4.4X ->", data_address);
+          buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%4.4X ->", data_address);
           break;
         case ACN_DMP_ADT_A_4: /* Four octet address, (range: four octet address, increment, and count). */
-          buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%8.8X ->", data_address);
+          buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%8.8X ->", data_address);
           break;
         default: /* and ACN_DMP_ADT_A_R, this reserved....so it has no meaning yet */
           return offset;
@@ -3989,13 +4044,13 @@ acn_add_dmp_reason_codes(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
       for (x=0; x<adt->count; x++) {
         switch (A) {
           case ACN_DMP_ADT_A_1: /* One octet address, (range: one octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%2.2X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%2.2X ->", data_address);
             break;
           case ACN_DMP_ADT_A_2: /* Two octet address, (range: two octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%4.4X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%4.4X ->", data_address);
             break;
           case ACN_DMP_ADT_A_4: /* Four octet address, (range: four octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%8.8X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%8.8X ->", data_address);
             break;
           default: /* and ACN_DMP_ADT_A_R, this reserved....so it has no meaning yet */
             return offset;
@@ -4017,13 +4072,13 @@ acn_add_dmp_reason_codes(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
       for (x=0; x<adt->count; x++) {
         switch (A) {
           case ACN_DMP_ADT_A_1: /* One octet address, (range: one octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%2.2X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%2.2X ->", data_address);
             break;
           case ACN_DMP_ADT_A_2: /* Two octet address, (range: two octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%4.4X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%4.4X ->", data_address);
             break;
           case ACN_DMP_ADT_A_4: /* Four octet address, (range: four octet address, increment, and count). */
-            buffer = wmem_strdup_printf(wmem_packet_scope(), "Addr 0x%8.8X ->", data_address);
+            buffer = wmem_strdup_printf(pinfo->pool, "Addr 0x%8.8X ->", data_address);
             break;
           default: /* and ACN_DMP_ADT_A_R, this reserved....so it has no meaning yet */
             return offset;
@@ -4675,10 +4730,7 @@ static guint32
 dissect_acn_blob(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *pdu_tree, int blob_offset, int end_offset)
 {
   /* Declarations for blobs*/
-  guint8     version;
-  guint8     range;
   guint8     blob_type;
-  guint8     range_number;
   guint16    field_number = 1;
   proto_item *bi;
   proto_tree *blob_tree = NULL;
@@ -4692,19 +4744,16 @@ dissect_acn_blob(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *pdu_tree, in
   blob_offset += 4;
 
   /* Add Blob version item to tree */
-  version = tvb_get_guint8(tvb, blob_offset);
-  proto_tree_add_item(blob_tree, hf_acn_blob_version, tvb, blob_offset, 1, version);
+  proto_tree_add_item(blob_tree, hf_acn_blob_version, tvb, blob_offset, 1, ENC_BIG_ENDIAN);
   blob_offset += 1;
 
   /* Add Blob Start and End Range Info */
-  range = tvb_get_guint8(tvb, blob_offset);
-  proto_tree_add_item(blob_tree, hf_acn_blob_range_type, tvb, blob_offset, 1, range);
+  proto_tree_add_item(blob_tree, hf_acn_blob_range_type, tvb, blob_offset, 1, ENC_BIG_ENDIAN);
   /* range_type = val_to_str(range, acn_blob_range_type_vals, "not valid (%d)"); */
   blob_offset += 1;
 
   /* Add Blob Range Number */
-  range_number = tvb_get_guint8(tvb, blob_offset);
-  proto_tree_add_item(blob_tree, hf_acn_blob_range_number, tvb, blob_offset, 1, range_number);
+  proto_tree_add_item(blob_tree, hf_acn_blob_range_number, tvb, blob_offset, 1, ENC_BIG_ENDIAN);
   blob_offset += 1;
 
   /* Add Blob Meta-Type */
@@ -4714,7 +4763,7 @@ dissect_acn_blob(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *pdu_tree, in
     blob_type = get_blob_type_from_fields(tvb, blob_offset + 1, end_offset);
   }
 
-  proto_tree_add_item(blob_tree, hf_acn_blob_type, tvb, blob_offset, 1, blob_type);
+  proto_tree_add_uint(blob_tree, hf_acn_blob_type, tvb, blob_offset, 1, blob_type);
 
   blob_name = val_to_str(blob_type, acn_blob_type_vals, "not valid (%d)");
   proto_item_append_text(bi, ": %s", blob_name);
@@ -5403,7 +5452,7 @@ dissect_acn_dmx_data_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo,
   guint16           info_start_code;
   guint8            dmx_2_start_code;
 
-  buffer = (gchar*)wmem_alloc(wmem_packet_scope(), BUFFER_SIZE);
+  buffer = (gchar*)wmem_alloc(pinfo->pool, BUFFER_SIZE);
   buffer[0] = '\0';
 
   begin_dissect_acn_pdu(&pdu_tree, tvb, &ti, tree, &pdu_start, &offset, &pdu_flags, &pdu_length, &pdu_flvh_length, ett_acn_dmx_data_pdu, 1);
@@ -5435,7 +5484,7 @@ dissect_acn_dmx_data_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo,
   switch (vector) {
     case ACN_DMP_VECTOR_SET_PROPERTY:
       dmx_start_code = tvb_get_ntohs(tvb, data_offset);
-      if (protocol_id == ACN_PROTOCOL_ID_DMX_2) {
+      if (protocol_id == ACN_PROTOCOL_ID_DMX_2 || protocol_id == ACN_PROTOCOL_ID_DMX_3) {
         proto_tree_add_item(pdu_tree, hf_acn_dmx_2_first_property_address, tvb, data_offset, 2, ENC_BIG_ENDIAN);
       } else {
         proto_tree_add_item(pdu_tree, hf_acn_dmx_start_code, tvb, data_offset, 2, ENC_BIG_ENDIAN);
@@ -5447,7 +5496,7 @@ dissect_acn_dmx_data_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo,
       proto_tree_add_item(pdu_tree, hf_acn_dmx_count, tvb, data_offset, 2, ENC_BIG_ENDIAN);
       data_offset += 2;
 
-      if (protocol_id == ACN_PROTOCOL_ID_DMX_2) {
+      if (protocol_id == ACN_PROTOCOL_ID_DMX_2 || protocol_id == ACN_PROTOCOL_ID_DMX_3) {
         dmx_2_start_code = (guint8)tvb_get_ntohs(tvb, data_offset - 1);
         proto_tree_add_item(pdu_tree, hf_acn_dmx_2_start_code, tvb, data_offset, 1, ENC_BIG_ENDIAN);
         data_offset += 1;
@@ -5485,7 +5534,7 @@ dissect_acn_dmx_data_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo,
         leading_char = ' ';
       }
       /* add a snippet to info (this may be slow) */
-      if (protocol_id == ACN_PROTOCOL_ID_DMX_2) {
+      if (protocol_id == ACN_PROTOCOL_ID_DMX_2 || protocol_id == ACN_PROTOCOL_ID_DMX_3) {
         info_start_code = dmx_2_start_code;
       }
       else {
@@ -5515,7 +5564,7 @@ dissect_acn_dmx_data_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo,
       proto_tree_add_string(pdu_tree, hf_acn_dmx_data, tvb, data_offset, dmx_count, buffer);
 
       /* start our line */
-      g_snprintf(buffer, BUFFER_SIZE, "001-%03d: ", perline);
+      snprintf(buffer, BUFFER_SIZE, "001-%03d: ", perline);
       buf_ptr = buffer + 9;
 
       total_cnt = 0;
@@ -5537,7 +5586,7 @@ dissect_acn_dmx_data_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo,
           /* add leader... */
           proto_tree_add_string_format(pdu_tree, hf_acn_dmx_data, tvb, data_offset, item_cnt, buffer, "%s", buffer);
           data_offset += perline;
-          g_snprintf(buffer, BUFFER_SIZE, "%03d-%03d: ",total_cnt, total_cnt+perline);
+          snprintf(buffer, BUFFER_SIZE, "%03d-%03d: ",total_cnt, total_cnt+perline);
           buf_ptr = buffer + 9;
           item_cnt = 0;
         } else {
@@ -5580,6 +5629,192 @@ dissect_acn_common_base_pdu(tvbuff_t *tvb, proto_tree *tree, int *offset, acn_pd
 
   dissect_pdu_bit_flag_v(offset, *pdu_flags, vector_offset, last_pdu_offsets, pdu_flvh_length, v_flag_increment);
   /* offset should now be pointing to header (if one exists) */
+}
+
+/******************************************************************************/
+/* Dissect sACN Discovery PDU*/
+#define DMX_UNIV_LIST_MAX_DIGITS 5
+#define DMX_UNIV_LIST_MAX_ITEMS_PER_LINE 16
+#define DMX_UNIV_LIST_BUF_SIZE (DMX_UNIV_LIST_MAX_DIGITS + 1) * DMX_UNIV_LIST_MAX_ITEMS_PER_LINE + 1
+static guint32
+dissect_acn_dmx_discovery_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, acn_pdu_offsets *last_pdu_offsets)
+{
+  /* common to all pdu */
+  guint8            pdu_flags;
+  guint32           pdu_start;
+  guint32           pdu_length;
+  guint32           pdu_flvh_length; /* flags, length, vector, header */
+  guint32           vector_offset;
+  guint32           data_offset;
+  guint32           end_offset;
+  guint32           data_length;
+  guint32           item_cnt;
+
+  proto_item       *ti;
+  proto_tree       *pdu_tree;
+
+/* this pdu */
+  const gchar      *name;
+  guint32           vector;
+  gchar            *buffer;
+  char             *buf_ptr;
+  guint             x;
+  guint16           universe;
+  guint16           last_universe;
+
+  guint32           page;
+  guint32           lastpage;
+  guint32           current_universe_idx;
+  guint32           bytes_printed;
+  bool              warned_unorder_once;
+
+  (void)protocol_id;
+  warned_unorder_once = false;
+
+  buffer = (gchar*)wmem_alloc(pinfo->pool, DMX_UNIV_LIST_BUF_SIZE);
+  buffer[0] = '\0';
+
+  data_length = 0;
+
+   //discovery pdu
+  dissect_acn_common_base_pdu(tvb, tree, &offset, last_pdu_offsets, &pdu_flags, &pdu_start, &pdu_length, &pdu_flvh_length, &vector_offset, &ti, &pdu_tree, ett_acn_dmx_pdu, 4, 1);
+  dissect_pdu_bit_flag_d(offset, pdu_flags, pdu_length, &data_offset, &data_length, last_pdu_offsets, pdu_flvh_length, 0);
+  end_offset = data_offset + data_length;
+
+  /* Add Vector item */
+  vector = tvb_get_ntohl(tvb, vector_offset);
+  proto_tree_add_item(ti, hf_acn_dmx_discovery_vector, tvb, vector_offset, 4, ENC_BIG_ENDIAN);
+
+  /* Add Vector item to tree*/
+  name = val_to_str(vector, acn_dmx_discovery_vector_vals, "not valid (%d)");
+  proto_item_append_text(ti, ": %s", name);
+
+  page = tvb_get_guint8(tvb, data_offset);
+  proto_tree_add_item(ti, hf_acn_dmx_discovery_page, tvb, data_offset, 1, ENC_BIG_ENDIAN);
+  data_offset += 1;
+
+  lastpage = tvb_get_guint8(tvb, data_offset);
+  proto_tree_add_item(ti, hf_acn_dmx_discovery_last_page, tvb, data_offset, 1, ENC_BIG_ENDIAN);
+  data_offset += 1;
+
+  switch (vector) {
+    case ACN_DMX_DISCOVERY_UNIVERSE_LIST_VECTOR:
+      buf_ptr = buffer;
+
+      /* add a snippet to info (this may be slow) */
+      col_append_fstr(pinfo->cinfo,COL_INFO, ",[Universe Page %u/%u: ", page+1, lastpage+1);
+      current_universe_idx = 0;
+      while(data_offset + (sizeof(guint16)*current_universe_idx) != end_offset && current_universe_idx < 6)
+      {
+        col_append_fstr(pinfo->cinfo,COL_INFO, "%u ", tvb_get_guint16(tvb, data_offset + (sizeof(guint16)*current_universe_idx), ENC_BIG_ENDIAN));
+        ++current_universe_idx;
+      }
+      if(data_offset + (sizeof(guint16)*current_universe_idx) != end_offset)
+        col_append_fstr(pinfo->cinfo,COL_INFO,"...");
+      else if(current_universe_idx == 0)
+        col_append_fstr(pinfo->cinfo,COL_INFO,"none");
+
+      col_append_fstr(pinfo->cinfo,COL_INFO, "]");
+
+      proto_tree_add_string(pdu_tree, hf_acn_dmx_discovery_universe_list, tvb, data_offset, end_offset-data_offset, "");
+
+      item_cnt = 0;
+      last_universe = 0;
+      for (x=data_offset; x<end_offset; x+=2) {
+        universe = tvb_get_guint16(tvb, x, ENC_BIG_ENDIAN);
+
+        if(!warned_unorder_once && last_universe > universe)
+        {
+          expert_add_info(pinfo, pdu_tree, &ei_acn_dmx_discovery_outofseq);
+          warned_unorder_once = true;
+        }
+        bytes_printed = snprintf(buf_ptr, DMX_UNIV_LIST_BUF_SIZE, "%*u ", DMX_UNIV_LIST_MAX_DIGITS /*max 5 digits (1-63999), align right*/, universe);
+        if(bytes_printed > 0)
+          buf_ptr += bytes_printed;
+
+        item_cnt++;
+        if((item_cnt % DMX_UNIV_LIST_MAX_ITEMS_PER_LINE) == 0 || x+2 >= end_offset)
+        {
+          proto_tree_add_string_format(pdu_tree, hf_acn_dmx_discovery_universe_list, tvb, data_offset, item_cnt*2, buffer, "%s", buffer);
+          data_offset += item_cnt * 2;
+          item_cnt = 0;
+
+          buf_ptr = buffer;
+        }
+
+        last_universe = universe;
+      }
+
+      break;
+  }
+  return pdu_start + pdu_length;
+}
+
+/******************************************************************************/
+/* Dissect DMX Base PDU                                                       */
+static guint32
+dissect_acn_dmx_extension_base_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, acn_pdu_offsets *last_pdu_offsets)
+{
+  (void)protocol_id;
+  (void)pinfo;
+  /* common to all pdu */
+  guint8           pdu_flags;
+  guint32          pdu_start;
+  guint32          pdu_length;
+  guint32          pdu_flvh_length; /* flags, length, vector, header */
+  guint32          vector_offset;
+  guint32          data_offset;
+  guint32          data_length;
+
+  proto_item      *ti;
+  proto_tree      *pdu_tree;
+
+  /* this pdu */
+  const char      *name;
+  guint32          vector;
+
+  dissect_acn_common_base_pdu(tvb, tree, &offset, last_pdu_offsets, &pdu_flags, &pdu_start, &pdu_length, &pdu_flvh_length, &vector_offset, &ti, &pdu_tree, ett_acn_dmx_pdu, 4, 1);
+
+  /* Add Vector item */
+  vector = tvb_get_ntohl(tvb, vector_offset);
+  proto_tree_add_item(pdu_tree, hf_acn_dmx_extension_vector, tvb, vector_offset, 4, ENC_BIG_ENDIAN);
+
+  /* Add Vector item to tree*/
+  name = val_to_str(vector, acn_dmx_extension_vector_vals, "not valid (%d)");
+  proto_item_append_text(ti, ": %s", name);
+
+  ///* NO HEADER DATA ON THESE* (at least so far) */
+
+  dissect_pdu_bit_flag_d(offset, pdu_flags, pdu_length, &data_offset, &data_length, last_pdu_offsets, pdu_flvh_length, 0);
+
+  ///* process based on vector */
+  switch (vector) {
+    case ACN_DMX_EXT_DISCOVERY_VECTOR:
+      proto_tree_add_item(pdu_tree, hf_acn_dmx_source_name, tvb, data_offset, 64, ENC_UTF_8);
+      data_offset += 64;
+
+      proto_tree_add_item(pdu_tree, hf_acn_dmx_discovery_framing_reserved, tvb, data_offset, 4, ENC_BIG_ENDIAN);
+      data_offset += 4;
+
+      dissect_acn_dmx_discovery_pdu(protocol_id, tvb, pinfo, pdu_tree, data_offset, last_pdu_offsets);
+
+      break;
+
+    case ACN_DMX_EXT_SYNC_VECTOR:
+      proto_tree_add_item(ti, hf_acn_dmx_sequence_number, tvb, data_offset, 1, ENC_BIG_ENDIAN);
+      data_offset += 1;
+
+      proto_tree_add_item(ti, hf_acn_dmx_sync_universe, tvb, data_offset, 2, ENC_BIG_ENDIAN);
+      data_offset += 2;
+
+      proto_tree_add_item(ti, hf_acn_dmx_sync_reserved, tvb, data_offset, 2, ENC_BIG_ENDIAN);
+      data_offset += 2;
+      break;
+
+    default:
+      break;
+  }
+  return pdu_start + pdu_length;
 }
 
 /******************************************************************************/
@@ -5628,11 +5863,11 @@ dissect_acn_dmx_base_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo,
   /* process based on vector */
   switch (vector) {
     case ACN_DMP_VECTOR_SET_PROPERTY:
-      if (protocol_id == ACN_PROTOCOL_ID_DMX_2) {
-        proto_tree_add_item(pdu_tree, hf_acn_dmx_source_name, tvb, data_offset, 64, ENC_UTF_8|ENC_NA);
+      if (protocol_id == ACN_PROTOCOL_ID_DMX_2 || protocol_id == ACN_PROTOCOL_ID_DMX_3) {
+        proto_tree_add_item(pdu_tree, hf_acn_dmx_source_name, tvb, data_offset, 64, ENC_UTF_8);
         data_offset += 64;
       } else {
-        proto_tree_add_item(pdu_tree, hf_acn_dmx_source_name, tvb, data_offset, 32, ENC_UTF_8|ENC_NA);
+        proto_tree_add_item(pdu_tree, hf_acn_dmx_source_name, tvb, data_offset, 32, ENC_UTF_8);
         data_offset += 32;
       }
 
@@ -5641,7 +5876,12 @@ dissect_acn_dmx_base_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo,
       data_offset += 1;
 
       if (protocol_id == ACN_PROTOCOL_ID_DMX_2) {
-        proto_tree_add_item(pdu_tree, hf_acn_dmx_2_reserved, tvb, data_offset, 2, ENC_BIG_ENDIAN);
+        proto_tree_add_item(pdu_tree, hf_acn_dmx_2_sync_universe, tvb, data_offset, 2, ENC_BIG_ENDIAN);
+        data_offset += 2;
+      }
+      else if (protocol_id == ACN_PROTOCOL_ID_DMX_3) {
+        //it is not clear if ssacn uses sync universes or not, leaving this as reserved (previous behavior)
+        proto_tree_add_item(pdu_tree, hf_acn_dmx_3_reserved, tvb, data_offset, 2, ENC_BIG_ENDIAN);
         data_offset += 2;
       }
 
@@ -5649,12 +5889,13 @@ dissect_acn_dmx_base_pdu(guint32 protocol_id, tvbuff_t *tvb, packet_info *pinfo,
       proto_tree_add_item(pdu_tree, hf_acn_dmx_sequence_number, tvb, data_offset, 1, ENC_BIG_ENDIAN);
       data_offset += 1;
 
-      if (protocol_id == ACN_PROTOCOL_ID_DMX_2) {
+      if (protocol_id == ACN_PROTOCOL_ID_DMX_2 || protocol_id == ACN_PROTOCOL_ID_DMX_3) {
         option_flags = tvb_get_guint8(tvb, data_offset);
         pi = proto_tree_add_uint(pdu_tree, hf_acn_dmx_2_options, tvb, data_offset, 1, option_flags);
         flag_tree = proto_item_add_subtree(pi, ett_acn_dmx_2_options);
         proto_tree_add_item(flag_tree, hf_acn_dmx_2_option_p, tvb, data_offset, 1, ENC_BIG_ENDIAN);
         proto_tree_add_item(flag_tree, hf_acn_dmx_2_option_s, tvb, data_offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(flag_tree, hf_acn_dmx_2_option_f, tvb, data_offset, 1, ENC_BIG_ENDIAN);
         data_offset += 1;
       }
 
@@ -6072,7 +6313,7 @@ dissect_acn_llrp_base_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, i
   /* get destination (CID) 16 bytes */
   proto_tree_add_item(pdu_tree, hf_rdmnet_llrp_destination_cid, tvb, data_offset, 16, ENC_BIG_ENDIAN);
   tvb_get_guid(tvb, data_offset, &guid, ENC_BIG_ENDIAN);
-  proto_item_append_text(ti, ", Dest: %s", guid_to_str(wmem_packet_scope(), &guid));
+  proto_item_append_text(ti, ", Dest: %s", guid_to_str(pinfo->pool, &guid));
   data_offset += 16;
 
   /* transaction number (4 bytes) */
@@ -6164,7 +6405,7 @@ dissect_broker_client_entry_pdu(tvbuff_t *tvb, proto_tree *tree, guint32 offset,
       offset += 4;
 
       /* protocol string */
-      proto_tree_add_item(pdu_tree, hf_rdmnet_broker_client_ept_protocol_string, tvb, data_offset, 32, ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_broker_client_ept_protocol_string, tvb, data_offset, 32, ENC_ASCII);
       data_offset += 32;
     }
     break;
@@ -6184,7 +6425,7 @@ dissect_broker_connect(tvbuff_t *tvb, proto_tree *tree, int offset, acn_pdu_offs
   proto_tree      *flag_tree;
 
   /* client scope */
-  proto_tree_add_item(tree, hf_rdmnet_broker_connect_client_scope, tvb, offset, 63, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(tree, hf_rdmnet_broker_connect_client_scope, tvb, offset, 63, ENC_ASCII);
   offset += 63;
 
   /* e133 version */
@@ -6192,7 +6433,7 @@ dissect_broker_connect(tvbuff_t *tvb, proto_tree *tree, int offset, acn_pdu_offs
   offset += 2;
 
   /* search domain */
-  proto_tree_add_item(tree, hf_rdmnet_broker_connect_search_domain, tvb, offset, 231, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(tree, hf_rdmnet_broker_connect_search_domain, tvb, offset, 231, ENC_ASCII);
   offset += 231;
 
   /* connection flags */
@@ -6580,37 +6821,37 @@ dissect_rpt_status(tvbuff_t *tvb, proto_tree *tree, int offset, acn_pdu_offsets 
   switch (vector) {
   case RDMNET_RPT_VECTOR_STATUS_UNKNOWN_RPT_UID:
     if (pdu_end > data_offset) {
-      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_unknown_rpt_uid_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_unknown_rpt_uid_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII);
     }
     break;
   case RDMNET_RPT_VECTOR_STATUS_RDM_TIMEOUT:
     if (pdu_end > data_offset) {
-      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_rdm_timeout_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_rdm_timeout_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII);
     }
     break;
   case RDMNET_RPT_VECTOR_STATUS_RDM_INVALID_RESPONSE:
     if (pdu_end > data_offset) {
-      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_rdm_invalid_response_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_rdm_invalid_response_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII);
     }
     break;
   case RDMNET_RPT_VECTOR_STATUS_UNKNOWN_RDM_UID:
     if (pdu_end > data_offset) {
-      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_unknown_rdm_uid_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_unknown_rdm_uid_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII);
     }
     break;
   case RDMNET_RPT_VECTOR_STATUS_UNKNOWN_ENDPOINT:
     if (pdu_end > data_offset) {
-      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_unknown_endpoint_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_unknown_endpoint_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII);
     }
     break;
   case RDMNET_RPT_VECTOR_STATUS_BROADCAST_COMPLETE:
     if (pdu_end > data_offset) {
-      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_broadcast_complete_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_broadcast_complete_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII);
     }
     break;
   case RDMNET_RPT_VECTOR_STATUS_UNKNOWN_VECTOR:
     if (pdu_end > data_offset) {
-      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_unknown_vector_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_rpt_status_unknown_vector_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII);
     }
     break;
   case RDMNET_RPT_VECTOR_STATUS_INVALID_MESSAGE:
@@ -6872,7 +7113,7 @@ dissect_ept_status(tvbuff_t *tvb, proto_tree *tree, int offset, acn_pdu_offsets 
 
       /* status string */
       pdu_end = pdu_start + pdu_length;
-      proto_tree_add_item(pdu_tree, hf_rdmnet_ept_status_status_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_ept_status_status_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII);
       break;
   case RDMNET_EPT_VECTOR_UNKNOWN_VECTOR:
       /* unknown cid (4 bytes) */
@@ -6881,7 +7122,7 @@ dissect_ept_status(tvbuff_t *tvb, proto_tree *tree, int offset, acn_pdu_offsets 
 
       /* vector string */
       pdu_end = pdu_start + pdu_length;
-      proto_tree_add_item(pdu_tree, hf_rdmnet_ept_status_vector_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII|ENC_NA);
+      proto_tree_add_item(pdu_tree, hf_rdmnet_ept_status_vector_string, tvb, data_offset, (pdu_end - data_offset), ENC_ASCII);
       break;
   }
 
@@ -6958,11 +7199,11 @@ dissect_acn_root_pdu_header(tvbuff_t *tvb, packet_info *pinfo, proto_tree *pdu_t
 
   /* get Header (CID) 16 bytes */
   tvb_get_guid(tvb, header_offset, &guid, ENC_BIG_ENDIAN);
-  proto_item_append_text(ti, ", Src: %s", guid_to_str(wmem_packet_scope(), &guid));
+  proto_item_append_text(ti, ", Src: %s", guid_to_str(pinfo->pool, &guid));
 
   if (add_cid_to_info) {
     /* add cid to info */
-    col_add_fstr(pinfo->cinfo, COL_INFO, "CID %s", guid_to_str(wmem_packet_scope(), &guid));
+    col_add_fstr(pinfo->cinfo, COL_INFO, "CID %s", guid_to_str(pinfo->pool, &guid));
   }
 
   if (is_acn) {
@@ -7024,6 +7265,7 @@ dissect_acn_root_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int of
   switch (protocol_id) {
     case ACN_PROTOCOL_ID_DMX:
     case ACN_PROTOCOL_ID_DMX_2:
+    case ACN_PROTOCOL_ID_DMX_3:
       if (global_acn_dmx_enable) {
         end_offset = dissect_acn_root_pdu_header(tvb, pinfo, pdu_tree, ti, ": Root DMX", &offset, pdu_flags, pdu_length, &data_offset, &data_length, last_pdu_offsets, 1, &pdu_flvh_length, 1);
 
@@ -7034,6 +7276,16 @@ dissect_acn_root_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int of
           if (data_offset == old_offset) break;
         }
       }
+      break;
+     case ACN_PROTOCOL_ID_EXTENDED:
+      end_offset = dissect_acn_root_pdu_header(tvb, pinfo, pdu_tree, ti, ": Root DMX Extension", &offset, pdu_flags, pdu_length, &data_offset, &data_length, last_pdu_offsets, 1, &pdu_flvh_length, 1);
+
+       /* adjust for what we used */
+        while (data_offset < end_offset) {
+          old_offset = data_offset;
+          data_offset = dissect_acn_dmx_extension_base_pdu(protocol_id, tvb, pinfo, pdu_tree, data_offset, &pdu_offsets);
+          if (data_offset == old_offset) break;
+        }
       break;
     case ACN_PROTOCOL_ID_SDT:
       end_offset = dissect_acn_root_pdu_header(tvb, pinfo, pdu_tree, ti, ": Root SDT", &offset, pdu_flags, pdu_length, &data_offset, &data_length, last_pdu_offsets, 0, &pdu_flvh_length, 1);
@@ -7093,7 +7345,7 @@ dissect_acn_root_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int of
 /******************************************************************************/
 /* Dissect ACN                                                                */
 static int
-dissect_acn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+dissect_acn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
   proto_item      *ti;
   proto_tree      *acn_tree;
@@ -7101,6 +7353,7 @@ dissect_acn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   guint32          old_offset;
   guint32          end_offset;
   acn_pdu_offsets  pdu_offsets = {0,0,0,0,0};
+  guint16          postamble_size;
 
 /*   if (!is_acn(tvb)) { */
 /*     return 0;         */
@@ -7116,17 +7369,31 @@ dissect_acn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   /* add preamble, postamble and ACN Packet ID */
   proto_tree_add_item(acn_tree, hf_acn_preamble_size, tvb, data_offset, 2, ENC_BIG_ENDIAN);
   data_offset += 2;
+  postamble_size = tvb_get_guint16(tvb, data_offset, ENC_BIG_ENDIAN);
   proto_tree_add_item(acn_tree, hf_acn_postamble_size, tvb, data_offset, 2, ENC_BIG_ENDIAN);
   data_offset += 2;
   proto_tree_add_item(acn_tree, hf_acn_packet_identifier, tvb, data_offset, 12, ENC_UTF_8 | ENC_NA);
   data_offset += 12;
 
-  /* one past the last byte */
+  /* one past the last data byte, not including the postamble */
   end_offset = data_offset + tvb_reported_length_remaining(tvb, data_offset);
-  while (data_offset < end_offset) {
+  while (data_offset < end_offset - postamble_size) {
     old_offset = data_offset;
     data_offset = dissect_acn_root_pdu(tvb, pinfo, acn_tree, data_offset, &pdu_offsets, 1);
-    if (data_offset == old_offset) break;
+    if (data_offset == old_offset) return tvb_reported_length(tvb);
+  }
+  /* one past the last postamble byte */
+  while (data_offset < end_offset) {
+    proto_tree_add_item(acn_tree, hf_acn_postamble_key_fingerprint, tvb, data_offset, 4, ENC_NA);
+    data_offset += 4;
+    proto_tree_add_item(acn_tree, hf_acn_postamble_seq_type, tvb, data_offset, 1, ENC_NA);
+    data_offset += 1;
+    proto_tree_add_item(acn_tree, hf_acn_postamble_seq_hi, tvb, data_offset, 3, ENC_BIG_ENDIAN);
+    data_offset += 3;
+    proto_tree_add_item(acn_tree, hf_acn_postamble_seq_low, tvb, data_offset, 4, ENC_BIG_ENDIAN);
+    data_offset += 4;
+    proto_tree_add_item(acn_tree, hf_acn_postamble_message_digest, tvb, data_offset, 16, ENC_NA);
+    data_offset += 16;
   }
   return tvb_reported_length(tvb);
 }
@@ -7330,7 +7597,7 @@ proto_register_acn(void)
     },
     { &hf_acn_blob_time_zone,
       { "Time Zone", "acn.blob_time_zone",
-        FT_INT8, BASE_DEC, NULL, 0x0,
+        FT_INT32, BASE_DEC, NULL, 0x0,
         NULL, HFILL }
     },
     { &hf_acn_blob_dst_type,
@@ -7686,8 +7953,15 @@ proto_register_acn(void)
         "DMX Priority", HFILL }
     },
 
-    /* DMX 2 reserved */
-    { &hf_acn_dmx_2_reserved,
+    /* DMX 2 sync universe*/
+    { &hf_acn_dmx_2_sync_universe,
+      { "Sync Universe", "acn.dmx.sync",
+        FT_UINT16, BASE_DEC, NULL, 0x0,
+        NULL, HFILL }
+    },
+
+    /* DMX 3 reserved */
+    { &hf_acn_dmx_3_reserved,
       { "Reserved", "acn.dmx.reserved",
         FT_UINT16, BASE_DEC, NULL, 0x0,
         "DMX Reserved", HFILL }
@@ -7719,6 +7993,12 @@ proto_register_acn(void)
         "Stream Terminated flag", HFILL }
     },
 
+    { &hf_acn_dmx_2_option_f,
+      { "Force Synchronization", "acn.dmx.option_sync",
+        FT_BOOLEAN, 8, NULL, ACN_DMX_OPTION_F,
+        "Force Synchronization flag", HFILL }
+    },
+
     /* DMX Universe */
     { &hf_acn_dmx_universe,
       { "Universe", "acn.dmx.universe",
@@ -7735,7 +8015,7 @@ proto_register_acn(void)
 
     /* DMX 2 First Property Address */
     { &hf_acn_dmx_2_first_property_address,
-      { "First Property Address", "acn.dmx.start_code",
+      { "First Property Address", "acn.dmx.first_property_address",
         FT_UINT16, BASE_DEC_HEX, NULL, 0x0,
         "DMX First Property Address", HFILL }
     },
@@ -7759,6 +8039,54 @@ proto_register_acn(void)
       { "Start Code", "acn.dmx.start_code2",
         FT_UINT8, BASE_DEC_HEX, NULL, 0x0,
         "DMX Start Code", HFILL }
+    },
+
+    /* DMX Extension Vector */
+    { &hf_acn_dmx_extension_vector,
+      { "Vector", "acn.dmx.extension.vector",
+        FT_UINT32, BASE_DEC, VALS(acn_dmx_extension_vector_vals), 0x0,
+        NULL, HFILL }
+    },
+    { &hf_acn_dmx_discovery_vector,
+      { "Vector", "acn.dmx.discovery.vector",
+        FT_UINT32, BASE_DEC, VALS(acn_dmx_discovery_vector_vals), 0x0,
+        "DMX Extension Discovery Vector", HFILL }
+    },
+    { &hf_acn_dmx_discovery_universe_list,
+      { "Universe List", "acn.dmx.discovery.list",
+        FT_STRING, BASE_NONE, NULL, 0x0,
+        "DMX Extension Discovery Universe List", HFILL }
+    },
+
+    /* DMX Discovery Pages */
+    { &hf_acn_dmx_discovery_page,
+      { "Page", "acn.dmx.discovery.page",
+        FT_UINT32, BASE_DEC, NULL, 0x0,
+        "DMX Extension Discovery Page", HFILL }
+    },
+
+    { &hf_acn_dmx_discovery_last_page,
+      { "Last Page", "acn.dmx.discovery.last_page",
+        FT_UINT32, BASE_DEC, NULL, 0x0,
+        "DMX Extension Discovery Last Page", HFILL }
+    },
+
+    { &hf_acn_dmx_discovery_framing_reserved,
+      { "Reserved", "acn.dmx.discovery.reserved",
+        FT_UINT32, BASE_DEC, NULL, 0x0,
+        NULL, HFILL }
+    },
+
+    { &hf_acn_dmx_sync_universe,
+      { "Sync Universe", "acn.dmx.sync.universe",
+        FT_UINT16, BASE_DEC, NULL, 0x0,
+        NULL, HFILL }
+    },
+
+    { &hf_acn_dmx_sync_reserved,
+      { "Reserved", "acn.dmx.sync.reserved",
+        FT_UINT16, BASE_DEC, NULL, 0x0,
+        NULL, HFILL }
     },
 
     /*
@@ -7959,6 +8287,41 @@ proto_register_acn(void)
         FT_GUID, BASE_NONE, NULL, 0x0,
         "Reply DCID", HFILL }
     },
+
+    /* Key Fingerprint */
+    { &hf_acn_postamble_key_fingerprint,
+      { "Key Fingerprint", "acn.security.key_fingerprint",
+        FT_BYTES, BASE_NONE, NULL, 0x0,
+        "Security Key Fingerprint", HFILL }
+    },
+
+    /* Sequence type */
+    { &hf_acn_postamble_seq_type,
+      { "Sequence Type", "acn.security.seq_type",
+        FT_UINT8, BASE_DEC, VALS(security_seq_type_vals), 0x0,
+        "Security Sequence Type", HFILL }
+    },
+
+    /* Sequence High */
+    { &hf_acn_postamble_seq_hi,
+      { "Sequence High", "acn.security.seq_hi",
+        FT_UINT24, BASE_HEX, NULL, 0x0,
+        "Security Sequence High", HFILL }
+    },
+
+    /* Sequence Low */
+    { &hf_acn_postamble_seq_low,
+      { "Sequence Low", "acn.security.seq_low",
+        FT_UINT32, BASE_HEX, NULL, 0x0,
+        "Security Sequence Low", HFILL }
+    },
+
+    /* Message Digest */
+    { &hf_acn_postamble_message_digest,
+      { "Message Digest", "acn.security.digest",
+        FT_BYTES, BASE_NONE, NULL, 0x0,
+        "Security Message Digest", HFILL }
+    },
   };
 
   static hf_register_info rdmnet_hf[] = {
@@ -8133,7 +8496,7 @@ proto_register_acn(void)
     /* RPT Vector */
     { &hf_rdmnet_rpt_vector,
       { "RPT Vector", "rdmnet.rpt_vector",
-        FT_UINT8, BASE_DEC, VALS(rdmnet_rpt_vector_vals), 0x0,
+        FT_UINT32, BASE_DEC, VALS(rdmnet_rpt_vector_vals), 0x0,
         NULL, HFILL }
     },
     /* RPT Source UID */
@@ -8247,7 +8610,7 @@ proto_register_acn(void)
     /* Broker Vector */
     { &hf_rdmnet_broker_vector,
       { "Broker Vector", "rdmnet.broker_vector",
-        FT_UINT8, BASE_DEC, VALS(rdmnet_broker_vector_vals), 0x0,
+        FT_UINT16, BASE_DEC, VALS(rdmnet_broker_vector_vals), 0x0,
         NULL, HFILL }
     },
     /* Broker Client Protocol Vector */
@@ -8437,7 +8800,7 @@ proto_register_acn(void)
     /* EPT Vector */
     { &hf_rdmnet_ept_vector,
       { "EPT Vector", "rdmnet.ept_vector",
-        FT_UINT8, BASE_DEC, VALS(rdmnet_ept_vector_vals), 0x0,
+        FT_UINT32, BASE_DEC, VALS(rdmnet_ept_vector_vals), 0x0,
         NULL, HFILL }
     },
     /* EPT Destination CID */
@@ -8566,6 +8929,7 @@ proto_register_acn(void)
 
   static ei_register_info ei[] = {
     { &ei_magic_reply_invalid_type, { "magic.reply.invalid_type", PI_PROTOCOL, PI_WARN, "Invalid type", EXPFILL }},
+    { &ei_acn_dmx_discovery_outofseq, { "acn.dmx.discovery.out_of_order_universes", PI_PROTOCOL, PI_WARN, "Universe list is unordered, E1.31 Sec. 8.5 requires sorted lists", EXPFILL }},
   };
 
   module_t *acn_module;
@@ -8631,6 +8995,8 @@ proto_register_acn(void)
 
   proto_register_field_array(proto_rdmnet, rdmnet_hf, array_length(rdmnet_hf));
   proto_register_subtree_array(rdmnet_ett, array_length(rdmnet_ett));
+
+  acn_handle = register_dissector("acn", dissect_acn, proto_acn);
 }
 
 
@@ -8639,13 +9005,11 @@ proto_register_acn(void)
 void
 proto_reg_handoff_acn(void)
 {
-  /* dissector_handle_t acn_handle; */
-  /* acn_handle = create_dissector_handle(dissect_acn, proto_acn); */
-  /* dissector_add_for_decode_as_with_preference("udp.port", acn_handle);                         */
+  dissector_add_for_decode_as_with_preference("udp.port", acn_handle);
 
   rdm_handle      = find_dissector_add_dependency("rdm", proto_acn);
 
-  heur_dissector_add("udp", dissect_acn_heur, "ACN", "acn", proto_acn, HEURISTIC_DISABLE);
+  heur_dissector_add("udp", dissect_acn_heur, "ACN over UDP", "acn", proto_acn, HEURISTIC_DISABLE);
   heur_dissector_add("udp", dissect_rdmnet_over_udp_heur, "RDMnet over UDP (LLRP)", "rdmnet_udp", proto_acn, HEURISTIC_DISABLE);
   heur_dissector_add("tcp", dissect_rdmnet_over_tcp_heur, "RDMnet over TCP (Broker, RPT, EPT)", "rdmnet_tcp", proto_acn, HEURISTIC_DISABLE);
 }

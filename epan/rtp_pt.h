@@ -1,4 +1,4 @@
-/* rtp_pt.h
+/** @file
  * Defines RTP payload types
  *
  * Wireshark - Network traffic analyzer
@@ -11,12 +11,12 @@
 #ifndef __RTP_PT_H__
 #define __RTP_PT_H__
 
+#include <epan/value_string.h>
+#include "ws_symbol_export.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-#include <epan/value_string.h>
-#include "ws_symbol_export.h"
 
 /*
  * RTP Payload types

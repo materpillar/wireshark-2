@@ -1,11 +1,8 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-p22.c                                                               */
-/* asn2wrs.py -b -C -p p22 -c ./p22.cnf -s ./packet-p22-template -D . -O ../.. IPMSInformationObjects.asn IPMSHeadingExtensions.asn IPMSExtendedBodyPartTypes2.asn IPMSFileTransferBodyPartType.asn IPMSExtendedVoiceBodyPartType.asn IPMSForwardedContentBodyPartType.asn IPMSMessageStoreAttributes.asn IPMSSecurityExtensions.asn IPMSObjectIdentifiers.asn IPMSUpperBounds.asn */
+/* asn2wrs.py -b -C -L -p p22 -c ./p22.cnf -s ./packet-p22-template -D . -O ../.. IPMSInformationObjects.asn IPMSHeadingExtensions.asn IPMSExtendedBodyPartTypes2.asn IPMSFileTransferBodyPartType.asn IPMSExtendedVoiceBodyPartType.asn IPMSForwardedContentBodyPartType.asn IPMSMessageStoreAttributes.asn IPMSSecurityExtensions.asn IPMSObjectIdentifiers.asn IPMSUpperBounds.asn */
 
-/* Input file: packet-p22-template.c */
-
-#line 1 "./asn1/p22/packet-p22-template.c"
 /* packet-p22.c
  * Routines for X.420 (X.400 Message Transfer)  packet dissection
  * Graeme Lunt 2005
@@ -71,9 +68,6 @@ static const value_string charsetreg_vals [] = {
   { 0, NULL}
 };
 
-
-/*--- Included file: packet-p22-val.h ---*/
-#line 1 "./asn1/p22/packet-p22-val.h"
 #define id_ipms                        "2.6.1"
 #define id_mod                         id_ipms".0"
 #define id_ot                          id_ipms".1"
@@ -322,12 +316,6 @@ static const value_string charsetreg_vals [] = {
 #define ub_subject_field               128
 #define ub_telephone_number            32
 
-/*--- End of included file: packet-p22-val.h ---*/
-#line 67 "./asn1/p22/packet-p22-template.c"
-
-
-/*--- Included file: packet-p22-hf.c ---*/
-#line 1 "./asn1/p22/packet-p22-hf.c"
 static int hf_p22_InformationObject_PDU = -1;     /* InformationObject */
 static int hf_p22_Heading_PDU = -1;               /* Heading */
 static int hf_p22_ORDescriptor_PDU = -1;          /* ORDescriptor */
@@ -707,14 +695,8 @@ static int hf_p22_RecipientSecurityRequest_content_proof = -1;
 static int hf_p22_RecipientSecurityRequest_ipn_non_repudiation = -1;
 static int hf_p22_RecipientSecurityRequest_ipn_proof = -1;
 
-/*--- End of included file: packet-p22-hf.c ---*/
-#line 69 "./asn1/p22/packet-p22-template.c"
-
 /* Initialize the subtree pointers */
 static gint ett_p22 = -1;
-
-/*--- Included file: packet-p22-ett.c ---*/
-#line 1 "./asn1/p22/packet-p22-ett.c"
 static gint ett_p22_InformationObject = -1;
 static gint ett_p22_IPM = -1;
 static gint ett_p22_IPMSExtension = -1;
@@ -841,12 +823,6 @@ static gint ett_p22_ForwardedContentToken_item = -1;
 static gint ett_p22_T_body_part_token_choice = -1;
 static gint ett_p22_T_choice = -1;
 
-/*--- End of included file: packet-p22-ett.c ---*/
-#line 73 "./asn1/p22/packet-p22-template.c"
-
-
-/*--- Included file: packet-p22-fn.c ---*/
-#line 1 "./asn1/p22/packet-p22-fn.c"
 /*--- Cyclic dependencies ---*/
 
 /* IPM -> Body -> BodyPart -> BodyPart/basic -> MessageBodyPart -> MessageData -> IPM */
@@ -1017,15 +993,13 @@ dissect_p22_BOOLEAN(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_
 
 static int
 dissect_p22_T_type(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 220 "./asn1/p22/p22.cnf"
   const char *name = NULL;
 
     offset = dissect_ber_object_identifier_str(implicit_tag, actx, tree, tvb, offset, hf_index, &actx->external.direct_reference);
 
 
-  name = oid_resolved_from_string(wmem_packet_scope(), actx->external.direct_reference);
+  name = oid_resolved_from_string(actx->pinfo->pool, actx->external.direct_reference);
   proto_item_append_text(tree, " (%s)", name ? name : actx->external.direct_reference);
-
 
 
   return offset;
@@ -1035,10 +1009,8 @@ dissect_p22_T_type(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_,
 
 static int
 dissect_p22_T_value(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 228 "./asn1/p22/p22.cnf"
 
   offset=call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, NULL);
-
 
 
   return offset;
@@ -1212,7 +1184,6 @@ dissect_p22_RelatedIPMsField(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int o
 
 static int
 dissect_p22_SubjectField(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 248 "./asn1/p22/p22.cnf"
   tvbuff_t *subject=NULL;
 
     offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -1221,9 +1192,8 @@ dissect_p22_SubjectField(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offse
 
 
   if(subject)
-   col_append_fstr(actx->pinfo->cinfo, COL_INFO, " (%s)", tvb_get_string_enc(wmem_packet_scope(), subject, 0,
+   col_append_fstr(actx->pinfo->cinfo, COL_INFO, " (%s)", tvb_get_string_enc(actx->pinfo->pool, subject, 0,
                                                                              tvb_reported_length(subject), ENC_T61));
-
 
 
   return offset;
@@ -1479,9 +1449,7 @@ dissect_p22_G3FacsimileBodyPart(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_p22_Interchange_Data_Element(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 279 "./asn1/p22/p22.cnf"
 /* XXX Not implemented yet */
-
 
 
   return offset;
@@ -1720,9 +1688,7 @@ dissect_p22_BilaterallyDefinedBodyPart(gboolean implicit_tag _U_, tvbuff_t *tvb 
 
 static int
 dissect_p22_NationallyDefinedBodyPart(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 282 "./asn1/p22/p22.cnf"
 /* XXX Not implemented yet */
-
 
 
   return offset;
@@ -1834,13 +1800,11 @@ static const ber_sequence_t IPM_sequence[] = {
 
 int
 dissect_p22_IPM(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 232 "./asn1/p22/p22.cnf"
 
  col_append_str(actx->pinfo->cinfo, COL_INFO, " Message");
 
     offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    IPM_sequence, hf_index, ett_p22_IPM);
-
 
 
 
@@ -2105,13 +2069,11 @@ static const ber_sequence_t IPN_set[] = {
 
 int
 dissect_p22_IPN(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 239 "./asn1/p22/p22.cnf"
 
  col_append_str(actx->pinfo->cinfo, COL_INFO, " Notification");
 
     offset = dissect_ber_set(implicit_tag, actx, tree, tvb, offset,
                               IPN_set, hf_index, ett_p22_IPN);
-
 
 
 
@@ -2690,7 +2652,6 @@ dissect_p22_Precedence(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
 
 static int
 dissect_p22_CharacterSetRegistration(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 272 "./asn1/p22/p22.cnf"
   guint32 crs;
     offset = dissect_ber_constrained_integer(implicit_tag, actx, tree, tvb, offset,
                                                             1U, 32767U, hf_index, &crs);
@@ -2698,7 +2659,6 @@ dissect_p22_CharacterSetRegistration(gboolean implicit_tag _U_, tvbuff_t *tvb _U
 
   if(actx->created_item)
     proto_item_append_text(actx->created_item, " (%s)", val_to_str(crs, charsetreg_vals, "unknown"));
-
 
 
   return offset;
@@ -2931,9 +2891,7 @@ dissect_p22_Document_Type_Name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 static int
 dissect_p22_T_parameter(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 285 "./asn1/p22/p22.cnf"
 /* XXX: Not implemented yet */
-
 
 
   return offset;
@@ -3087,9 +3045,7 @@ dissect_p22_EnvironmentParameter(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, i
 
 static int
 dissect_p22_T_compression_algorithm_id(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 288 "./asn1/p22/p22.cnf"
     offset = dissect_ber_object_identifier_str(implicit_tag, actx, tree, tvb, offset, hf_index, &actx->external.direct_reference);
-
 
 
   return offset;
@@ -3099,9 +3055,7 @@ dissect_p22_T_compression_algorithm_id(gboolean implicit_tag _U_, tvbuff_t *tvb 
 
 static int
 dissect_p22_T_compression_algorithm_param(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 291 "./asn1/p22/p22.cnf"
 /* XXX: Not implemented yet */
-
 
 
   return offset;
@@ -4658,9 +4612,6 @@ static int dissect_ForwardedContentToken_PDU(tvbuff_t *tvb _U_, packet_info *pin
 }
 
 
-/*--- End of included file: packet-p22-fn.c ---*/
-#line 75 "./asn1/p22/packet-p22-template.c"
-
 /*
 * Dissect P22 PDUs inside a PPDU.
 */
@@ -4692,9 +4643,6 @@ void proto_register_p22(void) {
   /* List of fields */
   static hf_register_info hf[] =
   {
-
-/*--- Included file: packet-p22-hfarr.c ---*/
-#line 1 "./asn1/p22/packet-p22-hfarr.c"
     { &hf_p22_InformationObject_PDU,
       { "InformationObject", "p22.InformationObject",
         FT_UINT32, BASE_DEC, VALS(p22_InformationObject_vals), 0,
@@ -4745,7 +4693,7 @@ void proto_register_p22(void) {
         NULL, HFILL }},
     { &hf_p22_SubjectField_PDU,
       { "SubjectField", "p22.SubjectField",
-        FT_STRING, STR_UNICODE, NULL, 0,
+        FT_STRING, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_p22_ExpiryTimeField_PDU,
       { "ExpiryTimeField", "p22.ExpiryTimeField",
@@ -4813,7 +4761,7 @@ void proto_register_p22(void) {
         NULL, HFILL }},
     { &hf_p22_VideotexData_PDU,
       { "VideotexData", "p22.VideotexData",
-        FT_STRING, STR_UNICODE, NULL, 0,
+        FT_STRING, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_p22_EncryptedParameters_PDU,
       { "EncryptedParameters", "p22.EncryptedParameters_element",
@@ -4881,7 +4829,7 @@ void proto_register_p22(void) {
         NULL, HFILL }},
     { &hf_p22_AuthorizationTime_PDU,
       { "AuthorizationTime", "p22.AuthorizationTime",
-        FT_STRING, BASE_NONE, NULL, 0,
+        FT_ABSOLUTE_TIME, ABSOLUTE_TIME_LOCAL, NULL, 0,
         NULL, HFILL }},
     { &hf_p22_CirculationList_PDU,
       { "CirculationList", "p22.CirculationList",
@@ -5089,7 +5037,7 @@ void proto_register_p22(void) {
         "RelatedIPMsField", HFILL }},
     { &hf_p22_subject,
       { "subject", "p22.subject",
-        FT_STRING, STR_UNICODE, NULL, 0,
+        FT_STRING, BASE_NONE, NULL, 0,
         "SubjectField", HFILL }},
     { &hf_p22_expiry_time,
       { "expiry-time", "p22.expiry_time",
@@ -5149,7 +5097,7 @@ void proto_register_p22(void) {
         "ORName", HFILL }},
     { &hf_p22_free_form_name,
       { "free-form-name", "p22.free_form_name",
-        FT_STRING, STR_UNICODE, NULL, 0,
+        FT_STRING, BASE_NONE, NULL, 0,
         "FreeFormName", HFILL }},
     { &hf_p22_telephone_number,
       { "telephone-number", "p22.telephone_number",
@@ -5248,7 +5196,7 @@ void proto_register_p22(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         "INSTANCE_OF", HFILL }},
     { &hf_p22_extended_data,
-      { "data", "p22.data_element",
+      { "data", "p22.extended.data_element",
         FT_NONE, BASE_NONE, NULL, 0,
         "INSTANCE_OF", HFILL }},
     { &hf_p22_ia5text_parameters,
@@ -5256,7 +5204,7 @@ void proto_register_p22(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         "IA5TextParameters", HFILL }},
     { &hf_p22_ia5text_data,
-      { "data", "p22.data",
+      { "data", "p22.ia5text.data",
         FT_STRING, BASE_NONE, NULL, 0,
         "IA5TextData", HFILL }},
     { &hf_p22_repertoire,
@@ -5268,7 +5216,7 @@ void proto_register_p22(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         "G3FacsimileParameters", HFILL }},
     { &hf_p22_g3facsimile_data,
-      { "data", "p22.data",
+      { "data", "p22.g3facsimile.data",
         FT_UINT32, BASE_DEC, NULL, 0,
         "G3FacsimileData", HFILL }},
     { &hf_p22_number_of_pages,
@@ -5296,7 +5244,7 @@ void proto_register_p22(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         "TeletexParameters", HFILL }},
     { &hf_p22_teletex_data,
-      { "data", "p22.data",
+      { "data", "p22.teletex.data",
         FT_UINT32, BASE_DEC, NULL, 0,
         "TeletexData", HFILL }},
     { &hf_p22_telex_compatible,
@@ -5309,15 +5257,15 @@ void proto_register_p22(void) {
         "TeletexNonBasicParameters", HFILL }},
     { &hf_p22_TeletexData_item,
       { "TeletexData item", "p22.TeletexData_item",
-        FT_STRING, STR_UNICODE, NULL, 0,
+        FT_STRING, BASE_NONE, NULL, 0,
         "TeletexString", HFILL }},
     { &hf_p22_videotex_parameters,
       { "parameters", "p22.parameters_element",
         FT_NONE, BASE_NONE, NULL, 0,
         "VideotexParameters", HFILL }},
     { &hf_p22_videotex_data,
-      { "data", "p22.data",
-        FT_STRING, STR_UNICODE, NULL, 0,
+      { "data", "p22.videotex.data",
+        FT_STRING, BASE_NONE, NULL, 0,
         "VideotexData", HFILL }},
     { &hf_p22_syntax,
       { "syntax", "p22.syntax",
@@ -5328,7 +5276,7 @@ void proto_register_p22(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         "EncryptedParameters", HFILL }},
     { &hf_p22_encrypted_data,
-      { "data", "p22.data",
+      { "data", "p22.encrypted.data",
         FT_BYTES, BASE_NONE, NULL, 0,
         "EncryptedData", HFILL }},
     { &hf_p22_algorithm_identifier,
@@ -5344,7 +5292,7 @@ void proto_register_p22(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         "MessageParameters", HFILL }},
     { &hf_p22_message_data,
-      { "data", "p22.data_element",
+      { "data", "p22.message.data_element",
         FT_NONE, BASE_NONE, NULL, 0,
         "MessageData", HFILL }},
     { &hf_p22_delivery_time,
@@ -5541,7 +5489,7 @@ void proto_register_p22(void) {
         NULL, HFILL }},
     { &hf_p22_timestamped,
       { "timestamped", "p22.timestamped",
-        FT_STRING, BASE_NONE, NULL, 0,
+        FT_ABSOLUTE_TIME, ABSOLUTE_TIME_LOCAL, NULL, 0,
         "CirculationTime", HFILL }},
     { &hf_p22_signed,
       { "signed", "p22.signed_element",
@@ -5553,7 +5501,7 @@ void proto_register_p22(void) {
         "CirculationSignatureAlgorithmIdentifier", HFILL }},
     { &hf_p22_timestamp,
       { "timestamp", "p22.timestamp",
-        FT_STRING, BASE_NONE, NULL, 0,
+        FT_ABSOLUTE_TIME, ABSOLUTE_TIME_LOCAL, NULL, 0,
         "CirculationTime", HFILL }},
     { &hf_p22_circulation_signature_data,
       { "circulation-signature-data", "p22.circulation_signature_data_element",
@@ -5816,11 +5764,11 @@ void proto_register_p22(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_p22_account_actual_values,
-      { "actual-values", "p22.actual_values",
+      { "actual-values", "p22.account.actual-values",
         FT_STRING, BASE_NONE, NULL, 0,
         "Account", HFILL }},
     { &hf_p22_identity_actual_values,
-      { "actual-values", "p22.actual_values",
+      { "actual-values", "p22.identity.actual-values",
         FT_STRING, BASE_NONE, NULL, 0,
         "User_Identity", HFILL }},
     { &hf_p22_actual_values,
@@ -6203,17 +6151,11 @@ void proto_register_p22(void) {
       { "ipn-proof", "p22.RecipientSecurityRequest.ipn.proof",
         FT_BOOLEAN, 8, NULL, 0x10,
         NULL, HFILL }},
-
-/*--- End of included file: packet-p22-hfarr.c ---*/
-#line 108 "./asn1/p22/packet-p22-template.c"
   };
 
   /* List of subtrees */
   static gint *ett[] = {
     &ett_p22,
-
-/*--- Included file: packet-p22-ettarr.c ---*/
-#line 1 "./asn1/p22/packet-p22-ettarr.c"
     &ett_p22_InformationObject,
     &ett_p22_IPM,
     &ett_p22_IPMSExtension,
@@ -6339,9 +6281,6 @@ void proto_register_p22(void) {
     &ett_p22_ForwardedContentToken_item,
     &ett_p22_T_body_part_token_choice,
     &ett_p22_T_choice,
-
-/*--- End of included file: packet-p22-ettarr.c ---*/
-#line 114 "./asn1/p22/packet-p22-template.c"
   };
 
   /* Register protocol */
@@ -6357,9 +6296,6 @@ void proto_register_p22(void) {
 /*--- proto_reg_handoff_p22 --- */
 void proto_reg_handoff_p22(void) {
 
-
-/*--- Included file: packet-p22-dis-tab.c ---*/
-#line 1 "./asn1/p22/packet-p22-dis-tab.c"
   register_ber_oid_dissector("2.6.1.19.0", dissect_AbsenceAdvice_PDU, proto_p22, "id-on-absence-advice");
   register_ber_oid_dissector("2.6.1.19.1", dissect_ChangeOfAddressAdvice_PDU, proto_p22, "id-on-change-of-address-advice");
   register_ber_oid_dissector("2.6.1.17.2", dissect_IPMAssemblyInstructions_PDU, proto_p22, "id-mst-assembly-instructions");
@@ -6459,9 +6395,6 @@ void proto_reg_handoff_p22(void) {
   register_ber_oid_dissector("2.6.1.18.0", dissect_RecipientSecurityRequest_PDU, proto_p22, "id-sec-ipm-security-request");
   register_ber_oid_dissector("2.6.1.18.1", dissect_IpnSecurityResponse_PDU, proto_p22, "id-sec-security-common-fields");
 
-
-/*--- End of included file: packet-p22-dis-tab.c ---*/
-#line 130 "./asn1/p22/packet-p22-template.c"
 
   register_ber_oid_dissector("2.6.1.10.0", dissect_p22, proto_p22, "InterPersonal Message (1984)");
   register_ber_oid_dissector("2.6.1.10.1", dissect_p22, proto_p22, "InterPersonal Message (1988)");

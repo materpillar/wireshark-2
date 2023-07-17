@@ -39,6 +39,8 @@
 
 void proto_register_collectd(void);
 
+static dissector_handle_t collectd_handle;
+
 typedef struct value_data_s {
 	const guint8 *host;
 	gint host_off;
@@ -213,7 +215,7 @@ collectd_stats_tree_init (stats_tree *st)
 
 static tap_packet_status
 collectd_stats_tree_packet (stats_tree *st, packet_info *pinfo _U_,
-			    epan_dissect_t *edt _U_, const void *user_data)
+			    epan_dissect_t *edt _U_, const void *user_data, tap_flags_t flags _U_)
 {
 	const tap_data_t *td;
 	string_counter_t *sc;
@@ -481,7 +483,7 @@ dissect_collectd_integer (tvbuff_t *tvb, packet_info *pinfo, gint type_hf,
 	else
 	{
 		pt = proto_tree_add_subtree_format(tree_root, tvb, offset, length,
-					  ett_collectd_integer, &pi, "collectd %s segment: %"G_GINT64_MODIFIER"u",
+					  ett_collectd_integer, &pi, "collectd %s segment: %"PRIu64,
 					  val_to_str_const (type, part_names, "UNKNOWN"),
 					  *ret_value);
 	}
@@ -542,7 +544,7 @@ dissect_collectd_values(tvbuff_t *tvb, gint msg_off, gint val_cnt,
 			val64 = tvb_get_ntoh64 (tvb, value_offset);
 			value_tree = proto_tree_add_subtree_format(values_tree, tvb, msg_off + 6,
 						  val_cnt * 9, ett_collectd_valinfo, NULL,
-						  "Counter: %"G_GINT64_MODIFIER"u", val64);
+						  "Counter: %"PRIu64, val64);
 
 			proto_tree_add_item (value_tree, hf_collectd_val_type,
 					     tvb, value_type_offset, 1, ENC_BIG_ENDIAN);
@@ -577,7 +579,7 @@ dissect_collectd_values(tvbuff_t *tvb, gint msg_off, gint val_cnt,
 			val64 = tvb_get_ntoh64 (tvb, value_offset);
 			value_tree = proto_tree_add_subtree_format(values_tree, tvb, msg_off + 6,
 						  val_cnt * 9, ett_collectd_valinfo, NULL,
-						  "Derive: %"G_GINT64_MODIFIER"i", val64);
+						  "Derive: %"PRIi64, val64);
 
 			proto_tree_add_item (value_tree, hf_collectd_val_type,
 					     tvb, value_type_offset, 1, ENC_BIG_ENDIAN);
@@ -594,7 +596,7 @@ dissect_collectd_values(tvbuff_t *tvb, gint msg_off, gint val_cnt,
 			val64 = tvb_get_ntoh64 (tvb, value_offset);
 			value_tree = proto_tree_add_subtree_format(values_tree, tvb, msg_off + 6,
 						  val_cnt * 9, ett_collectd_valinfo, NULL,
-						  "Absolute: %"G_GINT64_MODIFIER"u", val64);
+						  "Absolute: %"PRIu64, val64);
 
 			proto_tree_add_item (value_tree, hf_collectd_val_type,
 					     tvb, value_type_offset, 1, ENC_BIG_ENDIAN);
@@ -611,7 +613,7 @@ dissect_collectd_values(tvbuff_t *tvb, gint msg_off, gint val_cnt,
 			val64 = tvb_get_ntoh64 (tvb, value_offset);
 			value_tree = proto_tree_add_subtree_format(values_tree, tvb, msg_off + 6,
 						  val_cnt * 9, ett_collectd_valinfo, NULL,
-						  "Unknown: %"G_GINT64_MODIFIER"x",
+						  "Unknown: %"PRIx64,
 						  val64);
 
 			proto_tree_add_item (value_tree, hf_collectd_val_type,
@@ -775,7 +777,7 @@ dissect_collectd_signature (tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree_add_uint (pt, hf_collectd_length, tvb, offset + 2, 2,
 			     length);
 	proto_tree_add_item (pt, hf_collectd_data_sighash, tvb, offset + 4, 32, ENC_NA);
-	proto_tree_add_item (pt, hf_collectd_data_username, tvb, offset + 36, length - 36, ENC_ASCII|ENC_NA);
+	proto_tree_add_item (pt, hf_collectd_data_username, tvb, offset + 36, length - 36, ENC_ASCII);
 
 	return (0);
 } /* int dissect_collectd_signature */
@@ -857,7 +859,7 @@ dissect_collectd_encrypted (tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree_add_uint (pt, hf_collectd_type, tvb, offset, 2, type);
 	proto_tree_add_uint (pt, hf_collectd_length, tvb, offset + 2, 2, length);
 	proto_tree_add_uint (pt, hf_collectd_data_username_len, tvb, offset + 4, 2, username_length);
-	proto_tree_add_item (pt, hf_collectd_data_username, tvb, offset + 6, username_length, ENC_ASCII|ENC_NA);
+	proto_tree_add_item (pt, hf_collectd_data_username, tvb, offset + 6, username_length, ENC_ASCII);
 	proto_tree_add_item (pt, hf_collectd_data_initvec, tvb,
 			     offset + (6 + username_length), 16, ENC_NA);
 	proto_tree_add_item (pt, hf_collectd_data_encrypted, tvb,
@@ -1241,7 +1243,7 @@ dissect_collectd (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dat
 			{
 				proto_item_set_text (pi,
 						"collectd SEVERITY segment: "
-						"%s (%"G_GINT64_MODIFIER"u)",
+						"%s (%"PRIu64")",
 						val64_to_str_const (ndispatch.severity, severity_names, "UNKNOWN"),
 						ndispatch.severity);
 			}
@@ -1469,13 +1471,12 @@ void proto_register_collectd(void)
 	expert_register_field_array(expert_collectd, ei, array_length(ei));
 
 	tap_collectd = register_tap ("collectd");
+
+	collectd_handle = register_dissector("collectd", dissect_collectd, proto_collectd);
 }
 
 void proto_reg_handoff_collectd (void)
 {
-	dissector_handle_t collectd_handle;
-
-	collectd_handle = create_dissector_handle(dissect_collectd, proto_collectd);
 	dissector_add_uint_with_preference("udp.port", UDP_PORT_COLLECTD, collectd_handle);
 
 	collectd_stats_tree_register ();

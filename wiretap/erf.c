@@ -12,12 +12,20 @@
 /*
  * erf - Endace ERF (Extensible Record Format)
  *
- * See
- *
+ *  Rev A:
+ *      http://web.archive.org/web/20050829051042/http://www.endace.com/support/EndaceRecordFormat.pdf
+ *  Version 1:
+ *      http://web.archive.org/web/20061111014023/http://www.endace.com/support/EndaceRecordFormat.pdf
+ *  Version 8:
+ *      https://gitlab.com/wireshark/wireshark/uploads/f694bfee494784425b6545892180a8b2/Endace_ERF_Types.pdf
+ *        (bug #4484)
+ *  Current version (version 21, as of 2023-03-28):
  *      https://www.endace.com/erf-extensible-record-format-types.pdf
  *
- *  Version 8:
- *      https://bugs.wireshark.org/bugzilla/attachment.cgi?id=4333 (bug #4484)
+ * Note that version 17 drops descriptions of records for no-longer-supported
+ * DAG cards.  Version 16 is probably the best version to use for those
+ * older record types, but it's not in any obvious location in the Wayback
+ * Machine.
  */
 
 #include "config.h"
@@ -29,11 +37,10 @@
 
 #include <wsutil/crc32.h>
 #include <wsutil/strtoi.h>
+#include <wsutil/glib-compat.h>
 
 #include "wtap-int.h"
 #include "file_wrappers.h"
-#include "pcap-encap.h"
-#include "pcapng.h"
 #include "erf.h"
 #include "erf_record.h"
 #include "erf-common.h"
@@ -65,10 +72,10 @@ static gboolean erf_seek_read(wtap *wth, gint64 seek_off,
                               int *err, gchar **err_info);
 static void erf_close(wtap *wth);
 
-static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, Buffer *buf, guint32 packet_size, GPtrArray *anchor_mappings_to_update);
+static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, Buffer *buf, guint32 packet_size, GPtrArray *anchor_mappings_to_update, int *err, gchar **err_info);
 static int erf_update_anchors_from_header(erf_t *erf_priv, wtap_rec *rec, union wtap_pseudo_header *pseudo_header, guint64 host_id, GPtrArray *anchor_mappings_to_update);
 static int erf_get_source_from_header(union wtap_pseudo_header *pseudo_header, guint64 *host_id, guint8 *source_id);
-static int erf_populate_interface(erf_t* erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, guint64 host_id, guint8 source_id, guint8 if_num);
+static int erf_populate_interface(erf_t* erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, guint64 host_id, guint8 source_id, guint8 if_num, int *err, gchar **err_info);
 
 typedef struct {
   gboolean write_next_extra_meta;
@@ -176,6 +183,10 @@ static gboolean erf_wtap_blocks_to_erf_sections(wtap_block_t block, GPtrArray *s
 
 static guint32 erf_meta_read_tag(struct erf_meta_tag*, guint8*, guint32);
 
+static int erf_file_type_subtype = -1;
+
+void register_erf(void);
+
 static guint erf_anchor_mapping_hash(gconstpointer key) {
   const struct erf_anchor_mapping *anchor_map = (const struct erf_anchor_mapping*) key;
 
@@ -236,7 +247,7 @@ static struct erf_if_mapping* erf_if_mapping_create(guint64 host_id, guint8 sour
   int i = 0;
   struct erf_if_mapping *if_map = NULL;
 
-  if_map = (struct erf_if_mapping*) g_malloc0(sizeof(struct erf_if_mapping));
+  if_map = g_new0(struct erf_if_mapping, 1);
 
   if_map->host_id = host_id;
   if_map->source_id = source_id;
@@ -258,7 +269,7 @@ erf_t *erf_priv_create(void)
 {
   erf_t *erf_priv;
 
-  erf_priv = (erf_t*) g_malloc(sizeof(erf_t));
+  erf_priv = g_new(erf_t, 1);
   erf_priv->anchor_map = g_hash_table_new_full(erf_anchor_mapping_hash, erf_anchor_mapping_equal, erf_anchor_mapping_destroy, NULL);
   erf_priv->if_map = g_hash_table_new_full(erf_if_mapping_hash, erf_if_mapping_equal, erf_if_mapping_destroy, NULL);
   erf_priv->implicit_host_id = ERF_META_HOST_ID_IMPLICIT;
@@ -318,7 +329,7 @@ static void erf_meta_tag_free(gpointer data) {
 }
 
 
-static gboolean erf_dump_finish(struct wtap_dumper *wdh, int *err) {
+static gboolean erf_dump_finish(struct wtap_dumper *wdh, int *err, gchar **err_info _U_) {
   erf_dump_t *dump_priv = (erf_dump_t*)wdh->priv;
   gboolean ret = TRUE;
 
@@ -541,7 +552,7 @@ extern wtap_open_return_val erf_open(wtap *wth, int *err, gchar **err_info)
   }
 
   /* This is an ERF file */
-  wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_ERF;
+  wth->file_type_subtype = erf_file_type_subtype;
   wth->snapshot_length = 0;     /* not available in header, only in frame */
 
   /*
@@ -591,7 +602,10 @@ static gboolean erf_read(wtap *wth, wtap_rec *rec, Buffer *buf,
      */
     if ((erf_header.type & 0x7F) == ERF_TYPE_META && packet_size > 0)
     {
-      populate_summary_info((erf_t*) wth->priv, wth, &rec->rec_header.packet_header.pseudo_header, buf, packet_size, anchor_mappings_to_update);
+      if (populate_summary_info((erf_t*) wth->priv, wth, &rec->rec_header.packet_header.pseudo_header, buf, packet_size, anchor_mappings_to_update, err, err_info) < 0) {
+        g_ptr_array_free(anchor_mappings_to_update, TRUE);
+        return FALSE;
+      }
     }
 
   } while ( erf_header.type == ERF_TYPE_PAD );
@@ -667,6 +681,7 @@ static gboolean erf_read_header(wtap *wth, FILE_T fh,
   int     i       = 0;
   int     max     = sizeof(pseudo_header->erf.ehdr_list)/sizeof(struct erf_ehdr);
   erf_t *priv = (erf_t*)wth->priv;
+  int    interface_id;
 
   guint64 host_id  = ERF_META_HOST_ID_IMPLICIT;
   guint8 source_id = 0;
@@ -688,7 +703,7 @@ static gboolean erf_read_header(wtap *wth, FILE_T fh,
      * to allocate space for an immensely-large packet.
      */
     *err = WTAP_ERR_BAD_FILE;
-    *err_info = g_strdup_printf("erf: File has %u-byte packet, bigger than maximum of %u",
+    *err_info = ws_strdup_printf("erf: File has %u-byte packet, bigger than maximum of %u",
                                 *packet_size, WTAP_MAX_PACKET_SIZE_STANDARD);
     return FALSE;
   }
@@ -706,8 +721,9 @@ static gboolean erf_read_header(wtap *wth, FILE_T fh,
   {
     guint64 ts = pletoh64(&erf_header->ts);
 
-    /*if ((erf_header->type & 0x7f) != ERF_TYPE_META || wth->file_type_subtype != WTAP_FILE_TYPE_SUBTYPE_ERF) {*/
+    /*if ((erf_header->type & 0x7f) != ERF_TYPE_META || wth->file_type_subtype != file_type_subtype_erf) {*/
       rec->rec_type = REC_TYPE_PACKET;
+      rec->block = wtap_block_create(WTAP_BLOCK_PACKET);
     /*
      * XXX: ERF_TYPE_META records should ideally be FT_SPECIFIC for display
      * purposes, but currently ft_specific_record_phdr clashes with erf_mc_phdr
@@ -725,6 +741,7 @@ static gboolean erf_read_header(wtap *wth, FILE_T fh,
        */
       /* For now just treat all Provenance records as reports */
       rec->rec_type = REC_TYPE_FT_SPECIFIC_REPORT;
+      rec->block = wtap_block_create(WTAP_BLOCK_FT_SPECIFIC_REPORT);
       /* XXX: phdr ft_specific_record_phdr? */
     }
 #endif
@@ -788,8 +805,11 @@ static gboolean erf_read_header(wtap *wth, FILE_T fh,
     i++;
   }
 
-  /* XXX: erf_priv pointer needs to change if used as common function for other dissectors! */
-  rec->rec_header.packet_header.interface_id = (guint) erf_populate_interface((erf_t*) wth->priv, wth, pseudo_header, host_id, source_id, if_num);
+  interface_id = erf_populate_interface((erf_t*) wth->priv, wth, pseudo_header, host_id, source_id, if_num, err, err_info);
+  if (interface_id < 0) {
+    return FALSE;
+  }
+  rec->rec_header.packet_header.interface_id = (guint) interface_id;
 
   /* Try to find comment links using Anchor ID. Done here after we found the first Host ID and have updated the implicit Host ID. */
   erf_update_anchors_from_header(priv, rec, pseudo_header, host_id, anchor_mappings_to_update);
@@ -879,7 +899,7 @@ static gboolean erf_read_header(wtap *wth, FILE_T fh,
      * to allocate space for an immensely-large packet.
      */
     *err = WTAP_ERR_BAD_FILE;
-    *err_info = g_strdup_printf("erf: File has %u-byte packet, bigger than maximum of %u",
+    *err_info = ws_strdup_printf("erf: File has %u-byte packet, bigger than maximum of %u",
                                 *packet_size, WTAP_MAX_PACKET_SIZE_STANDARD);
     return FALSE;
   }
@@ -950,7 +970,6 @@ static gboolean erf_write_phdr(wtap_dumper *wdh, int encap, const union wtap_pse
   }
   if (!wtap_dump_file_write(wdh, erf_hdr, size, err))
     return FALSE;
-  wdh->bytes_dumped += size;
 
   /*write out up to MAX_ERF_EHDR extension headers*/
   has_more = pseudo_header->erf.phdr.type & 0x80;
@@ -963,12 +982,10 @@ static gboolean erf_write_phdr(wtap_dumper *wdh, int encap, const union wtap_pse
     }while(has_more && i < MAX_ERF_EHDR);
     if (!wtap_dump_file_write(wdh, ehdr, 8*i, err))
       return FALSE;
-    wdh->bytes_dumped += 8*i;
   }
 
   if(!wtap_dump_file_write(wdh, erf_subhdr, subhdr_size, err))
     return FALSE;
-  wdh->bytes_dumped += subhdr_size;
 
   return TRUE;
 }
@@ -983,7 +1000,7 @@ static void erf_dump_priv_init_gen_time(erf_dump_t *dump_priv) {
 }
 
 
-static void erf_write_wtap_option_to_capture_tag(wtap_block_t block _U_,
+static gboolean erf_write_wtap_option_to_capture_tag(wtap_block_t block _U_,
     guint option_id,
     wtap_opttype_e option_type _U_,
     wtap_optval_t *optval,
@@ -992,7 +1009,7 @@ static void erf_write_wtap_option_to_capture_tag(wtap_block_t block _U_,
   struct erf_meta_section *section_ptr = (struct erf_meta_section*) user_data;
   struct erf_meta_tag *tag_ptr = NULL;
 
-  tag_ptr = (struct erf_meta_tag*) g_malloc0(sizeof(struct erf_meta_tag));
+  tag_ptr = g_new0(struct erf_meta_tag, 1);
 
   switch(option_id) {
     case OPT_SHB_USERAPPL:
@@ -1013,9 +1030,11 @@ static void erf_write_wtap_option_to_capture_tag(wtap_block_t block _U_,
 
   if (tag_ptr)
     g_ptr_array_add(section_ptr->tags, tag_ptr);
+
+  return TRUE; /* we always succeed */
 }
 
-static void erf_write_wtap_option_to_host_tag(wtap_block_t block _U_,
+static gboolean erf_write_wtap_option_to_host_tag(wtap_block_t block _U_,
     guint option_id,
     wtap_opttype_e option_type _U_,
     wtap_optval_t *optval,
@@ -1024,7 +1043,7 @@ static void erf_write_wtap_option_to_host_tag(wtap_block_t block _U_,
   struct erf_meta_section *section_ptr = (struct erf_meta_section*) user_data;
   struct erf_meta_tag *tag_ptr = NULL;
 
-  tag_ptr = (struct erf_meta_tag*) g_malloc0(sizeof(struct erf_meta_tag));
+  tag_ptr = g_new0(struct erf_meta_tag, 1);
 
   switch(option_id) {
     case OPT_SHB_HARDWARE:
@@ -1045,9 +1064,11 @@ static void erf_write_wtap_option_to_host_tag(wtap_block_t block _U_,
 
   if (tag_ptr)
     g_ptr_array_add(section_ptr->tags, tag_ptr);
+
+  return TRUE; /* we always succeed */
 }
 
-static void erf_write_wtap_option_to_interface_tag(wtap_block_t block _U_,
+static gboolean erf_write_wtap_option_to_interface_tag(wtap_block_t block _U_,
     guint option_id,
     wtap_opttype_e option_type _U_,
     wtap_optval_t *optval,
@@ -1056,7 +1077,7 @@ static void erf_write_wtap_option_to_interface_tag(wtap_block_t block _U_,
   struct erf_meta_section *section_ptr = (struct erf_meta_section*) user_data;
   struct erf_meta_tag *tag_ptr = NULL;
 
-  tag_ptr = (struct erf_meta_tag*) g_malloc0(sizeof(struct erf_meta_tag));
+  tag_ptr = g_new0(struct erf_meta_tag, 1);
 
   switch(option_id) {
     case OPT_COMMENT:
@@ -1069,7 +1090,7 @@ static void erf_write_wtap_option_to_interface_tag(wtap_block_t block _U_,
       tag_ptr->value = (guint8*)g_strdup(optval->stringval);
       tag_ptr->length = (guint16)strlen((char*)tag_ptr->value);
       break;
-    case OPT_IDB_DESCR:
+    case OPT_IDB_DESCRIPTION:
       tag_ptr->type = ERF_META_TAG_descr;
       tag_ptr->value = (guint8*)g_strdup(optval->stringval);
       tag_ptr->length = (guint16)strlen((char*)tag_ptr->value);
@@ -1106,12 +1127,12 @@ static void erf_write_wtap_option_to_interface_tag(wtap_block_t block _U_,
       break;
     case OPT_IDB_FILTER:
       {
-        wtapng_if_descr_filter_t *filter;
+        if_filter_opt_t *filter;
+        filter = &optval->if_filterval;
         tag_ptr->type = 0xF800;
-        filter = (wtapng_if_descr_filter_t*)&optval->customval;
-        if(filter->if_filter_str) {
+        if(filter->type == if_filter_pcap) {
           tag_ptr->type = ERF_META_TAG_filter;
-          tag_ptr->value = (guint8*)g_strdup(filter->if_filter_str);
+          tag_ptr->value = (guint8*)g_strdup(filter->data.filter_str);
           tag_ptr->length = (guint16)strlen((char*)tag_ptr->value);
         }
       }
@@ -1153,6 +1174,7 @@ static void erf_write_wtap_option_to_interface_tag(wtap_block_t block _U_,
   if (tag_ptr)
     g_ptr_array_add(section_ptr->tags, tag_ptr);
 
+  return TRUE; /* we always succeed */
 }
 
 static void erf_populate_section_length_by_tags(struct erf_meta_section *section_ptr) {
@@ -1185,7 +1207,7 @@ static gboolean erf_wtap_blocks_to_erf_sections(wtap_block_t block, GPtrArray *s
 
   struct erf_meta_section *section_ptr;
 
-  section_ptr = (struct erf_meta_section*) g_malloc(sizeof(struct erf_meta_section));
+  section_ptr = g_new(struct erf_meta_section, 1);
   section_ptr->tags = g_ptr_array_new_with_free_func(erf_meta_tag_free);
   section_ptr->type = section_type;
   section_ptr->section_id = section_id;
@@ -1210,14 +1232,11 @@ static gboolean erf_meta_write_tag(wtap_dumper *wdh, struct erf_meta_tag *tag_pt
   data[1] = g_htons(tag_ptr->length);
 
   if(!wtap_dump_file_write(wdh, data, sizeof(data), err)) return FALSE;
-  wdh->bytes_dumped += sizeof(data);
 
   if(!wtap_dump_file_write(wdh, tag_ptr->value, tag_ptr->length, err)) return FALSE;
-  wdh->bytes_dumped += tag_ptr->length;
 
   if(pad) {
     if(!wtap_dump_file_write(wdh, &padbuf, pad, err)) return FALSE;
-    wdh->bytes_dumped += pad;
   }
 
   return TRUE;
@@ -1236,7 +1255,6 @@ static gboolean erf_meta_write_section(wtap_dumper *wdh, struct erf_meta_section
   data[3] = g_htons(section_ptr->section_length);
 
   if(!wtap_dump_file_write(wdh, data, sizeof(data), err)) return FALSE;
-  wdh->bytes_dumped += sizeof(data);
 
   for(i = 0; i < section_ptr->tags->len; i++) {
     tag_ptr = (struct erf_meta_tag*)g_ptr_array_index(section_ptr->tags, i);
@@ -1274,13 +1292,13 @@ static gboolean erf_comment_to_sections(wtap_dumper *wdh _U_, guint16 section_ty
   const gchar *user = NULL;
 
   /* Generate the section */
-  section_ptr = (struct erf_meta_section*) g_malloc(sizeof(struct erf_meta_section));
+  section_ptr = g_new(struct erf_meta_section, 1);
   section_ptr->type = section_type;
   section_ptr->section_id = section_id;
   section_ptr->tags = g_ptr_array_new_with_free_func(erf_meta_tag_free);
 
   /* Generate the comment tag */
-  comment_tag_ptr = (struct erf_meta_tag*) g_malloc(sizeof(struct erf_meta_tag));
+  comment_tag_ptr = g_new(struct erf_meta_tag, 1);
   comment_tag_ptr->type = ERF_META_TAG_comment;
   /* XXX: if the comment has been cleared write the empty string (which
    * conveniently is all a zero length tag which means the value is
@@ -1292,7 +1310,7 @@ static gboolean erf_comment_to_sections(wtap_dumper *wdh _U_, guint16 section_ty
   user = g_get_user_name();
   if (user) {
     /* Generate username tag */
-    user_tag_ptr = (struct erf_meta_tag*) g_malloc(sizeof(struct erf_meta_tag));
+    user_tag_ptr = g_new(struct erf_meta_tag, 1);
     user_tag_ptr->type = ERF_META_TAG_user;
     user_tag_ptr->value = (guint8*)g_strdup(user);
     user_tag_ptr->length = (guint16)strlen((char*)user_tag_ptr->value);
@@ -1468,6 +1486,7 @@ static gboolean erf_write_anchor_meta_update_phdr(wtap_dumper *wdh, erf_dump_t *
   guint8 source_id = 0;
   gboolean ret = FALSE;
   guint64 implicit_host_id = dump_priv->implicit_host_id == ERF_META_HOST_ID_IMPLICIT ? 0 : dump_priv->implicit_host_id;
+  gchar *pkt_comment;
 
 
   /*
@@ -1611,8 +1630,8 @@ static gboolean erf_write_anchor_meta_update_phdr(wtap_dumper *wdh, erf_dump_t *
    * implicit Host ID. */
 
   /* 2. AnchorID exthdr with 'unique' per-host Anchor ID assigned by this host
-   * (in this case Wireshark). Anchor defintion flag set to 1 to indicate this
-   * record contains a defintion of the ID, in this case a comment on a single
+   * (in this case Wireshark). Anchor definition flag set to 1 to indicate this
+   * record contains a definition of the ID, in this case a comment on a single
    * packet. Tied to above extension header by ordering like a list */
   erf_append_ext_hdr_to_list(anchor_id_hdr | ERF_EHDR_ANCHOR_ID_DEFINITION_MASK, meta_ehdrs);
 
@@ -1632,8 +1651,12 @@ static gboolean erf_write_anchor_meta_update_phdr(wtap_dumper *wdh, erf_dump_t *
   }
 
   /* Generate the metadata payload with the packet comment */
+  /* XXX - can ERF have more than one comment? */
   sections = g_ptr_array_new_with_free_func(erf_meta_section_free);
-  erf_comment_to_sections(wdh, ERF_META_SECTION_INFO, 0x8000 /*local to record*/, rec->opt_comment, sections);
+  if (WTAP_OPTTYPE_SUCCESS != wtap_block_get_nth_string_option_value(rec->block, OPT_COMMENT, 0, &pkt_comment)) {
+    pkt_comment = NULL;
+  }
+  erf_comment_to_sections(wdh, ERF_META_SECTION_INFO, 0x8000 /*local to record*/, pkt_comment, sections);
 
   /* Write the metadata record, but not the packet record as what we do depends
    * on the WTAP_ENCAP */
@@ -1719,7 +1742,6 @@ static gboolean erf_write_meta_record(wtap_dumper *wdh, erf_dump_t *dump_priv, g
 
   while(wdh->bytes_dumped < alignbytes){
     if(!wtap_dump_file_write(wdh, "", 1, err)) return FALSE;
-    wdh->bytes_dumped++;
   }
 
   /* We wrote new packets, reloading is required */
@@ -1732,7 +1754,7 @@ static gboolean erf_write_meta_record(wtap_dumper *wdh, erf_dump_t *dump_priv, g
 static erf_dump_t *erf_dump_priv_create(void) {
   erf_dump_t *dump_priv;
 
-  dump_priv = (erf_dump_t*)g_malloc(sizeof(erf_dump_t));
+  dump_priv = g_new(erf_dump_t, 1);
   dump_priv->write_next_extra_meta = FALSE;
   dump_priv->last_meta_periodic = FALSE;
   dump_priv->gen_time = 0;
@@ -1759,7 +1781,6 @@ static gboolean erf_dump(
 {
   const union wtap_pseudo_header *pseudo_header = &rec->rec_header.packet_header.pseudo_header;
   union wtap_pseudo_header other_phdr;
-  int      encap;
   int      erf_type;
   gint64   alignbytes   = 0;
   guint    padbytes   = 0;
@@ -1777,22 +1798,30 @@ static gboolean erf_dump(
     return FALSE;
   }
 
-  if(wdh->encap == WTAP_ENCAP_PER_PACKET){
-    encap = rec->rec_header.packet_header.pkt_encap;
-  }else{
-    encap = wdh->encap;
-  }
-
   if(!dump_priv->gen_time) {
     erf_dump_priv_init_gen_time(dump_priv);
     dump_priv->first_frame_time_sec = rec->ts.secs;
   }
 
-  if (encap != WTAP_ENCAP_ERF) {
+  /*
+   * ERF doesn't have a per-file encapsulation type, and it
+   * doesn't have a pcapng-style notion of interfaces that
+   * support a per-interface encapsulation type.  Therefore,
+   * we can just use this particular packet's encapsulation
+   * without checking whether it's the encapsulation for the
+   * dump file (as there isn't an encapsulation for an ERF
+   * file, unless you count WTAP_ENCAP_ERF as the encapsulation
+   * for all files, but we add ERF metadata if a packet is
+   * written with an encapsulation other than WTAP_ENCAP_ERF).
+   *
+   * We will check whether the encapsulation is something we
+   * support later.
+   */
+  if (rec->rec_header.packet_header.pkt_encap != WTAP_ENCAP_ERF) {
     unsigned int total_rlen;;
     unsigned int total_wlen;
 
-    /*Non-ERF*/
+    /* Non-ERF encapsulation; generate ERF metadata */
 
     total_rlen = rec->rec_header.packet_header.caplen+16;
     total_wlen = rec->rec_header.packet_header.len;
@@ -1803,7 +1832,8 @@ static gboolean erf_dump(
       return FALSE;
     }
 
-    if ((erf_type = wtap_wtap_encap_to_erf_encap(encap)) == -1) {
+    erf_type = wtap_wtap_encap_to_erf_encap(rec->rec_header.packet_header.pkt_encap);
+    if (erf_type == -1) {
       *err = WTAP_ERR_UNWRITABLE_ENCAP;
       return FALSE;
     }
@@ -1912,7 +1942,7 @@ static gboolean erf_dump(
   } else { /* don't want to insert a new metadata record while looking at another */
     if (dump_priv->prev_erf_type == ERF_TYPE_META && dump_priv->last_meta_periodic) {
       /* Last frame was a periodic (non-comment) metadata record (and this frame is not), check if we
-       * need to insert one to update metdata. */
+       * need to insert one to update metadata. */
 
       if(dump_priv->write_next_extra_meta) {
         if (!dump_priv->periodic_sections) {
@@ -1929,7 +1959,7 @@ static gboolean erf_dump(
 
       /* If we have seen a metadata record in the first ~1 second it
        * means that we are dealing with an ERF file with metadata already in them.
-       * We dont want to write extra metadata if nothing has changed. We can't
+       * We don't want to write extra metadata if nothing has changed. We can't
        * trust the Wireshark representation since we massage the fields on
        * read. */
       /* restart searching for next meta record to update capture comment at */
@@ -1961,12 +1991,12 @@ static gboolean erf_dump(
    * construct a new header with additional Host ID and Anchor ID
    * and insert a metadata record before that frame */
   /*XXX: The user may have changed the comment to cleared! */
-  if(rec->opt_comment || rec->has_comment_changed) {
-    if (encap == WTAP_ENCAP_ERF) {
+  if(rec->block_was_modified) {
+    if (rec->rec_header.packet_header.pkt_encap == WTAP_ENCAP_ERF) {
       /* XXX: What about ERF-in-pcapng with existing comment (that wasn't
        * modified)? */
-      if(rec->has_comment_changed) {
-        memcpy(&other_phdr, pseudo_header, sizeof(union wtap_pseudo_header));
+      if(rec->block_was_modified) {
+        memmove(&other_phdr, pseudo_header, sizeof(union wtap_pseudo_header));
         if(!erf_write_anchor_meta_update_phdr(wdh, dump_priv, rec, &other_phdr, err)) return FALSE;
         pseudo_header = &other_phdr;
       }
@@ -1982,12 +2012,10 @@ static gboolean erf_dump(
   if(!erf_write_phdr(wdh, WTAP_ENCAP_ERF, pseudo_header, err)) return FALSE;
 
   if(!wtap_dump_file_write(wdh, pd, rec->rec_header.packet_header.caplen - round_down, err)) return FALSE;
-  wdh->bytes_dumped += rec->rec_header.packet_header.caplen - round_down;
 
   /*add the 4 byte CRC if necessary*/
   if(must_add_crc){
     if(!wtap_dump_file_write(wdh, &crc32, 4, err)) return FALSE;
-    wdh->bytes_dumped += 4;
   }
 
   /*XXX: In the case of ENCAP_ERF, this pads the record to its original length, which is fine in most
@@ -1998,7 +2026,6 @@ static gboolean erf_dump(
   /*records should be 8byte aligned, so we add padding to our calculated rlen */
   while(wdh->bytes_dumped < alignbytes){
     if(!wtap_dump_file_write(wdh, "", 1, err)) return FALSE;
-    wdh->bytes_dumped++;
   }
 
   dump_priv->prev_erf_type = pseudo_header->erf.phdr.type & 0x7FU;
@@ -2007,7 +2034,7 @@ static gboolean erf_dump(
   return TRUE;
 }
 
-int erf_dump_can_write_encap(int encap)
+static int erf_dump_can_write_encap(int encap)
 {
 
   if(encap == WTAP_ENCAP_PER_PACKET)
@@ -2019,11 +2046,12 @@ int erf_dump_can_write_encap(int encap)
   return 0;
 }
 
-int erf_dump_open(wtap_dumper *wdh, int *err _U_)
+static int erf_dump_open(wtap_dumper *wdh, int *err _U_, gchar **err_info _U_)
 {
   erf_dump_t *dump_priv;
   gchar *s;
   guint64 host_id;
+  char *first_shb_comment = NULL;
 
   dump_priv = erf_dump_priv_create();
 
@@ -2031,11 +2059,13 @@ int erf_dump_open(wtap_dumper *wdh, int *err _U_)
   wdh->priv = dump_priv;
   wdh->subtype_finish = erf_dump_finish;
 
-  /* Get the capture comment string */
-  get_user_comment_string(wdh, &dump_priv->user_comment_ptr);
+  /* Get the first capture comment string */
+  get_user_comment_string(wdh, &first_shb_comment);
+  /* Save a copy of it */
+  dump_priv->user_comment_ptr = g_strdup(first_shb_comment);
   /* XXX: If we have a capture comment or a non-ERF file assume we need to
    * write metadata unless we see existing metadata in the first second. */
-  if (dump_priv->user_comment_ptr || wdh->encap != WTAP_ENCAP_ERF)
+  if (dump_priv->user_comment_ptr || wdh->file_encap != WTAP_ENCAP_ERF)
     dump_priv->write_next_extra_meta = TRUE;
 
   /* Read Host ID from environment variable */
@@ -2097,7 +2127,7 @@ static int erf_get_source_from_header(union wtap_pseudo_header *pseudo_header, g
   return 0;
 }
 
-int erf_populate_interface_from_header(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header)
+int erf_populate_interface_from_header(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, int *err, gchar **err_info)
 {
   guint64 host_id;
   guint8 source_id;
@@ -2110,7 +2140,7 @@ int erf_populate_interface_from_header(erf_t *erf_priv, wtap *wth, union wtap_ps
 
   erf_get_source_from_header(pseudo_header, &host_id, &source_id);
 
-  return erf_populate_interface(erf_priv, wth, pseudo_header, host_id, source_id, if_num);
+  return erf_populate_interface(erf_priv, wth, pseudo_header, host_id, source_id, if_num, err, err_info);
 }
 
 static struct erf_if_mapping* erf_find_interface_mapping(erf_t *erf_priv, guint64 host_id, guint8 source_id)
@@ -2143,11 +2173,11 @@ static void erf_set_interface_descr(wtap_block_t block, guint option_id, guint64
   }
 
   if (host_id > 0) {
-    g_snprintf(hostid_buf, sizeof(hostid_buf), " Host %012" G_GINT64_MODIFIER "x,", host_id);
+    snprintf(hostid_buf, sizeof(hostid_buf), " Host %012" PRIx64 ",", host_id);
   }
 
   if (source_id > 0) {
-    g_snprintf(sourceid_buf, sizeof(sourceid_buf), " Source %u,", source_id);
+    snprintf(sourceid_buf, sizeof(sourceid_buf), " Source %u,", source_id);
   }
 
   if (descr) {
@@ -2191,7 +2221,7 @@ static int erf_update_anchors_from_header(erf_t *erf_priv, wtap_rec *rec, union 
         anchor_id_current = hdr & ERF_EHDR_ANCHOR_ID_MASK;
         if (!(ERF_ANCHOR_ID_IS_DEFINITION(hdr))) {
           /*
-            * Anchor definiton flag is 0, attempt to associate a comment with this record
+            * Anchor definition flag is 0, attempt to associate a comment with this record
             * XXX: currently the comment count may be wrong on the first pass!
             */
           /* We may not have found the implicit Host ID yet, if so we are unlikely to find anything */
@@ -2217,7 +2247,7 @@ static int erf_update_anchors_from_header(erf_t *erf_priv, wtap_rec *rec, union 
              */
             /* Only Provenance record can contain the information we need */
             struct erf_anchor_mapping *mapping_ptr =
-              (struct erf_anchor_mapping*)g_malloc0(sizeof(struct erf_anchor_mapping));
+              g_new0(struct erf_anchor_mapping, 1);
             /* May be ERF_META_HOST_ID_IMPLICIT */
             mapping_ptr->host_id = host_id_current;
             mapping_ptr->anchor_id = anchor_id_current;
@@ -2233,18 +2263,7 @@ static int erf_update_anchors_from_header(erf_t *erf_priv, wtap_rec *rec, union 
   }
 
   if (comment) {
-    /* Will be freed by either wtap_sequential_close (for rec = &wth->rec) or by
-     * the caller of wtap_seek_read. See wtap_rec_cleanup. */
-    g_free(rec->opt_comment);
-    rec->opt_comment = g_strdup(comment);
-    rec->presence_flags |= WTAP_HAS_COMMENTS;
-  } else {
-    /* WTAP_HAS_COMMENT has no visible effect?
-     * Need to set opt_comment to NULL to prevent other packets
-     * from displaying the same comment
-     */
-    g_free(rec->opt_comment);
-    rec->opt_comment = NULL;
+    wtap_block_add_string_option(rec->block, OPT_COMMENT, comment, strlen(comment));
   }
 
   return 0;
@@ -2321,7 +2340,7 @@ static int erf_update_implicit_host_id(erf_t *erf_priv, wtap *wth, guint64 impli
             /* XXX: this is a pointer! */
             int_data = g_array_index(wth->interface_data, wtap_block_t, if_info->if_index);
 
-            g_snprintf(portstr_buf, sizeof(portstr_buf), "Port %c", 'A'+i);
+            snprintf(portstr_buf, sizeof(portstr_buf), "Port %c", 'A'+i);
 
             oldstr = if_info->name;
             if_info->name = g_strconcat(oldstr ? oldstr : portstr_buf, " [unmatched implicit]", NULL);
@@ -2332,7 +2351,7 @@ static int erf_update_implicit_host_id(erf_t *erf_priv, wtap *wth, guint64 impli
             g_free(oldstr);
 
             erf_set_interface_descr(int_data, OPT_IDB_NAME, implicit_host_id, if_map->source_id, (guint8) i, if_info->name);
-            erf_set_interface_descr(int_data, OPT_IDB_DESCR, implicit_host_id, if_map->source_id, (guint8) i, if_info->descr);
+            erf_set_interface_descr(int_data, OPT_IDB_DESCRIPTION, implicit_host_id, if_map->source_id, (guint8) i, if_info->descr);
           }
         }
       }
@@ -2352,7 +2371,7 @@ static int erf_update_implicit_host_id(erf_t *erf_priv, wtap *wth, guint64 impli
           /* XXX: this is a pointer! */
           int_data = g_array_index(wth->interface_data, wtap_block_t, if_info->if_index);
           erf_set_interface_descr(int_data, OPT_IDB_NAME, implicit_host_id, if_map->source_id, (guint8) i, if_info->name);
-          erf_set_interface_descr(int_data, OPT_IDB_DESCR, implicit_host_id, if_map->source_id, (guint8) i, if_info->descr);
+          erf_set_interface_descr(int_data, OPT_IDB_DESCRIPTION, implicit_host_id, if_map->source_id, (guint8) i, if_info->descr);
         }
       }
 
@@ -2412,14 +2431,33 @@ static int erf_update_implicit_host_id(erf_t *erf_priv, wtap *wth, guint64 impli
   return 0;
 }
 
-static int erf_populate_interface(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, guint64 host_id, guint8 source_id, guint8 if_num)
+static int erf_populate_interface(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, guint64 host_id, guint8 source_id, guint8 if_num, int *err, gchar **err_info)
 {
   wtap_block_t int_data;
   wtapng_if_descr_mandatory_t* int_data_mand;
   struct erf_if_mapping* if_map = NULL;
 
-  if (!wth || !pseudo_header || !erf_priv || if_num > 3)
+  if (!wth) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: erf_populate_interface called with wth NULL");
     return -1;
+  }
+  if (!pseudo_header) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: erf_populate_interface called with pseudo_header NULL");
+    return -1;
+  }
+  if (!erf_priv) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: erf_populate_interface called with erf_priv NULL");
+    return -1;
+  }
+  if (if_num > 3) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: erf_populate_interface called with if_num %u > 3",
+                                if_num);
+    return -1;
+  }
 
   if (host_id == ERF_META_HOST_ID_IMPLICIT) {
     /* Defaults to ERF_META_HOST_ID_IMPLICIT so we can update mapping later */
@@ -2450,12 +2488,13 @@ static int erf_populate_interface(erf_t *erf_priv, wtap *wth, union wtap_pseudo_
     return if_map->interfaces[if_num].if_index;
   }
 
-  int_data = wtap_block_create(WTAP_BLOCK_IF_DESCR);
+  int_data = wtap_block_create(WTAP_BLOCK_IF_ID_AND_INFO);
   int_data_mand = (wtapng_if_descr_mandatory_t*)wtap_block_get_mandatory_data(int_data);
 
   int_data_mand->wtap_encap = WTAP_ENCAP_ERF;
   /* int_data.time_units_per_second = (1LL<<32);  ERF format resolution is 2^-32, capture resolution is unknown */
   int_data_mand->time_units_per_second = 1000000000; /* XXX Since Wireshark only supports down to nanosecond resolution we have to dilute to this */
+  int_data_mand->tsprecision = WTAP_TSPREC_NSEC;
   int_data_mand->snap_len = 65535; /* ERF max length */
 
   /* XXX: if_IPv4addr opt 4  Interface network address and netmask.*/
@@ -2472,7 +2511,7 @@ static int erf_populate_interface(erf_t *erf_priv, wtap *wth, union wtap_pseudo_
   int_data_mand->interface_statistics = NULL;
 
   erf_set_interface_descr(int_data, OPT_IDB_NAME, host_id, source_id, if_num, NULL);
-  erf_set_interface_descr(int_data, OPT_IDB_DESCR, host_id, source_id, if_num, NULL);
+  erf_set_interface_descr(int_data, OPT_IDB_DESCRIPTION, host_id, source_id, if_num, NULL);
 
   if_map->interfaces[if_num].if_index = (int) wth->interface_data->len;
   wtap_add_idb(wth, int_data);
@@ -2508,7 +2547,7 @@ static guint32 erf_meta_read_tag(struct erf_meta_tag* tag, guint8 *tag_ptr, guin
   return tagtotallength;
 }
 
-static int populate_capture_host_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header _U_, struct erf_meta_read_state *state)
+static int populate_capture_host_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header _U_, struct erf_meta_read_state *state, int *err, gchar **err_info)
 {
   struct erf_meta_tag tag = {0, 0, NULL};
 
@@ -2522,8 +2561,26 @@ static int populate_capture_host_info(erf_t *erf_priv, wtap *wth, union wtap_pse
   gchar* modelcpu    = NULL;
   guint32 tagtotallength;
 
-  if (!wth || !state || !wth->shb_hdrs || (wth->shb_hdrs->len == 0))
+  if (!wth) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_capture_host_info called with wth NULL");
     return -1;
+  }
+  if (!state) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_capture_host_info called with state NULL");
+    return -1;
+  }
+  if (!wth->shb_hdrs) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_capture_host_info called with wth->shb_hdrs NULL");
+    return -1;
+  }
+  if (wth->shb_hdrs->len == 0) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_capture_host_info called with wth->shb_hdrs->len 0");
+    return -1;
+  }
 
   /* XXX: wth->shb_hdr is already created by different layer, using directly for now. */
   /* XXX: Only one section header is supported at this time */
@@ -2603,10 +2660,13 @@ static int populate_capture_host_info(erf_t *erf_priv, wtap *wth, union wtap_pse
 
   /* Post processing */
 
-  if (app_name) {
-    /* If no app_version will just use app_name */
-
-    tmp = g_strjoin(" ", app_name, app_version, NULL);
+  if (app_name || app_version) {
+    /*
+     * If we have no app_name, we use "(Unknown applicaton)".
+     *
+     * If we have no app_version, this will just use app_name.
+     */
+    tmp = g_strjoin(" ", app_name ? app_name : "(Unknown application)", app_version, NULL);
     wtap_block_set_string_option_value(shb_hdr, OPT_SHB_USERAPPL, tmp, strlen(tmp));
     g_free(tmp);
 
@@ -2661,14 +2721,22 @@ static int populate_capture_host_info(erf_t *erf_priv, wtap *wth, union wtap_pse
   return 1;
 }
 
-static int populate_module_info(erf_t *erf_priv _U_, wtap *wth, union wtap_pseudo_header *pseudo_header _U_, struct erf_meta_read_state *state)
+static int populate_module_info(erf_t *erf_priv _U_, wtap *wth, union wtap_pseudo_header *pseudo_header _U_, struct erf_meta_read_state *state, int *err, gchar **err_info)
 {
   struct erf_meta_tag tag = {0, 0, NULL};
 
   guint32 tagtotallength;
 
-  if (!wth || !state)
+  if (!wth) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_module_info called with wth NULL");
     return -1;
+  }
+  if (!state) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_module_info called with stat NULL");
+    return -1;
+  }
 
   if (state->if_map->module_gentime > state->gen_time) {
     return 0;
@@ -2702,19 +2770,37 @@ static int populate_module_info(erf_t *erf_priv _U_, wtap *wth, union wtap_pseud
   return 1;
 }
 
-static int populate_interface_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, struct erf_meta_read_state *state)
+static int populate_interface_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, struct erf_meta_read_state *state, int *err, gchar **err_info)
 {
   struct erf_meta_tag tag = {0, 0, NULL};
   guint32 tagtotallength;
   int interface_index = -1;
   wtap_block_t int_data = NULL;
   wtapng_if_descr_mandatory_t* int_data_mand = NULL;
-  wtapng_if_descr_filter_t if_filter = {0};
+  if_filter_opt_t if_filter;
   guint32 if_num = 0;
   struct erf_if_info* if_info = NULL;
 
-  if (!wth || !state || !pseudo_header || !state->if_map)
+  if (!wth) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_interface_info called with wth NULL");
     return -1;
+  }
+  if (!state) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_interface_info called with state NULL");
+    return -1;
+  }
+  if (!pseudo_header) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_interface_info called with pseudo_header NULL");
+    return -1;
+  }
+  if (!state->if_map) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_interface_info called with state->if_map NULL");
+    return -1;
+  }
 
   /* Section ID of interface is defined to match ERF interface id. */
   if_num = state->sectionid - 1;
@@ -2758,7 +2844,10 @@ static int populate_interface_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo
 
       /* If the interface is valid but uninitialized, create it */
       if (interface_index == -1) {
-        interface_index = erf_populate_interface(erf_priv, wth, pseudo_header, state->if_map->host_id, state->if_map->source_id, (guint8) if_num);
+        interface_index = erf_populate_interface(erf_priv, wth, pseudo_header, state->if_map->host_id, state->if_map->source_id, (guint8) if_num, err, err_info);
+        if (interface_index == -1) {
+          return -1;
+        }
       }
     }
 
@@ -2770,6 +2859,8 @@ static int populate_interface_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo
       /* timing/unknown port */
       return 0;
     } else {
+      *err = WTAP_ERR_INTERNAL;
+      *err_info = ws_strdup_printf("erf: populate_interface_info got interface_index %d < 0 and != -2", interface_index);
       return -1;
     }
   }
@@ -2795,14 +2886,14 @@ static int populate_interface_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo
 
           /* If we have no description, also copy to wtap if_description */
           if (!if_info->descr) {
-            erf_set_interface_descr(int_data, OPT_IDB_DESCR, state->if_map->host_id, state->if_map->source_id, (guint8) if_num, if_info->name);
+            erf_set_interface_descr(int_data, OPT_IDB_DESCRIPTION, state->if_map->host_id, state->if_map->source_id, (guint8) if_num, if_info->name);
           }
         }
         break;
       case ERF_META_TAG_descr:
         if (!if_info->descr) {
           if_info->descr = g_strndup((gchar*) tag.value, tag.length);
-          erf_set_interface_descr(int_data, OPT_IDB_DESCR, state->if_map->host_id, state->if_map->source_id, (guint8) if_num, if_info->descr);
+          erf_set_interface_descr(int_data, OPT_IDB_DESCRIPTION, state->if_map->host_id, state->if_map->source_id, (guint8) if_num, if_info->descr);
 
           /* If we have no name, also copy to wtap if_name */
           if (!if_info->name) {
@@ -2839,9 +2930,10 @@ static int populate_interface_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo
         wtap_block_add_string_option(int_data, OPT_COMMENT, tag.value, tag.length);
         break;
       case ERF_META_TAG_filter:
-        if_filter.if_filter_str = g_strndup((gchar*) tag.value, tag.length);
-        wtap_block_add_custom_option(int_data, OPT_IDB_FILTER, &if_filter, sizeof if_filter);
-        g_free(if_filter.if_filter_str);
+        if_filter.type = if_filter_pcap;
+        if_filter.data.filter_str = g_strndup((gchar*) tag.value, tag.length);
+        wtap_block_add_if_filter_option(int_data, OPT_IDB_FILTER, &if_filter);
+        g_free(if_filter.data.filter_str);
         if_info->set_flags.filter = 1;
         break;
       default:
@@ -2865,16 +2957,18 @@ static int populate_interface_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo
   if (!if_info->set_flags.filter) {
     if (state->if_map->module_filter_str) {
       /* Duplicate because might use with multiple interfaces */
-      if_filter.if_filter_str = state->if_map->module_filter_str;
-      wtap_block_add_custom_option(int_data, OPT_IDB_FILTER, &if_filter, sizeof if_filter);
+      if_filter.type = if_filter_pcap;
+      if_filter.data.filter_str = state->if_map->module_filter_str;
+      wtap_block_add_if_filter_option(int_data, OPT_IDB_FILTER, &if_filter);
       /*
        * Don't set flag because stream is more specific than module.
        */
     } else if (state->if_map->capture_filter_str) {
       /* TODO: display separately? Note that we could have multiple captures
        * from multiple hosts in the file */
-      if_filter.if_filter_str = state->if_map->capture_filter_str;
-      wtap_block_add_custom_option(int_data, OPT_IDB_FILTER, &if_filter, sizeof if_filter);
+      if_filter.type = if_filter_pcap;
+      if_filter.data.filter_str = state->if_map->capture_filter_str;
+      wtap_block_add_if_filter_option(int_data, OPT_IDB_FILTER, &if_filter);
     }
   }
 
@@ -2893,22 +2987,40 @@ static int populate_interface_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo
   return 1;
 }
 
-static int populate_stream_info(erf_t *erf_priv _U_, wtap *wth, union wtap_pseudo_header *pseudo_header, struct erf_meta_read_state *state)
+static int populate_stream_info(erf_t *erf_priv _U_, wtap *wth, union wtap_pseudo_header *pseudo_header, struct erf_meta_read_state *state, int *err, gchar **err_info)
 {
   struct erf_meta_tag tag = {0, 0, NULL};
   guint32 tagtotallength;
   int interface_index = -1;
   wtap_block_t int_data = NULL;
   wtapng_if_descr_mandatory_t* int_data_mand = NULL;
-  wtapng_if_descr_filter_t if_filter = {0};
+  if_filter_opt_t if_filter;
   guint32 if_num = 0;
   gint32 stream_num = -1;
   guint8 *tag_ptr_tmp;
   guint32 remaining_len_tmp;
   struct erf_if_info* if_info = NULL;
 
-  if (!wth || !pseudo_header || !state || !state->if_map)
+  if (!wth) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_stream_info called with wth NULL");
     return -1;
+  }
+  if (!pseudo_header) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_stream_info called with pseudo_header NULL");
+    return -1;
+  }
+  if (!state) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_stream_info called with state NULL");
+    return -1;
+  }
+  if (!state->if_map) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_stream_info called with state->if_map NULL");
+    return -1;
+  }
 
   tag_ptr_tmp = state->tag_ptr;
   remaining_len_tmp = state->remaining_len;
@@ -3010,9 +3122,10 @@ static int populate_stream_info(erf_t *erf_priv _U_, wtap *wth, union wtap_pseud
         case ERF_META_TAG_filter:
           /* Override only if not set */
           if (!if_info->set_flags.filter) {
-            if_filter.if_filter_str = g_strndup((gchar*) tag.value, tag.length);
-            wtap_block_add_custom_option(int_data, OPT_IDB_FILTER, &if_filter, sizeof if_filter);
-            g_free(if_filter.if_filter_str);
+            if_filter.type = if_filter_pcap;
+            if_filter.data.filter_str = g_strndup((gchar*) tag.value, tag.length);
+            wtap_block_add_if_filter_option(int_data, OPT_IDB_FILTER, &if_filter);
+            g_free(if_filter.data.filter_str);
             if_info->set_flags.filter = 1;
           }
           break;
@@ -3030,14 +3143,27 @@ static int populate_stream_info(erf_t *erf_priv _U_, wtap *wth, union wtap_pseud
   return 1;
 }
 
-static int populate_anchor_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, struct erf_meta_read_state *state, GPtrArray *anchor_mappings_to_update) {
+static int populate_anchor_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, struct erf_meta_read_state *state, GPtrArray *anchor_mappings_to_update, int *err, gchar **err_info) {
   struct erf_meta_tag tag = {0, 0, NULL};
   guint32 tagtotallength;
   gchar *comment_ptr = NULL;
   guint i = 0;
 
-  if (!wth || !state || !pseudo_header)
+  if (!wth) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_anchor_info called with wth NULL");
     return -1;
+  }
+  if (!state) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_anchor_info called with state NULL");
+    return -1;
+  }
+  if (!pseudo_header) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_anchor_info called with pseudo_header NULL");
+    return -1;
+  }
 
   if (!anchor_mappings_to_update || anchor_mappings_to_update->len == 0)
     return 0;
@@ -3078,7 +3204,7 @@ static int populate_anchor_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_he
       else {
         /* !lookup_result */
         struct erf_anchor_mapping *new_mapping;
-        new_mapping = (struct erf_anchor_mapping *)g_malloc0(sizeof(struct erf_anchor_mapping));
+        new_mapping = g_new0(struct erf_anchor_mapping, 1);
         new_mapping->anchor_id = mapping->anchor_id;
         new_mapping->host_id = mapping->host_id;
         new_mapping->gen_time = state->gen_time;
@@ -3094,7 +3220,7 @@ static int populate_anchor_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_he
 }
 
 /* Populates the capture and interface information for display on the Capture File Properties */
-static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, Buffer *buf, guint32 packet_size, GPtrArray *anchor_mappings_to_update)
+static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_header *pseudo_header, Buffer *buf, guint32 packet_size, GPtrArray *anchor_mappings_to_update, int *err, gchar **err_info)
 {
   struct erf_meta_read_state state = {0};
   struct erf_meta_read_state *state_post = NULL;
@@ -3106,8 +3232,21 @@ static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_h
   struct erf_meta_tag tag = {0, 0, NULL};
   guint32 tagtotallength;
 
-  if (!erf_priv || !wth || !pseudo_header)
+  if (!wth) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_summary_info called with wth NULL");
     return -1;
+  }
+  if (!pseudo_header) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_summary_info called with pseudo_header NULL");
+    return -1;
+  }
+  if (!erf_priv) {
+    *err = WTAP_ERR_INTERNAL;
+    *err_info = ws_strdup_printf("erf: populate_summary_info called with erf_priv NULL");
+    return -1;
+  }
 
   erf_get_source_from_header(pseudo_header, &host_id, &source_id);
 
@@ -3143,10 +3282,31 @@ static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_h
          * Since wireshark doesn't have a concept of different summary metadata
          * over time, skip the record if metadata is older than what we already have.
          */
-        /* TODO: This doesn't work very well for some tags that wireshark only
-         * supports one copy of, we'll only end up with the first one.
-         * wtap_block_set_*_value() currently fails on WTAP_OPTTYPE_NOT_FOUND
-         * for everything except strings.
+        /* TODO: This doesn't work very well for some tags that map to
+         * pcapng options where the pcapng specification only allows one
+         * instance per block, which is the case for most options.  The
+         * only current exxceptions are:
+         *
+         *   comments;
+         *   IPv4 and IPv6 addresses for an interface;
+         *   hash values for a packet;
+         *   custom options.
+         *
+         * For options where only one instance is allowed per block,
+         * wtap_block_add_XXX_option() is currently used to add a new
+         * instance of an option to a block that has no instance (it
+         * fails if there's already an instance), and
+         * wtap_block_set_XXX_optin() is currently used to change the
+         * value of an option in a block that has one instance (it fails
+         * if there isn't already an instance).
+         *
+         * For options where more than one instance is allowed per block,
+         * wtap_block_add_XXX_option() is used to add a new instance to
+         * a block, no matter how many instances it currently has, and
+         * wtap_block_set_nth_XXX_option() is used to change the value
+         * of the Nth instance of an option in a block (the block must
+         * *have* an Nth instance).
+         *
          * Currently we only particularly care about updating the capture comment
          * and a few counters anyway.
          */
@@ -3194,7 +3354,7 @@ static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_h
     state.tag_ptr += tagtotallength;
     state.remaining_len -= tagtotallength;
 
-    if ((tagtotallength = erf_meta_read_tag(&tag, state.tag_ptr, state.remaining_len))) {
+    if (erf_meta_read_tag(&tag, state.tag_ptr, state.remaining_len)) {
       /*
        * Process parent section tag if present (which must be the first tag in
        * the section).
@@ -3218,7 +3378,10 @@ static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_h
      */
     if (state.sectionid & 0x8000) {
       if(state.sectiontype & (ERF_META_SECTION_INFO)) {
-        populate_anchor_info(erf_priv, wth, pseudo_header, &state, anchor_mappings_to_update);
+        /* TODO: do we care if it returns 0 or 1? */
+        if (populate_anchor_info(erf_priv, wth, pseudo_header, &state, anchor_mappings_to_update, err, err_info) < 0) {
+          return -1;
+        }
       }
       continue;
     }
@@ -3231,14 +3394,22 @@ static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_h
     switch (state.sectiontype) {
       case ERF_META_SECTION_CAPTURE:
       case ERF_META_SECTION_HOST:
-        /* TODO: use return code */
-        populate_capture_host_info(erf_priv, wth, pseudo_header, &state);
+        /* TODO: do we care if it returns 0 or 1? */
+        if (populate_capture_host_info(erf_priv, wth, pseudo_header, &state, err, err_info) < 0) {
+          return -1;
+        }
         break;
       case ERF_META_SECTION_MODULE:
-        populate_module_info(erf_priv, wth, pseudo_header, &state);
+        /* TODO: do we care if it returns 0 or 1? */
+        if (populate_module_info(erf_priv, wth, pseudo_header, &state, err, err_info) < 0) {
+          return -1;
+        }
         break;
       case ERF_META_SECTION_INTERFACE:
-        populate_interface_info(erf_priv, wth, pseudo_header, &state);
+        /* TODO: do we care if it returns 0 or 1? */
+        if (populate_interface_info(erf_priv, wth, pseudo_header, &state, err, err_info) < 0) {
+          return -1;
+        }
         break;
       case ERF_META_SECTION_STREAM:
         /*
@@ -3246,7 +3417,7 @@ static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_h
          * before the interface information, as we associate them to interface
          * data.
          */
-        post_list = g_list_append(post_list, g_memdup(&state, sizeof(struct erf_meta_read_state)));
+        post_list = g_list_append(post_list, g_memdup2(&state, sizeof(struct erf_meta_read_state)));
         break;
       case ERF_META_SECTION_SOURCE:
       case ERF_META_SECTION_DNS:
@@ -3263,7 +3434,11 @@ static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_h
       state_post = (struct erf_meta_read_state*) item->data;
       switch (state_post->sectiontype) {
         case ERF_META_SECTION_STREAM:
-          populate_stream_info(erf_priv, wth, pseudo_header, state_post);
+          if (populate_stream_info(erf_priv, wth, pseudo_header, state_post, err, err_info) < 0) {
+            g_list_foreach(post_list, erf_free_data, NULL);
+            g_list_free(post_list);
+            return -1;
+          }
           break;
       }
     } while ((item = g_list_next(item)));
@@ -3286,7 +3461,7 @@ static int populate_summary_info(erf_t *erf_priv, wtap *wth, union wtap_pseudo_h
 
 static gboolean get_user_comment_string(wtap_dumper *wdh, gchar** user_comment_ptr) {
   wtap_block_t wtap_block;
-  gboolean ret;
+  wtap_opttype_return_val ret;
 
   wtap_block = NULL;
 
@@ -3296,7 +3471,7 @@ static gboolean get_user_comment_string(wtap_dumper *wdh, gchar** user_comment_p
 
   if(wtap_block != NULL) {
     ret = wtap_block_get_nth_string_option_value(wtap_block, OPT_COMMENT, 0, user_comment_ptr);
-    if(ret) {
+    if(ret != WTAP_OPTTYPE_SUCCESS) {
       return FALSE;
     }
   }
@@ -3384,6 +3559,71 @@ static void erf_close(wtap *wth)
   erf_priv_free(erf_priv);
   /* XXX: Prevent double free by wtap_close() */
   wth->priv = NULL;
+}
+
+static const struct supported_option_type section_block_options_supported[] = {
+  { OPT_COMMENT, ONE_OPTION_SUPPORTED }, /* XXX - multiple? */
+  { OPT_SHB_USERAPPL, ONE_OPTION_SUPPORTED }
+};
+
+static const struct supported_option_type interface_block_options_supported[] = {
+  { OPT_COMMENT, ONE_OPTION_SUPPORTED }, /* XXX - multiple? */
+  { OPT_IDB_NAME, ONE_OPTION_SUPPORTED },
+  { OPT_IDB_DESCRIPTION, ONE_OPTION_SUPPORTED },
+  { OPT_IDB_OS, ONE_OPTION_SUPPORTED },
+  { OPT_IDB_TSOFFSET, ONE_OPTION_SUPPORTED },
+  { OPT_IDB_SPEED, ONE_OPTION_SUPPORTED },
+  { OPT_IDB_IP4ADDR, ONE_OPTION_SUPPORTED }, /* XXX - multiple? */
+  { OPT_IDB_IP6ADDR, ONE_OPTION_SUPPORTED }, /* XXX - multiple? */
+  { OPT_IDB_FILTER, ONE_OPTION_SUPPORTED },
+  { OPT_IDB_FCSLEN, ONE_OPTION_SUPPORTED }
+};
+
+static const struct supported_option_type packet_block_options_supported[] = {
+  { OPT_COMMENT, ONE_OPTION_SUPPORTED } /* XXX - multiple? */
+};
+
+static const struct supported_block_type erf_blocks_supported[] = {
+  /*
+   * Per-file comments and application supported; section blocks
+   * are used for that.
+   * ERF files have only one section.  (XXX - true?)
+   */
+  { WTAP_BLOCK_SECTION, ONE_BLOCK_SUPPORTED, OPTION_TYPES_SUPPORTED(section_block_options_supported) },
+
+  /*
+   * ERF supports multiple interfaces, with information, and
+   * supports associating packets with interfaces.  Interface
+   * description blocks are used for that.
+   */
+  { WTAP_BLOCK_IF_ID_AND_INFO, MULTIPLE_BLOCKS_SUPPORTED, OPTION_TYPES_SUPPORTED(interface_block_options_supported) },
+
+  /*
+   * Name resolution is supported, but we don't support comments.
+   */
+  { WTAP_BLOCK_NAME_RESOLUTION, ONE_BLOCK_SUPPORTED, NO_OPTIONS_SUPPORTED },
+
+  /*
+   * ERF is a capture format, so it obviously supports packets.
+   */
+  { WTAP_BLOCK_PACKET, MULTIPLE_BLOCKS_SUPPORTED, OPTION_TYPES_SUPPORTED(packet_block_options_supported) }
+};
+
+static const struct file_type_subtype_info erf_info = {
+  "Endace ERF capture", "erf", "erf", NULL,
+  FALSE, BLOCKS_SUPPORTED(erf_blocks_supported),
+  erf_dump_can_write_encap, erf_dump_open, NULL
+};
+
+void register_erf(void)
+{
+  erf_file_type_subtype = wtap_register_file_type_subtype(&erf_info);
+
+  /*
+   * Register name for backwards compatibility with the
+   * wtap_filetypes table in Lua.
+   */
+  wtap_register_backwards_compatibility_lua_name("ERF", erf_file_type_subtype);
 }
 
 /*

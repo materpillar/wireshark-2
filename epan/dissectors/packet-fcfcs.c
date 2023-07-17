@@ -21,6 +21,8 @@
 void proto_register_fcfcs(void);
 void proto_reg_handoff_fcfcs(void);
 
+static dissector_handle_t fcs_handle;
+
 /*
  * See the FC-GS3 specification.
  */
@@ -242,17 +244,17 @@ dissect_fcfcs_gieil (tvbuff_t *tvb, proto_tree *tree, gboolean isreq)
         prevlen = 0;
         len = tvb_strsize(tvb, offset+4);
         proto_tree_add_item (tree, hf_fcs_vendorname, tvb, offset+4,
-                len, ENC_ASCII|ENC_NA);
+                len, ENC_ASCII);
         prevlen += len;
 
         len = tvb_strsize(tvb, offset+4+prevlen);
         proto_tree_add_item (tree, hf_fcs_modelname, tvb, offset+4+prevlen,
-                len, ENC_ASCII|ENC_NA);
+                len, ENC_ASCII);
         prevlen += len;
 
         len = tvb_strsize(tvb, offset+4+prevlen);
         proto_tree_add_item (tree, hf_fcs_releasecode, tvb,
-                offset+4+prevlen, len, ENC_ASCII|ENC_NA);
+                offset+4+prevlen, len, ENC_ASCII);
         prevlen += len;
         offset += (4+prevlen);
         while (tot_len > prevlen) {
@@ -701,11 +703,11 @@ dissect_fcfcs (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 
     if ((opcode != FCCT_MSG_ACC) && (opcode != FCCT_MSG_RJT)) {
         conversation = find_conversation (pinfo->num, &pinfo->src, &pinfo->dst,
-                                          conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
-                                          fchdr->rxid, NO_PORT2);
+                                          conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
+                                          fchdr->rxid, NO_PORT_B);
         if (!conversation) {
             conversation = conversation_new (pinfo->num, &pinfo->src, &pinfo->dst,
-                                             conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
+                                             conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
                                              fchdr->rxid, NO_PORT2);
         }
 
@@ -735,8 +737,8 @@ dissect_fcfcs (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     else {
         /* Opcode is ACC or RJT */
         conversation = find_conversation (pinfo->num, &pinfo->src, &pinfo->dst,
-                                          conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
-                                          fchdr->rxid, NO_PORT2);
+                                          conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
+                                          fchdr->rxid, NO_PORT_B);
         isreq = 0;
         if (!conversation) {
             if (opcode == FCCT_MSG_ACC) {
@@ -949,8 +951,8 @@ proto_register_fcfcs (void)
           {"Platform Node Name", "fcs.platform.nodename", FT_FCWWN, BASE_NONE,
            NULL, 0x0, NULL, HFILL}},
         { &hf_fcs_platformtype,
-          {"Platform Type", "fcs.platform.type", FT_UINT8, BASE_HEX,
-           VALS (fc_fcs_plat_type_val), 0x0, NULL, HFILL}},
+          {"Platform Type", "fcs.platform.type", FT_UINT32, BASE_HEX,
+           VALS(fc_fcs_plat_type_val), 0x0, NULL, HFILL}},
         { &hf_fcs_platformaddr,
           {"Management Address", "fcs.platform.mgmtaddr", FT_UINT_STRING, BASE_NONE,
            NULL, 0x0, NULL, HFILL}},
@@ -1016,15 +1018,13 @@ proto_register_fcfcs (void)
     expert_register_field_array(expert_fcfcs, ei, array_length(ei));
 
     fcfcs_req_hash = wmem_map_new_autoreset(wmem_epan_scope(), wmem_file_scope(), fcfcs_hash, fcfcs_equal);
+
+    fcs_handle = register_dissector("fcs", dissect_fcfcs, proto_fcfcs);
 }
 
 void
 proto_reg_handoff_fcfcs (void)
 {
-    dissector_handle_t fcs_handle;
-
-    fcs_handle = create_dissector_handle (dissect_fcfcs, proto_fcfcs);
-
     dissector_add_uint("fcct.server", FCCT_GSRVR_FCS, fcs_handle);
 }
 

@@ -437,11 +437,11 @@ destroy_text(print_stream_t *self)
 static const print_stream_ops_t print_text_ops = {
     NULL,            /* preamble */
     print_line_text,
+    print_line_color_text,
     NULL,            /* bookmark */
     new_page_text,
     NULL,            /* finale */
     destroy_text,
-    print_line_color_text,
 };
 
 static print_stream_t *
@@ -664,7 +664,7 @@ print_stream_text_alloc(gboolean to_file, FILE *fh)
         output->color_type = COLOR_NONE;
     }
 
-    stream          = (print_stream_t *)g_malloc(sizeof (print_stream_t));
+    stream          = g_new(print_stream_t, 1);
     stream->ops     = &print_text_ops;
     stream->data    = output;
 
@@ -817,11 +817,11 @@ destroy_ps(print_stream_t *self)
 static const print_stream_ops_t print_ps_ops = {
     print_preamble_ps,
     print_line_ps,
+    NULL, /* print_line_color */
     print_bookmark_ps,
     new_page_ps,
     print_finale_ps,
     destroy_ps,
-    NULL, /* print_line_color */
 };
 
 static print_stream_t *
@@ -834,7 +834,7 @@ print_stream_ps_alloc(gboolean to_file, FILE *fh)
     output->to_file = to_file;
     output->fh      = fh;
 
-    stream          = (print_stream_t *)g_malloc(sizeof (print_stream_t));
+    stream          = g_new(print_stream_t, 1);
     stream->ops     = &print_ps_ops;
     stream->data    = output;
 

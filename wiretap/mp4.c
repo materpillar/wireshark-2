@@ -15,6 +15,12 @@
 #include "wtap-int.h"
 
 static const guint8 mp4_magic[] = { 'f', 't', 'y', 'p' };
+static const guint8 mp4_magic_sidx[] = { 's', 'i', 'd', 'x' };
+static const guint8 mp4_magic_styp[] = { 's', 't', 'y', 'p' };
+
+static int mp4_file_type_subtype = -1;
+
+void register_mp4(void);
 
 wtap_open_return_val
 mp4_open(wtap *wth, int *err, gchar **err_info)
@@ -32,13 +38,15 @@ mp4_open(wtap *wth, int *err, gchar **err_info)
 		return WTAP_OPEN_NOT_MINE;
 
 	if (bytes_read == sizeof (magic_buf) &&
-			memcmp(magic_buf + 4, mp4_magic, sizeof (mp4_magic)))
+			memcmp(magic_buf + 4, mp4_magic, sizeof (mp4_magic)) &&
+			memcmp(magic_buf + 4, mp4_magic_sidx, sizeof (mp4_magic_sidx)) &&
+			memcmp(magic_buf + 4, mp4_magic_styp, sizeof (mp4_magic_styp)))
 		return WTAP_OPEN_NOT_MINE;
 
 	if (file_seek(wth->fh, 0, SEEK_SET, err) == -1)
 		return WTAP_OPEN_ERROR;
 
-	wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_MP4;
+	wth->file_type_subtype = mp4_file_type_subtype;
 	wth->file_encap = WTAP_ENCAP_MP4;
 	wth->file_tsprec = WTAP_TSPREC_SEC;
 	wth->subtype_read = wtap_full_file_read;
@@ -46,6 +54,33 @@ mp4_open(wtap *wth, int *err, gchar **err_info)
 	wth->snapshot_length = 0;
 
 	return WTAP_OPEN_MINE;
+}
+
+static const struct supported_block_type mp4_blocks_supported[] = {
+	/*
+	 * This is a file format that we dissect, so we provide
+	 * only one "packet" with the file's contents, and don't
+	 * support any options.
+	 */
+	{ WTAP_BLOCK_PACKET, ONE_BLOCK_SUPPORTED, NO_OPTIONS_SUPPORTED }
+};
+
+static const struct file_type_subtype_info mp4_info = {
+	"MP4 media", "mp4", "mp4", NULL,
+	FALSE, BLOCKS_SUPPORTED(mp4_blocks_supported),
+	NULL, NULL, NULL
+};
+
+void register_mp4(void)
+{
+	mp4_file_type_subtype = wtap_register_file_type_subtype(&mp4_info);
+
+	/*
+	 * Register name for backwards compatibility with the
+	 * wtap_filetypes table in Lua.
+	 */
+	wtap_register_backwards_compatibility_lua_name("MP4",
+	    mp4_file_type_subtype);
 }
 
 /*

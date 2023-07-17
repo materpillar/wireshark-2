@@ -129,6 +129,8 @@
 void proto_register_hsrp(void);
 void proto_reg_handoff_hsrp(void);
 
+static dissector_handle_t hsrp_handle;
+
 static gint proto_hsrp = -1;
 
 static gint hf_hsrp_version = -1;
@@ -412,7 +414,7 @@ dissect_hsrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
                         offset++;
                         proto_tree_add_item(hsrp_tree, hf_hsrp_reserved, tvb, offset, 1, ENC_BIG_ENDIAN);
                         offset++;
-                        auth = (gchar *) tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 8, ENC_ASCII|ENC_NA);
+                        auth = (gchar *) tvb_get_string_enc(pinfo->pool, tvb, offset, 8, ENC_ASCII|ENC_NA);
                         proto_tree_add_string_format_value(hsrp_tree, hf_hsrp_auth_data, tvb, offset, 8, auth,
                                              "%sDefault (%s)",
                                              (strcmp(auth, "cisco") == 0) ? "" : "Non-",
@@ -576,7 +578,7 @@ dissect_hsrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
                                         /* Making Text Authentication TLV subtree */
                                         text_auth_tlv = proto_item_add_subtree(ti, ett_hsrp2_text_auth_tlv);
 
-                                        auth = (gchar *) tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 8, ENC_ASCII|ENC_NA);
+                                        auth = (gchar *) tvb_get_string_enc(pinfo->pool, tvb, offset, 8, ENC_ASCII|ENC_NA);
                                         proto_tree_add_string_format_value(text_auth_tlv, hf_hsrp2_auth_data, tvb, offset, 8, auth,
                                                              "%sDefault (%s)",
                                                              (strcmp(auth, "cisco") == 0) ? "" : "Non-",
@@ -679,12 +681,12 @@ void proto_register_hsrp(void)
 
                 { &hf_hsrp_adv_activegrp,
                   { "Adv active groups", "hsrp.adv.activegrp",
-                    FT_UINT8, BASE_DEC, NULL, 0x0,
+                    FT_UINT16, BASE_DEC, NULL, 0x0,
                     "Advertisement active group count", HFILL }},
 
                 { &hf_hsrp_adv_passivegrp,
                   { "Adv passive groups", "hsrp.adv.passivegrp",
-                    FT_UINT8, BASE_DEC, NULL, 0x0,
+                    FT_UINT16, BASE_DEC, NULL, 0x0,
                     "Advertisement passive group count", HFILL }},
 
                 { &hf_hsrp_adv_reserved2,
@@ -794,7 +796,7 @@ void proto_register_hsrp(void)
 
                 { &hf_hsrp2_md5_flags,
                   { "MD5 Flags", "hsrp2.md5_flags",
-                    FT_UINT8, BASE_DEC, NULL, 0x0,
+                    FT_UINT16, BASE_DEC, NULL, 0x0,
                     "Undefined", HFILL }},
 
                 { &hf_hsrp2_md5_ip_address,
@@ -831,14 +833,13 @@ void proto_register_hsrp(void)
         proto_register_subtree_array(ett, array_length(ett));
         expert_hsrp = expert_register_protocol(proto_hsrp);
         expert_register_field_array(expert_hsrp, ei, array_length(ei));
+
+        hsrp_handle = register_dissector("hsrp", dissect_hsrp, proto_hsrp);
 }
 
 void
 proto_reg_handoff_hsrp(void)
 {
-        dissector_handle_t hsrp_handle;
-
-        hsrp_handle = create_dissector_handle(dissect_hsrp, proto_hsrp);
         dissector_add_uint_range_with_preference("udp.port", UDP_PORT_HSRP_RANGE, hsrp_handle);
 }
 

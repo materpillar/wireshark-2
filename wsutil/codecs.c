@@ -10,19 +10,32 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include "codecs.h"
 
+#include <wsutil/wslog.h>
 #ifdef HAVE_PLUGINS
+#include <wsutil/plugins.h>
+#endif
 
-static plugins_t *libwscodecs_plugins;
+#ifdef HAVE_PLUGINS
+static plugins_t *libwscodecs_plugins = NULL;
+#endif
+
 static GSList *codecs_plugins = NULL;
 
+#ifdef HAVE_PLUGINS
 void
 codecs_register_plugin(const codecs_plugin *plug)
 {
     codecs_plugins = g_slist_prepend(codecs_plugins, (codecs_plugin *)plug);
 }
+#else /* HAVE_PLUGINS */
+void
+codecs_register_plugin(const codecs_plugin *plug _U_)
+{
+	ws_warning("codecs_register_plugin: built without support for binary plugins");
+}
+#endif /* HAVE_PLUGINS */
 
 static void
 call_plugin_register_codec_module(gpointer data, gpointer user_data _U_)
@@ -33,7 +46,6 @@ call_plugin_register_codec_module(gpointer data, gpointer user_data _U_)
         plug->register_codec_module();
     }
 }
-#endif /* HAVE_PLUGINS */
 
 
 /*
@@ -44,16 +56,16 @@ codecs_init(void)
 {
 #ifdef HAVE_PLUGINS
     libwscodecs_plugins = plugins_init(WS_PLUGIN_CODEC);
+#endif
     g_slist_foreach(codecs_plugins, call_plugin_register_codec_module, NULL);
-#endif /* HAVE_PLUGINS */
 }
 
 void
 codecs_cleanup(void)
 {
-#ifdef HAVE_PLUGINS
     g_slist_free(codecs_plugins);
     codecs_plugins = NULL;
+#ifdef HAVE_PLUGINS
     plugins_cleanup(libwscodecs_plugins);
     libwscodecs_plugins = NULL;
 #endif
@@ -79,7 +91,12 @@ static GHashTable *registered_codecs = NULL;
 codec_handle_t
 find_codec(const char *name)
 {
-    return (registered_codecs) ? (codec_handle_t)g_hash_table_lookup(registered_codecs, name) : NULL;
+    codec_handle_t ret;
+    char *key = g_ascii_strup(name, -1);
+
+    ret = (registered_codecs) ? (codec_handle_t)g_hash_table_lookup(registered_codecs, key) : NULL;
+    g_free(key);
+    return ret;
 }
 
 /* Register a codec by name. */
@@ -89,16 +106,25 @@ register_codec(const char *name, codec_init_fn init_fn, codec_release_fn release
         codec_decode_fn decode_fn)
 {
     struct codec_handle *handle;
+    char *key;
 
     /* Create our hash table if it doesn't already exist */
     if (registered_codecs == NULL)
-        registered_codecs = g_hash_table_new(g_str_hash, g_str_equal);
+        registered_codecs = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+    /* RFC 4855 3. Mapping to SDP Parameters "Note that the payload format
+     * (encoding) names... are commonly shown in upper case. These names
+     * are case-insensitive in both places."
+     */
+    key = g_ascii_strup(name, -1);
 
     /* Make sure the registration is unique */
-    if (g_hash_table_lookup(registered_codecs, name) != NULL)
+    if (g_hash_table_lookup(registered_codecs, key) != NULL) {
+        g_free(key);
         return FALSE;    /* report an error, or have our caller do it? */
+    }
 
-    handle = (struct codec_handle *)g_malloc(sizeof (struct codec_handle));
+    handle = g_new(struct codec_handle, 1);
     handle->name = name;
     handle->init_fn = init_fn;
     handle->release_fn = release_fn;
@@ -106,7 +132,7 @@ register_codec(const char *name, codec_init_fn init_fn, codec_release_fn release
     handle->frequency_fn = frequency_fn;
     handle->decode_fn = decode_fn;
 
-    g_hash_table_insert(registered_codecs, (gpointer)name, (gpointer) handle);
+    g_hash_table_insert(registered_codecs, (gpointer)key, (gpointer) handle);
     return TRUE;
 }
 
@@ -114,41 +140,41 @@ register_codec(const char *name, codec_init_fn init_fn, codec_release_fn release
 gboolean
 deregister_codec(const char *name)
 {
-    gpointer key, value;
+    bool ret = FALSE;
+    if (registered_codecs) {
+        char *key = g_ascii_strup(name, -1);
 
-    if (registered_codecs && g_hash_table_lookup_extended(registered_codecs, name, &key, &value)) {
-        g_hash_table_remove(registered_codecs, name);
-        g_free(value);
-        return TRUE;
+        ret = g_hash_table_remove(registered_codecs, key);
+        g_free(key);
     }
-    return FALSE;
+    return ret;
 }
 
-void *codec_init(codec_handle_t codec)
+void *codec_init(codec_handle_t codec, codec_context_t *context)
 {
     if (!codec) return NULL;
-    return (codec->init_fn)();
+    return (codec->init_fn)(context);
 }
 
-void codec_release(codec_handle_t codec, void *context)
+void codec_release(codec_handle_t codec, codec_context_t *context)
 {
     if (!codec) return;
     (codec->release_fn)(context);
 }
 
-unsigned codec_get_channels(codec_handle_t codec, void *context)
+unsigned codec_get_channels(codec_handle_t codec, codec_context_t *context)
 {
     if (!codec) return 0;
     return (codec->channels_fn)(context);
 }
 
-unsigned codec_get_frequency(codec_handle_t codec, void *context)
+unsigned codec_get_frequency(codec_handle_t codec, codec_context_t *context)
 {
     if (!codec) return 0;
     return (codec->frequency_fn)(context);
 }
 
-size_t codec_decode(codec_handle_t codec, void *context, const void *input, size_t inputSizeBytes, void *output, size_t *outputSizeBytes)
+size_t codec_decode(codec_handle_t codec, codec_context_t *context, const void *input, size_t inputSizeBytes, void *output, size_t *outputSizeBytes)
 {
     if (!codec) return 0;
     return (codec->decode_fn)(context, input, inputSizeBytes, output, outputSizeBytes);

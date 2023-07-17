@@ -47,6 +47,8 @@
 void proto_register_elcom(void);
 void proto_reg_handoff_elcom(void);
 
+static dissector_handle_t elcom_handle;
+
 static int proto_elcom = -1;
 static int hf_elcom_response = -1;
 static int hf_elcom_request = -1;
@@ -712,7 +714,7 @@ proto_register_elcom(void)
                 },
 
                 { &hf_elcom_datarequest_oid,
-                  { "Obkect Name",        "elcom.datarequest.oid",
+                  { "Object Name",        "elcom.datarequest.oid",
                     FT_UINT_STRING, BASE_NONE, NULL, 0, NULL, HFILL }
                 },
                 { &hf_elcom_strangeleftover,
@@ -741,14 +743,12 @@ proto_register_elcom(void)
         proto_register_field_array(proto_elcom, hf, array_length(hf));
         proto_register_subtree_array(ett, array_length(ett));
 
+        elcom_handle = register_dissector("elcom", dissect_elcom, proto_elcom);
 }
 
 void
 proto_reg_handoff_elcom(void)
 {
-        dissector_handle_t elcom_handle;
-
-        elcom_handle = create_dissector_handle(dissect_elcom, proto_elcom);
         dissector_add_uint_with_preference("tcp.port", TCP_PORT_ELCOM, elcom_handle);
 }
 

@@ -9,24 +9,22 @@
  */
 
 #include "config.h"
+#define WS_LOG_DOMAIN LOG_DOMAIN_PLUGINS
+#include "plugins.h"
 
 #include <time.h>
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <errno.h>
 
-#include <glib.h>
 #include <gmodule.h>
 
 #include <wsutil/filesystem.h>
 #include <wsutil/privileges.h>
 #include <wsutil/file_util.h>
 #include <wsutil/report_message.h>
-
-#include <wsutil/plugins.h>
-#include <wsutil/ws_printf.h> /* ws_debug_printf */
+#include <wsutil/wslog.h>
 
 typedef struct _plugin {
     GModule        *handle;       /* handle returned by g_module_open */
@@ -58,10 +56,10 @@ type_to_dir(plugin_type_e type)
     case WS_PLUGIN_CODEC:
         return TYPE_DIR_CODECS;
     default:
-        g_error("Unknown plugin type: %u. Aborting.", (unsigned) type);
+        ws_error("Unknown plugin type: %u. Aborting.", (unsigned) type);
         break;
     }
-    g_assert_not_reached();
+    ws_assert_not_reached();
 }
 
 static inline const char *
@@ -75,10 +73,10 @@ type_to_name(plugin_type_e type)
     case WS_PLUGIN_CODEC:
         return TYPE_NAME_CODEC;
     default:
-        g_error("Unknown plugin type: %u. Aborting.", (unsigned) type);
+        ws_error("Unknown plugin type: %u. Aborting.", (unsigned) type);
         break;
     }
-    g_assert_not_reached();
+    ws_assert_not_reached();
 }
 
 static void
@@ -123,6 +121,13 @@ pass_plugin_version_compatibility(GModule *handle, const char *name)
     return TRUE;
 }
 
+// GLib and Qt allow ".dylib" and ".so" on macOS. Should we do the same?
+#ifdef _WIN32
+#define MODULE_SUFFIX ".dll"
+#else
+#define MODULE_SUFFIX ".so"
+#endif
+
 static void
 scan_plugins_dir(GHashTable *plugins_module, const char *dirpath, plugin_type_e type, gboolean append_type)
 {
@@ -146,9 +151,11 @@ scan_plugins_dir(GHashTable *plugins_module, const char *dirpath, plugin_type_e 
         return;
     }
 
+    ws_debug("Scanning plugins folder \"%s\"", plugin_folder);
+
     while ((name = g_dir_read_name(dir)) != NULL) {
-        /* Skip anything but files with G_MODULE_SUFFIX. */
-        if (!g_str_has_suffix(name, "." G_MODULE_SUFFIX))
+        /* Skip anything but files with .dll or .so. */
+        if (!g_str_has_suffix(name, MODULE_SUFFIX))
             continue;
 
         /*
@@ -163,11 +170,11 @@ scan_plugins_dir(GHashTable *plugins_module, const char *dirpath, plugin_type_e 
 
         plugin_file = g_build_filename(plugin_folder, name, (gchar *)NULL);
         handle = g_module_open(plugin_file, G_MODULE_BIND_LOCAL);
-        g_free(plugin_file);
         if (handle == NULL) {
             /* g_module_error() provides file path. */
             report_failure("Couldn't load plugin '%s': %s", name,
                             g_module_error());
+            g_free(plugin_file);
             continue;
         }
 
@@ -175,12 +182,14 @@ scan_plugins_dir(GHashTable *plugins_module, const char *dirpath, plugin_type_e 
         {
             report_failure("The plugin '%s' has no \"plugin_version\" symbol", name);
             g_module_close(handle);
+            g_free(plugin_file);
             continue;
         }
         plug_version = (const char *)symbol;
 
         if (!pass_plugin_version_compatibility(handle, name)) {
             g_module_close(handle);
+            g_free(plugin_file);
             continue;
         }
 
@@ -188,6 +197,7 @@ scan_plugins_dir(GHashTable *plugins_module, const char *dirpath, plugin_type_e 
         if (!g_module_symbol(handle, "plugin_register", &symbol)) {
             report_failure("The plugin '%s' has no \"plugin_register\" symbol", name);
             g_module_close(handle);
+            g_free(plugin_file);
             continue;
         }
 
@@ -196,7 +206,7 @@ DIAG_OFF_PEDANTIC
         ((plugin_register_func)symbol)();
 DIAG_ON_PEDANTIC
 
-        new_plug = (plugin *)g_malloc(sizeof(plugin));
+        new_plug = g_new(plugin, 1);
         new_plug->handle = handle;
         new_plug->name = g_strdup(name);
         new_plug->version = plug_version;
@@ -204,6 +214,8 @@ DIAG_ON_PEDANTIC
 
         /* Add it to the list of plugins. */
         g_hash_table_replace(plugins_module, new_plug->name, new_plug);
+        ws_info("Registered plugin: %s (%s)", new_plug->name, plugin_file);
+        g_free(plugin_file);
     }
     ws_dir_close(dir);
     g_free(plugin_folder);
@@ -271,7 +283,7 @@ print_plugin_description(const char *name, const char *version,
                          const char *description, const char *filename,
                          void *user_data _U_)
 {
-    ws_debug_printf("%-16s\t%s\t%s\t%s\n", name, version, description, filename);
+    printf("%-16s\t%s\t%s\t%s\n", name, version, description, filename);
 }
 
 void
@@ -299,6 +311,12 @@ plugins_cleanup(plugins_t *plugins)
 
     plugins_module_list = g_slist_remove(plugins_module_list, plugins);
     g_hash_table_destroy((GHashTable *)plugins);
+}
+
+gboolean
+plugins_supported(void)
+{
+    return g_module_supported();
 }
 
 /*

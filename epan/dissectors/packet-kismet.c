@@ -42,6 +42,8 @@ static gboolean response_is_continuation(const guchar * data);
 void proto_reg_handoff_kismet(void);
 void proto_register_kismet(void);
 
+static dissector_handle_t kismet_handle;
+
 static int
 dissect_kismet(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void * data _U_)
 {
@@ -114,7 +116,7 @@ dissect_kismet(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void * da
 	else
 		col_add_fstr(pinfo->cinfo, COL_INFO, "%s: %s",
 				is_request ? "Request" : "Response",
-				format_text(wmem_packet_scope(), line, linelen));
+				format_text(pinfo->pool, line, linelen));
 
 	if (tree) {
 		ti = proto_tree_add_item(tree, proto_kismet, tvb, offset, -1, ENC_NA);
@@ -150,12 +152,12 @@ dissect_kismet(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void * da
 			 */
 			reqresp_tree = proto_tree_add_subtree(kismet_tree, tvb, offset,
 					next_offset - offset, ett_kismet_reqresp, NULL,
-					tvb_format_text(tvb, offset,
+					tvb_format_text(pinfo->pool, tvb, offset,
 					next_offset - offset - 1));
 			tokenlen = get_token_len(line, line + linelen, &next_token);
 			if (tokenlen != 0) {
 				guint8 *reqresp;
-				reqresp = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, tokenlen, ENC_ASCII);
+				reqresp = tvb_get_string_enc(pinfo->pool, tvb, offset, tokenlen, ENC_ASCII);
 				if (is_request) {
 					/*
 					 * No request dissection
@@ -171,42 +173,42 @@ dissect_kismet(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void * da
 						line = next_token;
 						tokenlen = get_token_len(line, line + linelen, &next_token);
 						proto_tree_add_string(reqresp_tree, hf_kismet_version, tvb, offset,
-							tokenlen, format_text(wmem_packet_scope(), line, tokenlen));
+							tokenlen, format_text(pinfo->pool, line, tokenlen));
 
 						offset += (gint) (next_token - line);
 						linelen -= (int) (next_token - line);
 						line = next_token;
 						tokenlen = get_token_len(line, line + linelen, &next_token);
 						proto_tree_add_string(reqresp_tree, hf_kismet_start_time, tvb, offset,
-							tokenlen, format_text(wmem_packet_scope(), line, tokenlen));
+							tokenlen, format_text(pinfo->pool, line, tokenlen));
 
 						offset += (gint) (next_token - line);
 						linelen -= (int) (next_token - line);
 						line = next_token;
 						tokenlen = get_token_len(line, line + linelen, &next_token);
 						proto_tree_add_string(reqresp_tree, hf_kismet_server_name, tvb, offset,
-							tokenlen, format_text(wmem_packet_scope(), line + 1, tokenlen - 2));
+							tokenlen, format_text(pinfo->pool, line + 1, tokenlen - 2));
 
 						offset += (gint) (next_token - line);
 						linelen -= (int) (next_token - line);
 						line = next_token;
 						tokenlen = get_token_len(line, line + linelen, &next_token);
 						proto_tree_add_string(reqresp_tree, hf_kismet_build_revision, tvb, offset,
-							tokenlen, format_text(wmem_packet_scope(), line, tokenlen));
+							tokenlen, format_text(pinfo->pool, line, tokenlen));
 
 						offset += (gint) (next_token - line);
 						linelen -= (int) (next_token - line);
 						line = next_token;
 						tokenlen = get_token_len(line, line + linelen, &next_token);
 						proto_tree_add_string(reqresp_tree, hf_kismet_unknown_field, tvb, offset,
-							tokenlen, format_text(wmem_packet_scope(), line, tokenlen));
+							tokenlen, format_text(pinfo->pool, line, tokenlen));
 
 						offset += (gint) (next_token - line);
 						linelen -= (int) (next_token - line);
 						line = next_token;
 						tokenlen = get_token_len(line, line + linelen, &next_token);
 						proto_tree_add_string(reqresp_tree, hf_kismet_extended_version_string, tvb, offset,
-							tokenlen, format_text(wmem_packet_scope(), line, tokenlen));
+							tokenlen, format_text(pinfo->pool, line, tokenlen));
 					}
 					/*
 					 * *TIME: {Time}
@@ -224,12 +226,12 @@ dissect_kismet(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void * da
 						tokenlen = get_token_len(line, line + linelen, &next_token);
 
 						/* Convert form ascii to nstime */
-						if (ws_strtou64(format_text(wmem_packet_scope(), line, tokenlen), NULL, (guint64*)&t.secs)) {
+						if (ws_strtou64(format_text(pinfo->pool, line, tokenlen), NULL, (guint64*)&t.secs)) {
 
 							/*
 							 * Format ascii representation of time
 							 */
-							ptr = abs_time_secs_to_str(wmem_packet_scope(), t.secs, ABSOLUTE_TIME_LOCAL, TRUE);
+							ptr = abs_time_secs_to_str(pinfo->pool, t.secs, ABSOLUTE_TIME_LOCAL, TRUE);
 						}
 						time_item = proto_tree_add_time_format_value(reqresp_tree, hf_kismet_time, tvb, offset,
 							tokenlen, &t, "%s", ptr ? ptr : "");
@@ -317,15 +319,13 @@ proto_register_kismet(void)
 	proto_register_subtree_array(ett, array_length (ett));
 	expert_kismet = expert_register_protocol(proto_kismet);
 	expert_register_field_array(expert_kismet, ei, array_length(ei));
+
+	kismet_handle = register_dissector("kismet", dissect_kismet, proto_kismet);
 }
 
 void
 proto_reg_handoff_kismet(void)
 {
-	dissector_handle_t kismet_handle;
-
-	kismet_handle = create_dissector_handle(dissect_kismet, proto_kismet);
-
 	dissector_add_uint_with_preference("tcp.port", TCP_PORT_KISMET, kismet_handle);
 }
 

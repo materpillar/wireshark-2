@@ -417,6 +417,7 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
             guint8 i;
             guint32 vmic;
             guint32 nwkSecurityVector[4];
+            int gcrypt_err;
 
             ieee_packet = (ieee802154_packet *)data;
 
@@ -432,12 +433,10 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
             text = (guint8 *)tvb_memdup(pinfo->pool, new_tvb, 0, payload_length);
             payload_offset=0;
 
+            gcrypt_err = gcry_cipher_open(&cypher_hd, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_ECB, 0);
             /*Decrypt the actual data */
             while(payload_length>0)
             {
-                int gcrypt_err;
-
-                gcrypt_err = gcry_cipher_open(&cypher_hd, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_ECB, 0);
                 if(gcrypt_err == 0) {
                     gcrypt_err = gcry_cipher_setkey(cypher_hd,(guint8 *)lwmes_key, 16);
                 }
@@ -462,13 +461,20 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
                 for (i = 0; i < block; i++)
                 {
                     text_dec[i] ^= vector[i];
+                    /*
+                     * GCC 12.2.0 gives a false positive Wstringop-overflow warning.
+                     * https://gitlab.com/wireshark/wireshark/-/issues/18383
+                     */
+                    DIAG_OFF_STRINGOP_OVERFLOW()
                     vector[i] ^= text_dec[i];
+                    DIAG_ON_STRINGOP_OVERFLOW()
                 }
 
                 payload_offset += block;
                 payload_length -= block;
-                gcry_cipher_close(cypher_hd);
+                gcry_cipher_reset(cypher_hd);
             }
+            gcry_cipher_close(cypher_hd);
 
             vmic = nwkSecurityVector[0] ^ nwkSecurityVector[1] ^ nwkSecurityVector[2] ^ nwkSecurityVector[3];
             length = tvb_reported_length(new_tvb) - LWM_MIC_LEN;
@@ -788,19 +794,19 @@ void proto_register_lwm(void)
 
         /*Multicast header*/
         { &hf_lwm_multi_nmrad,
-        { "Non-member Radius", "lwm.multi_nmrad", FT_UINT8, BASE_DEC, NULL, 0x0,
+        { "Non-member Radius", "lwm.multi_nmrad", FT_UINT16, BASE_DEC, NULL, 0x0,
         "Specifies remaining radius (number of hops) for Non-members of multicast group.", HFILL }},
 
         { &hf_lwm_multi_mnmrad,
-        { "Maximum Non-member Radius", "lwm.multi_mnmrad", FT_UINT8, BASE_DEC, NULL, 0x0,
+        { "Maximum Non-member Radius", "lwm.multi_mnmrad", FT_UINT16, BASE_DEC, NULL, 0x0,
         "Specifies maximum radius (number of hops) for Non-members of multicast group.", HFILL }},
 
         { &hf_lwm_multi_mrad,
-        { "Member Radius", "lwm.multi_mrad", FT_UINT8, BASE_DEC, NULL, 0x0,
+        { "Member Radius", "lwm.multi_mrad", FT_UINT16, BASE_DEC, NULL, 0x0,
         "Specifies remaining radius (number of hops) for Members of multicast group.", HFILL }},
 
         { &hf_lwm_multi_mmrad,
-        { "Maximum Member Radius", "lwm.multi_mmrad", FT_UINT8, BASE_DEC, NULL, 0x0,
+        { "Maximum Member Radius", "lwm.multi_mmrad", FT_UINT16, BASE_DEC, NULL, 0x0,
         "Specifies maximum radius (number of hops) for Members of multicast group.", HFILL }},
 
 
@@ -905,7 +911,8 @@ void proto_register_lwm(void)
  *      proto_reg_handoff_lwm
  *  DESCRIPTION
  *      Registers the lwm dissector with Wireshark.
- *      Will be called during Wireshark startup.
+ *      Will be called during Wireshark startup, and whenever
+ *      preferences are changed.
  *  PARAMETERS
  *      none
  *  RETURNS
@@ -914,9 +921,17 @@ void proto_register_lwm(void)
  */
 void proto_reg_handoff_lwm(void)
 {
+    static gboolean initialized = FALSE;
     GByteArray      *bytes;
     gboolean         res;
 
+    if (!initialized) {
+        /* Register our dissector with IEEE 802.15.4 */
+        dissector_add_for_decode_as(IEEE802154_PROTOABBREV_WPAN_PANID, lwm_handle);
+        heur_dissector_add(IEEE802154_PROTOABBREV_WPAN, dissect_lwm_heur, "Lightweight Mesh over IEEE 802.15.4", "lwm_wlan", proto_lwm, HEURISTIC_ENABLE);
+
+        initialized = TRUE;
+    }
     /* Convert key to raw bytes */
     bytes = g_byte_array_new();
     res = hex_str_to_bytes(lwmes_key_str, bytes, FALSE);
@@ -925,11 +940,6 @@ void proto_reg_handoff_lwm(void)
         memcpy(lwmes_key, bytes->data, IEEE802154_CIPHER_SIZE);
     }
     g_byte_array_free(bytes, TRUE);
-
-
-    /* Register our dissector with IEEE 802.15.4 */
-    dissector_add_for_decode_as(IEEE802154_PROTOABBREV_WPAN_PANID, lwm_handle);
-    heur_dissector_add(IEEE802154_PROTOABBREV_WPAN, dissect_lwm_heur, "Lightweight Mesh over IEEE 802.15.4", "lwm_wlan", proto_lwm, HEURISTIC_ENABLE);
 
 } /* proto_reg_handoff_lwm */
 

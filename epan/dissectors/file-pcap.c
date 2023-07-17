@@ -18,9 +18,8 @@
 #include <epan/expert.h>
 #include <epan/exceptions.h>
 #include <epan/show_exception.h>
-#include <epan/wmem/wmem.h>
 
-#include <epan/dissectors/packet-pcap_pktdata.h>
+#include "packet-pcap_pktdata.h"
 
 static int proto_pcap = -1;
 

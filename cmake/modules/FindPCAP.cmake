@@ -12,7 +12,7 @@ FindWSWinLibs("libpcap-*" "PCAP_HINTS")
 #
 # First, try pkg-config on platforms other than Windows.
 #
-if(NOT WIN32)
+if(NOT USE_REPOSITORY)
   find_package(PkgConfig)
   pkg_search_module(PC_PCAP libpcap)
 endif()
@@ -105,6 +105,8 @@ find_path(PCAP_INCLUDE_DIR
   NAMES
     pcap/pcap.h
     pcap.h
+  PATH_SUFFIXES
+    wpcap
   HINTS
     ${PC_PCAP_INCLUDE_DIRS}
     ${PCAP_CONFIG_INCLUDE_DIRS}
@@ -112,15 +114,16 @@ find_path(PCAP_INCLUDE_DIR
 )
 
 # On Windows we load wpcap.dll explicitly and probe its functions in
-# caputils\capture-wpcap.c. We don't want to link with pcap.lib since
+# capture\capture-wpcap.c. We don't want to link with pcap.lib since
 # that would bring in the non-capturing (null) pcap.dll from the vcpkg
 # library.
-if(WIN32)
+if(WIN32 AND NOT CMAKE_CROSSCOMPILING)
   set(_pkg_required_vars PCAP_INCLUDE_DIR)
 else()
   find_library(PCAP_LIBRARY
     NAMES
       pcap
+      wpcap
     HINTS
       ${PC_PCAP_LIBRARY_DIRS}
       ${PCAP_CONFIG_LIBRARY_DIRS}
@@ -185,7 +188,7 @@ if(PCAP_FOUND)
 
   include(CheckSymbolExists)
 
-  if(WIN32)
+  if(WIN32 AND NOT CMAKE_CROSSCOMPILING)
     #
     # Prepopulate some values. WinPcap 3.1 and later, and Npcap, have these
     # in their SDK, and compilation checks on Windows can be slow.  We check
@@ -201,7 +204,7 @@ if(PCAP_FOUND)
     set(HAVE_PCAP_SET_TSTAMP_TYPE TRUE)
   else(WIN32)
     #
-    # Make sure we have at least libpcap 0.8, because we we require at
+    # Make sure we have at least libpcap 0.8, because we require at
     # least libpcap 0.8's APIs.
     #
     # We check whether pcap_lib_version is defined in the pcap header,
@@ -223,7 +226,7 @@ if(PCAP_FOUND)
       # remote capture support.
       #
       # However, 1) the sampling options are treated as remote options
-      # in the GUI and and 2) having pcap_setsampling() doesn't mean
+      # in the GUI and 2) having pcap_setsampling() doesn't mean
       # you have sampling support.  libpcap needs a way to indicate
       # whether a given device supports sampling, and the GUI should
       # be changed to decouple them.
@@ -238,7 +241,7 @@ if(PCAP_FOUND)
       #
       check_function_exists( "pcap_setsampling" HAVE_PCAP_SETSAMPLING )
     endif( HAVE_PCAP_OPEN )
-  endif(WIN32)
+  endif()
 
   if( HAVE_PCAP_CREATE )
     #
@@ -256,6 +259,9 @@ if(PCAP_FOUND)
   if( HAVE_PCAP_OPEN )
     set( HAVE_PCAP_REMOTE 1 )
   endif()
+
+  check_symbol_exists(PCAP_ERROR_PROMISC_PERM_DENIED ${PCAP_INCLUDE_DIR}/pcap.h HAVE_PCAP_ERROR_PROMISC_PERM_DENIED)
+  check_symbol_exists(PCAP_WARNING_TSTAMP_TYPE_NOTSUP ${PCAP_INCLUDE_DIR}/pcap.h HAVE_PCAP_WARNING_TSTAMP_TYPE_NOTSUP)
 
   cmake_pop_check_state()
 endif()

@@ -86,7 +86,7 @@ static int hf_isis_hello_bvid_m = -1;
 static int hf_isis_hello_area_address = -1;
 static int hf_isis_hello_instance_identifier = -1;
 static int hf_isis_hello_supported_itid = -1;
-static int hf_isis_hello_clv_nlpid = -1;
+static int hf_isis_hello_clv_nlpid_nlpid = -1;
 static int hf_isis_hello_clv_ip_authentication = -1;
 static int hf_isis_hello_authentication = -1;
 
@@ -142,6 +142,7 @@ static gint ett_isis_hello_clv_is_neighbors = -1;
 static gint ett_isis_hello_clv_padding = -1;
 static gint ett_isis_hello_clv_unknown = -1;
 static gint ett_isis_hello_clv_nlpid = -1;
+static gint ett_isis_hello_clv_nlpid_nlpid = -1;
 static gint ett_isis_hello_clv_authentication = -1;
 static gint ett_isis_hello_clv_ip_authentication = -1;
 static gint ett_isis_hello_clv_ipv4_int_addr = -1;
@@ -566,7 +567,7 @@ static void
 dissect_hello_nlpid_clv(tvbuff_t *tvb, packet_info* pinfo _U_,
     proto_tree *tree, int offset, isis_data_t *isis _U_, int length)
 {
-    isis_dissect_nlpid_clv(tvb, tree, hf_isis_hello_clv_nlpid, offset, length);
+    isis_dissect_nlpid_clv(tvb, tree, ett_isis_hello_clv_nlpid_nlpid, hf_isis_hello_clv_nlpid_nlpid, offset, length);
 }
 
 /*
@@ -691,7 +692,7 @@ dissect_hello_ip_authentication_clv(tvbuff_t *tvb, packet_info* pinfo _U_,
     proto_tree *tree, int offset, isis_data_t *isis _U_, int length)
 {
     if ( length != 0 ) {
-       proto_tree_add_item( tree, hf_isis_hello_clv_ip_authentication, tvb, offset, length, ENC_ASCII|ENC_NA);
+       proto_tree_add_item( tree, hf_isis_hello_clv_ip_authentication, tvb, offset, length, ENC_ASCII);
     }
 }
 
@@ -1359,7 +1360,7 @@ dissect_isis_hello(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offs
         return;
     }
     proto_tree_add_item(hello_tree, hf_isis_hello_source_id, tvb, offset, isis->system_id_len, ENC_NA);
-    col_append_fstr(pinfo->cinfo, COL_INFO, ", System-ID: %s", tvb_print_system_id( tvb, offset, isis->system_id_len ));
+    col_append_fstr(pinfo->cinfo, COL_INFO, ", System-ID: %s", tvb_print_system_id( pinfo->pool, tvb, offset, isis->system_id_len ));
     offset += isis->system_id_len;
 
     if (isis->header_length < 8 + 1 + isis->system_id_len + 2) {
@@ -1580,10 +1581,10 @@ proto_register_isis_hello(void)
       { &hf_isis_hello_area_address, { "Area address", "isis.hello.area_address", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_isis_hello_instance_identifier, { "Instance Identifier", "isis.hello.iid", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
       { &hf_isis_hello_supported_itid, { "Supported ITID", "isis.hello.supported_itid", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
-      { &hf_isis_hello_clv_nlpid, { "NLPID", "isis.hello.clv_nlpid", FT_BYTES, BASE_NONE|BASE_ALLOW_ZERO, NULL, 0x0, NULL, HFILL }},
+      { &hf_isis_hello_clv_nlpid_nlpid, { "NLPID", "isis.hello.clv_nlpid.nlpid", FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
       { &hf_isis_hello_clv_ip_authentication, { "NLPID", "isis.hello.clv_ip_authentication", FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_isis_hello_authentication, { "Authentication", "isis.hello.clv_authentication", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
-      { &hf_isis_hello_mtid, { "Topology ID", "isis.hello.mtid", FT_UINT16, BASE_DEC|BASE_RANGE_STRING, RVALS(mtid_strings), 0xfff, NULL, HFILL }},
+      { &hf_isis_hello_mtid, { "Topology ID", "isis.hello.mtid", FT_UINT16, BASE_DEC|BASE_RANGE_STRING, RVALS(mtid_strings), 0x0fff, NULL, HFILL }},
       { &hf_isis_hello_trill_neighbor_sf, { "Smallest flag", "isis.hello.trill_neighbor.sf", FT_BOOLEAN, 8, TFS(&tfs_set_notset), 0x80, NULL, HFILL }},
       { &hf_isis_hello_trill_neighbor_lf, { "Largest flag", "isis.hello.trill_neighbor.lf", FT_BOOLEAN, 8, TFS(&tfs_set_notset), 0x40, NULL, HFILL }},
       { &hf_isis_hello_trill_neighbor_size, { "SNPA Size", "isis.hello.trill_neighbor.size", FT_UINT8, BASE_DEC, NULL, 0x1f, NULL, HFILL }},
@@ -1604,15 +1605,15 @@ proto_register_isis_hello(void)
       { &hf_isis_hello_vlan_flags_ac, { "Access Port", "isis.hello.vlan_flags.ac", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x4000, NULL, HFILL }},
       { &hf_isis_hello_vlan_flags_vm, { "VLAN Mapping Detected", "isis.hello.vlan_flags.vm", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x2000, NULL, HFILL }},
       { &hf_isis_hello_vlan_flags_by, { "Bypass Pseudonode", "isis.hello.vlan_flags.by", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x1000, NULL, HFILL }},
-      { &hf_isis_hello_vlan_flags_outer_vlan, { "Outer VLAN", "isis.hello.vlan_flags.outer_vlan", FT_UINT16, BASE_DEC, NULL, 0xfff, NULL, HFILL }},
+      { &hf_isis_hello_vlan_flags_outer_vlan, { "Outer VLAN", "isis.hello.vlan_flags.outer_vlan", FT_UINT16, BASE_DEC, NULL, 0x0fff, NULL, HFILL }},
       { &hf_isis_hello_vlan_flags_tr, { "Trunk Port", "isis.hello.vlan_flags.tr", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x8000, NULL, HFILL }},
       { &hf_isis_hello_vlan_flags_reserved, { "Reserved", "isis.hello.vlan_flags.reserved", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x7000, NULL, HFILL }},
-      { &hf_isis_hello_vlan_flags_designated_vlan, { "Designated VLAN", "isis.hello.vlan_flags.designated_vlan", FT_UINT16, BASE_DEC, NULL, 0xfff, NULL, HFILL }},
+      { &hf_isis_hello_vlan_flags_designated_vlan, { "Designated VLAN", "isis.hello.vlan_flags.designated_vlan", FT_UINT16, BASE_DEC, NULL, 0x0fff, NULL, HFILL }},
       { &hf_isis_hello_enabled_vlans, { "Enabled VLANs", "isis.hello.enabled_vlans", FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_isis_hello_appointed_vlans, { "Appointed VLANs", "isis.hello.appointed_vlans", FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_isis_hello_af_nickname, { "Nickname", "isis.hello.af.nickname", FT_UINT16, BASE_HEX_DEC, NULL, 0x0, NULL, HFILL }},
-      { &hf_isis_hello_af_start_vlan, { "Start VLAN", "isis.hello.af.start_vlan", FT_UINT16, BASE_DEC, NULL, 0xfff, NULL, HFILL }},
-      { &hf_isis_hello_af_end_vlan, { "End VLAN", "isis.hello.af.end_vlan", FT_UINT16, BASE_DEC, NULL, 0xfff, NULL, HFILL }},
+      { &hf_isis_hello_af_start_vlan, { "Start VLAN", "isis.hello.af.start_vlan", FT_UINT16, BASE_DEC, NULL, 0x0fff, NULL, HFILL }},
+      { &hf_isis_hello_af_end_vlan, { "End VLAN", "isis.hello.af.end_vlan", FT_UINT16, BASE_DEC, NULL, 0x0fff, NULL, HFILL }},
       { &hf_isis_hello_trill_version, { "Maximum version", "isis.hello.trill.maximum_version", FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
       { &hf_isis_hello_trill_hello_reduction, { "Hello Reduction", "isis.hello.trill.hello_reduction", FT_BOOLEAN, 32, TFS(&tfs_supported_not_supported), 0x80000000, NULL, HFILL }},
       { &hf_isis_hello_trill_unassigned_1, { "Unassigned", "isis.hello.trill.unassigned_1", FT_BOOLEAN, 32, TFS(&tfs_set_notset), 0x60000000, NULL, HFILL }},
@@ -1642,6 +1643,7 @@ proto_register_isis_hello(void)
         &ett_isis_hello_clv_padding,
         &ett_isis_hello_clv_unknown,
         &ett_isis_hello_clv_nlpid,
+        &ett_isis_hello_clv_nlpid_nlpid,
         &ett_isis_hello_clv_authentication,
         &ett_isis_hello_clv_ip_authentication,
         &ett_isis_hello_clv_ipv4_int_addr,

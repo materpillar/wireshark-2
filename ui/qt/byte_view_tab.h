@@ -1,4 +1,4 @@
-/* byte_view_tab.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -41,11 +41,13 @@ public slots:
     void selectedFieldChanged(FieldInformation *);
     /* Highlights field */
     void highlightedFieldChanged(FieldInformation *);
+    void captureFileClosing(void);
 
 signals:
     void fieldSelected(FieldInformation *);
     void fieldHighlight(FieldInformation *);
     void byteViewSettingsChanged(void);
+    void detachData(void);
 
 private:
     capture_file *cap_file_;
@@ -53,6 +55,7 @@ private:
                                packet in the packet dialog and false if the
                                packet dissection context can change. */
     epan_dissect_t *edt_;   /* Packet dissection result for the currently selected packet. */
+    bool disable_hover_;
 
     void setTabsVisible();
     ByteViewText * findByteViewTextForTvb(tvbuff_t * search, int * idx = 0);
@@ -72,16 +75,3 @@ private slots:
 };
 
 #endif // BYTE_VIEW_TAB_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

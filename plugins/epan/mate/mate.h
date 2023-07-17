@@ -14,15 +14,16 @@
 #ifndef __MATE_H_
 #define __MATE_H_
 
-#include "config.h"
+#define WS_LOG_DOMAIN "MATE"
+#include <wireshark.h>
 
 #include <gmodule.h>
 
 #include <stdio.h>
 #include <string.h>
-#include <errno.h>
 
 #include <wsutil/report_message.h>
+#include <wsutil/wslog.h>
 
 #include <epan/packet.h>
 #include <epan/exceptions.h>
@@ -182,7 +183,7 @@ typedef struct _mate_config {
 	GArray *wanted_hfids;    /* hfids of protocols and fields MATE needs */
 	guint num_fields_wanted; /* number of fields MATE will look at */
 
-	FILE* dbg_facility; /* where to dump dbgprint output g_message if null */
+	FILE* dbg_facility; /* where to dump dbgprint output ws_message if null */
 
 	gchar* mate_lib_path; /* where to look for "Include" files first */
 
@@ -364,11 +365,7 @@ extern gchar* add_ranges(gchar* range, GPtrArray* range_ptr_arr);
 extern gboolean mate_load_config(const gchar* filename, mate_config* mc);
 
 /* Constructor/Destructor prototypes for Lemon Parser */
-#if (GLIB_MAJOR_VERSION > 2 || (GLIB_MAJOR_VERSION == 2 && GLIB_MINOR_VERSION >= 16))
 #define YYMALLOCARGTYPE gsize
-#else
-#define YYMALLOCARGTYPE gulong
-#endif
 void *MateParserAlloc(void* (*)(YYMALLOCARGTYPE));
 void MateParserFree(void*, void (*)(void *));
 void MateParser(void*, int, gchar*,  mate_config*);

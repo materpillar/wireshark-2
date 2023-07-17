@@ -522,10 +522,10 @@ dissect_PNPTCP_block(tvbuff_t *tvb, int offset,
     offset = dissect_PNPTCP_TLVHeader(tvb, offset, pinfo, tlvheader_tree, sub_item, &type, &length);
 
     proto_item_set_text(sub_item, "%s",
-        val_to_str(type, pn_ptcp_block_type, "Unknown"));
+        val_to_str_const(type, pn_ptcp_block_type, "Unknown"));
 
     proto_item_append_text(tlvheader_item, ": Type=%s (%x), Length=%u",
-        val_to_str(type, pn_ptcp_block_type, "Unknown"), type, length);
+        val_to_str_const(type, pn_ptcp_block_type, "Unknown"), type, length);
 
     switch (type) {
     case 0x00: /* End, no content */
@@ -671,11 +671,11 @@ dissect_PNPTCP_RTSyncPDU(tvbuff_t *tvb, int offset,
     delay1ns_64 = ((guint64) delay10ns) * 10 + delay1ns_8 + delay1ns_32;
     delayms     = (guint32) (delay1ns_64 / (1000 * 1000));
 
-    col_append_fstr(pinfo->cinfo, COL_INFO, "%s, Seq=%3u, Delay=%11" G_GINT64_MODIFIER "uns",
+    col_append_fstr(pinfo->cinfo, COL_INFO, "%s, Seq=%3u, Delay=%11" PRIu64 "ns",
         name, seq_id, delay1ns_64);
-    proto_item_append_text(item, "%s: Sequence=%u, Delay=%" G_GINT64_MODIFIER "uns",
+    proto_item_append_text(item, "%s: Sequence=%u, Delay=%" PRIu64 "ns",
         name_short, seq_id, delay1ns_64);
-    proto_item_append_text(header_item, ": Sequence=%u, Delay=%" G_GINT64_MODIFIER "uns",
+    proto_item_append_text(header_item, ": Sequence=%u, Delay=%" PRIu64 "ns",
         seq_id, delay1ns_64);
 
     if (delay1ns_64 != 0)
@@ -933,7 +933,7 @@ proto_register_pn_ptcp (void)
 
         { &hf_pn_ptcp_tl_length,
           { "TypeLength.Length", "pn_ptcp.tl_length",
-            FT_UINT16, BASE_DEC, 0x0, 0x1FF,
+            FT_UINT16, BASE_DEC, 0x0, 0x01FF,
             NULL, HFILL }},
 
         { &hf_pn_ptcp_tl_type,

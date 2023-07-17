@@ -21,6 +21,8 @@
 void proto_register_fcfzs(void);
 void proto_reg_handoff_fcfzs(void);
 
+static dissector_handle_t fzs_handle;
+
 /* Initialize the protocol and registered fields */
 static int proto_fcfzs                     = -1;
 static int hf_fcfzs_opcode                 = -1;
@@ -115,7 +117,7 @@ dissect_fcfzs_zoneset(tvbuff_t *tvb, packet_info* pinfo, proto_tree *tree, int o
         proto_tree_add_item(tree, hf_fcfzs_zonesetnmlen, tvb, offset,
                             1, ENC_BIG_ENDIAN);
         proto_tree_add_item(tree, hf_fcfzs_zonesetname, tvb, offset+4,
-                            len, ENC_ASCII|ENC_NA);
+                            len, ENC_ASCII);
         offset += 4 + len + (4-(len % 4));
 
 
@@ -130,7 +132,7 @@ dissect_fcfzs_zoneset(tvbuff_t *tvb, packet_info* pinfo, proto_tree *tree, int o
             proto_tree_add_item(tree, hf_fcfzs_zonenmlen, tvb, offset,
                                 1, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_fcfzs_zonename, tvb, offset+4,
-                                len, ENC_ASCII|ENC_NA);
+                                len, ENC_ASCII);
             offset += 4 + len + (4-(len % 4));
 
             nummbrs = tvb_get_ntohl(tvb, offset);
@@ -237,7 +239,7 @@ dissect_fcfzs_gzsn(tvbuff_t *tvb, proto_tree *tree, gboolean isreq)
                 proto_tree_add_item(tree, hf_fcfzs_zonesetnmlen, tvb, offset,
                                     1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(tree, hf_fcfzs_zonesetname, tvb, offset+1,
-                                    len, ENC_ASCII|ENC_NA);
+                                    len, ENC_ASCII);
                 offset += len + 1 + (len % 4);
                 proto_tree_add_item(tree, hf_fcfzs_numzones, tvb, offset,
                                     4, ENC_BIG_ENDIAN);
@@ -259,7 +261,7 @@ dissect_fcfzs_gzd(tvbuff_t *tvb, proto_tree *tree, gboolean isreq)
             proto_tree_add_item(tree, hf_fcfzs_zonesetnmlen, tvb, offset,
                                 1, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_fcfzs_zonesetname, tvb, offset+1,
-                                len, ENC_ASCII|ENC_NA);
+                                len, ENC_ASCII);
         }
         else {
             numrec = tvb_get_ntohl(tvb, offset);
@@ -273,7 +275,7 @@ dissect_fcfzs_gzd(tvbuff_t *tvb, proto_tree *tree, gboolean isreq)
                 proto_tree_add_item(tree, hf_fcfzs_zonenmlen, tvb, offset,
                                     1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(tree, hf_fcfzs_zonename, tvb, offset+1,
-                                    len, ENC_ASCII|ENC_NA);
+                                    len, ENC_ASCII);
                 offset += len + 1 + (len % 4);
                 proto_tree_add_item(tree, hf_fcfzs_nummbrs, tvb, offset,
                                     4, ENC_BIG_ENDIAN);
@@ -295,7 +297,7 @@ dissect_fcfzs_gzm(tvbuff_t *tvb, packet_info* pinfo, proto_tree *tree, gboolean 
             proto_tree_add_item(tree, hf_fcfzs_zonenmlen, tvb, offset,
                                 1, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_fcfzs_zonename, tvb, offset+1,
-                                len, ENC_ASCII|ENC_NA);
+                                len, ENC_ASCII);
         }
         else {
             numrec = tvb_get_ntohl(tvb, offset);
@@ -348,7 +350,7 @@ dissect_fcfzs_gzs(tvbuff_t *tvb, packet_info* pinfo, proto_tree *tree, gboolean 
         proto_tree_add_item(tree, hf_fcfzs_zonesetnmlen, tvb, offset,
                             1, ENC_BIG_ENDIAN);
         proto_tree_add_item(tree, hf_fcfzs_zonesetname, tvb, offset+4,
-                            len, ENC_ASCII|ENC_NA);
+                            len, ENC_ASCII);
     }
     else {
         dissect_fcfzs_zoneset(tvb, pinfo, tree, offset);
@@ -387,7 +389,7 @@ dissect_fcfzs_arzs(tvbuff_t *tvb, proto_tree *tree, gboolean isreq)
             proto_tree_add_item(tree, hf_fcfzs_zonesetnmlen, tvb, offset,
                                 1, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_fcfzs_zonesetname, tvb, offset+4,
-                                len, ENC_ASCII|ENC_NA);
+                                len, ENC_ASCII);
         }
     }
 }
@@ -411,7 +413,7 @@ dissect_fcfzs_arzm(tvbuff_t *tvb, packet_info* pinfo, proto_tree *tree, gboolean
             proto_tree_add_item(tree, hf_fcfzs_zonenmlen, tvb, offset,
                                 1, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_fcfzs_zonename, tvb, offset+1,
-                                len, ENC_ASCII|ENC_NA);
+                                len, ENC_ASCII);
 
             len += (len % 4);
             plen = tvb_reported_length(tvb) - offset - len;
@@ -455,14 +457,14 @@ dissect_fcfzs_arzd(tvbuff_t *tvb, proto_tree *tree, gboolean isreq)
             proto_tree_add_item(tree, hf_fcfzs_zonesetnmlen, tvb, offset,
                                 1, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_fcfzs_zonesetname, tvb, offset+4,
-                                len, ENC_ASCII|ENC_NA);
+                                len, ENC_ASCII);
             len += (len % 4);
             offset += len;
 
             len = tvb_get_guint8(tvb, offset);
             proto_tree_add_item(tree, hf_fcfzs_zonenmlen, tvb, offset, 1, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_fcfzs_zonename, tvb, offset+4,
-                                len, ENC_ASCII|ENC_NA);
+                                len, ENC_ASCII);
         }
     }
 }
@@ -524,11 +526,11 @@ dissect_fcfzs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 
     if ((opcode != FCCT_MSG_ACC) && (opcode != FCCT_MSG_RJT)) {
         conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
-                                         conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
-                                         fchdr->rxid, NO_PORT2);
+                                         conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
+                                         fchdr->rxid, NO_PORT_B);
         if (!conversation) {
             conversation = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst,
-                                            conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
+                                            conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
                                             fchdr->rxid, NO_PORT2);
         }
 
@@ -559,8 +561,8 @@ dissect_fcfzs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     else {
         /* Opcode is ACC or RJT */
         conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
-                                         conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
-                                         fchdr->rxid, NO_PORT2);
+                                         conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
+                                         fchdr->rxid, NO_PORT_B);
         isreq = FALSE;
         if (!conversation) {
             if (opcode == FCCT_MSG_ACC) {
@@ -842,14 +844,13 @@ proto_register_fcfzs(void)
     expert_register_field_array(expert_fcfzs, ei, array_length(ei));
 
     fcfzs_req_hash = wmem_map_new_autoreset(wmem_epan_scope(), wmem_file_scope(), fcfzs_hash, fcfzs_equal);
+
+    fzs_handle = register_dissector("fcfzs", dissect_fcfzs, proto_fcfzs);
 }
 
 void
 proto_reg_handoff_fcfzs(void)
 {
-    dissector_handle_t fzs_handle;
-
-    fzs_handle = create_dissector_handle(dissect_fcfzs, proto_fcfzs);
     dissector_add_uint("fcct.server", FCCT_GSRVR_FZS, fzs_handle);
 }
 

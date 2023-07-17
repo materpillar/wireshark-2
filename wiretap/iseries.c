@@ -20,7 +20,7 @@
  * 1. Object protocol = ETHERNET (Default)
  * 2. ASCII or Unicode file formats.
  *
- * The above can be acheived by passing option ASCII(*YES) with the trace command
+ * The above can be achieved by passing option ASCII(*YES) with the trace command
  *
  */
 
@@ -58,7 +58,7 @@
  * identifying the packet number, direction, size, timestamp,
  * source/destination MAC addresses and packet type.
  *
- * Thereafter there will be a formated display of the headers above
+ * Thereafter there will be a formatted display of the headers above
  * the link layer, such as ARP, IP, TCP, UDP, and ICMP (all but
  * ICMP have either been seen in captures or on pages such as the ones
  * at
@@ -76,7 +76,7 @@
  * "TCP Header :", "UDP Header :", and (presumably) "ICMP Header:".
  *
  * If the packet contains data this is displayed as 4 groups of 16 hex digits
- * followed by an ASCII representaion of the data line.
+ * followed by an ASCII representation of the data line.
  *
  * Information from the packet header line, higher-level headers and, if
  * available, data lines are extracted by the module for displaying.
@@ -101,7 +101,7 @@
 
 /* iSeries IPv6 formatted traces are similar to the IPv4 version above,
  * except that the higher-level headers have "IPv6 Header:" and
- * "ICMPv6  Hdr:", and data data is no longer output in groups of 16 hex
+ * "ICMPv6  Hdr:", and data is no longer output in groups of 16 hex
  * digits.
  *
 
@@ -143,10 +143,10 @@ Number  S/R  Length    Timer                        MAC Address   MAC Address   
 
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include <wsutil/str_util.h>
 #include <wsutil/strtoi.h>
+#include <wsutil/ws_assert.h>
 
 #define ISERIES_LINE_LENGTH           270
 #define ISERIES_HDR_LINES_TO_CHECK    100
@@ -194,6 +194,11 @@ static int iseries_UNICODE_to_ASCII (guint8 * buf, guint bytes);
 static gboolean iseries_parse_hex_string (const char * ascii, guint8 * buf,
                                           size_t len);
 
+static int iseries_file_type_subtype = -1;
+static int iseries_unicode_file_type_subtype = -1;
+
+void register_iseries(void);
+
 /*
  * XXX - it would probably be cleaner to use a UCS-2 flavor of file_gets(),
  * rather than file_gets(), if we're reading a UCS-2 file.
@@ -240,7 +245,7 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
           }
 
         wth->file_encap        = WTAP_ENCAP_ETHERNET;
-        wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_ISERIES;
+        wth->file_type_subtype = iseries_unicode_file_type_subtype;
         wth->snapshot_length   = 0;
         wth->subtype_read      = iseries_read;
         wth->subtype_seek_read = iseries_seek_read;
@@ -289,7 +294,7 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
               }
 
             wth->file_encap        = WTAP_ENCAP_ETHERNET;
-            wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_ISERIES;
+            wth->file_type_subtype = iseries_file_type_subtype;
             wth->snapshot_length   = 0;
             wth->subtype_read      = iseries_read;
             wth->subtype_seek_read = iseries_seek_read;
@@ -320,7 +325,7 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
 /*
  * Do some basic sanity checking to ensure we can handle the
  * contents of this trace by checking the header page for
- * requisit requirements and additional information.
+ * requisite requirements and additional information.
  */
 static gboolean
 iseries_check_file_type (wtap * wth, int *err, gchar **err_info, int format)
@@ -332,7 +337,7 @@ iseries_check_file_type (wtap * wth, int *err, gchar **err_info, int format)
   iseries_t *iseries;
 
   /* Save trace format for passing between packets */
-  iseries                = (iseries_t *) g_malloc (sizeof (iseries_t));
+  iseries                = g_new(iseries_t, 1);
   iseries->have_date     = FALSE;
   iseries->format        = format;
 
@@ -477,7 +482,7 @@ iseries_seek_next_packet (wtap * wth, int *err, gchar **err_info)
 
   *err = WTAP_ERR_BAD_FILE;
   *err_info =
-    g_strdup_printf ("iseries: next packet header not found within %d lines",
+    ws_strdup_printf ("iseries: next packet header not found within %d lines",
              ISERIES_MAX_TRACE_LEN);
   return -1;
 }
@@ -731,7 +736,7 @@ iseries_parse_packet (wtap * wth, FILE_T fh, wtap_rec *rec,
            * Check the length first, just in case it's *so* big that, after
            * adding the Ethernet header length, it overflows.
            */
-          if (pkt_len > WTAP_MAX_PACKET_SIZE_STANDARD - 14)
+          if ((guint)pkt_len > WTAP_MAX_PACKET_SIZE_STANDARD - 14)
             {
               /*
                * Probably a corrupt capture file; don't blow up trying
@@ -741,7 +746,7 @@ iseries_parse_packet (wtap * wth, FILE_T fh, wtap_rec *rec,
                * the error message, to avoid an overflow.)
                */
               *err = WTAP_ERR_BAD_FILE;
-              *err_info = g_strdup_printf("iseries: File has %" G_GUINT64_FORMAT "-byte packet, bigger than maximum of %u",
+              *err_info = ws_strdup_printf("iseries: File has %" PRIu64 "-byte packet, bigger than maximum of %u",
                                           (guint64)pkt_len + 14,
                                           WTAP_MAX_PACKET_SIZE_STANDARD);
               return FALSE;
@@ -762,6 +767,7 @@ iseries_parse_packet (wtap * wth, FILE_T fh, wtap_rec *rec,
     }
 
   rec->rec_type = REC_TYPE_PACKET;
+  rec->block = wtap_block_create(WTAP_BLOCK_PACKET);
   rec->presence_flags = WTAP_HAS_CAP_LEN;
 
   /*
@@ -1010,7 +1016,7 @@ iseries_UNICODE_to_ASCII (guint8 * buf, guint bytes)
       if (buf[i] == 0x0A)
         break;
     }
-  g_assert(bufptr < buf + bytes);
+  ws_assert(bufptr < buf + bytes);
   *bufptr = '\0';
   return i;
 }
@@ -1045,6 +1051,47 @@ iseries_parse_hex_string (const char * ascii, guint8 * buf, size_t len)
       byte++;
     }
   return TRUE;
+}
+
+static const struct supported_block_type iseries_blocks_supported[] = {
+  /*
+   * We support packet blocks, with no comments or other options.
+   */
+  { WTAP_BLOCK_PACKET, MULTIPLE_BLOCKS_SUPPORTED, NO_OPTIONS_SUPPORTED }
+};
+
+static const struct file_type_subtype_info iseries_info = {
+  "IBM iSeries comm. trace (ASCII)", "iseries_ascii", "txt", NULL,
+  FALSE, BLOCKS_SUPPORTED(iseries_blocks_supported),
+  NULL, NULL, NULL
+};
+
+static const struct supported_block_type iseries_unicode_blocks_supported[] = {
+  /*
+   * We support packet blocks, with no comments or other options.
+   */
+  { WTAP_BLOCK_PACKET, MULTIPLE_BLOCKS_SUPPORTED, NO_OPTIONS_SUPPORTED }
+};
+
+static const struct file_type_subtype_info iseries_unicode_info = {
+  "IBM iSeries comm. trace (Unicode)", "iseries_unicode", "txt", NULL,
+  FALSE, BLOCKS_SUPPORTED(iseries_unicode_blocks_supported),
+  NULL, NULL, NULL
+};
+
+void register_iseries(void)
+{
+  iseries_file_type_subtype = wtap_register_file_type_subtype(&iseries_info);
+  iseries_unicode_file_type_subtype = wtap_register_file_type_subtype(&iseries_unicode_info);
+
+  /*
+   * Register names for backwards compatibility with the
+   * wtap_filetypes table in Lua.
+   */
+  wtap_register_backwards_compatibility_lua_name("ISERIES",
+                                                 iseries_file_type_subtype);
+  wtap_register_backwards_compatibility_lua_name("ISERIES_UNICODE",
+                                                 iseries_unicode_file_type_subtype);
 }
 
 /*

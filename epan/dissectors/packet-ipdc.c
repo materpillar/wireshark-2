@@ -37,6 +37,8 @@
 void proto_register_ipdc(void);
 void proto_reg_handoff_ipdc(void);
 
+static dissector_handle_t ipdc_tcp_handle = NULL;
+
 #define	TCP_PORT_IPDC	6668 /* Not IANA registered */
 #define	TRANS_ID_SIZE_IPDC	4
 
@@ -813,35 +815,38 @@ dissect_ipdc_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
 		switch (type) {
 			/* simple IPDC_ASCII strings */
 			case IPDC_ASCII:
-				DISSECTOR_ASSERT(len<=IPDC_STR_LEN);
-				tmp_tag_text = (char *) tvb_get_string_enc(wmem_packet_scope(), tvb, offset+2, len, ENC_ASCII|ENC_NA);
-				proto_tree_add_string_format(tag_tree, hf_ipdc_ascii, tvb, offset,
-						    len + 2, tmp_tag_text, "%s (0x%2.2x): %s", des, tag,
-						    tmp_tag_text);
+				if (len <= IPDC_STR_LEN) {
+					tmp_tag_text = (char *) tvb_get_string_enc(pinfo->pool, tvb, offset+2, len, ENC_ASCII|ENC_NA);
+					proto_tree_add_string_format(tag_tree, hf_ipdc_ascii, tvb, offset,
+								     len + 2, tmp_tag_text, "%s (0x%2.2x): %s", des, tag,
+								     tmp_tag_text);
+				}
 			break;
 
 			/* unsigned integers, or bytes */
 			case IPDC_UINT:
 			case IPDC_BYTE:
-				for (i = 0; i < len; i++)
-					tmp_tag += tvb_get_guint8(tvb,
-						offset + 2 + i) * (guint32)pow(256, len - (i + 1));
+				if (len <= 4) {
+					for (i = 0; i < len; i++)
+						tmp_tag += tvb_get_guint8(tvb,
+							offset + 2 + i) * (guint32)pow(256, len - (i + 1));
 
-				if (len == 1)
-					enum_val =
-						val_to_str_ext_const(IPDC_TAG(tag) + tmp_tag,
-								     &tag_enum_type_ext, TEXT_UNDEFINED);
+					if (len == 1)
+						enum_val =
+							val_to_str_ext_const(IPDC_TAG(tag) + tmp_tag,
+									     &tag_enum_type_ext, TEXT_UNDEFINED);
 
-				if (len == 1 && strcmp(enum_val, TEXT_UNDEFINED) != 0) {
-					proto_tree_add_uint_format(tag_tree, hf_ipdc_uint, tvb,
-							    offset, len + 2, tmp_tag,
-							    "%s (0x%2.2x): %s",
-							    des, tag, enum_val);
-				} else {
-					proto_tree_add_uint_format(tag_tree, hf_ipdc_uint, tvb,
-							    offset, len + 2, tmp_tag,
-							    "%s (0x%2.2x): %u",
-							    des, tag, tmp_tag);
+					if (len == 1 && strcmp(enum_val, TEXT_UNDEFINED) != 0) {
+						proto_tree_add_uint_format(tag_tree, hf_ipdc_uint, tvb,
+									   offset, len + 2, tmp_tag,
+									   "%s (0x%2.2x): %s",
+									   des, tag, enum_val);
+					} else {
+						proto_tree_add_uint_format(tag_tree, hf_ipdc_uint, tvb,
+									   offset, len + 2, tmp_tag,
+									   "%s (0x%2.2x): %u",
+									   des, tag, tmp_tag);
+					}
 				}
 			break;
 
@@ -852,13 +857,13 @@ dissect_ipdc_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
 						proto_tree_add_ipv4_format(tag_tree, hf_ipdc_ipv4, tvb,
 							    offset, len + 2, tvb_get_ntohl(tvb, offset + 2),
 							    "%s (0x%2.2x): %s",
-							    des, tag, tvb_ip_to_str(tvb, offset + 2));
+							    des, tag, tvb_ip_to_str(pinfo->pool, tvb, offset + 2));
 						break;
 					case 6:
 						proto_tree_add_ipv4_format(tag_tree, hf_ipdc_ipv4, tvb,
 							    offset, len + 2, tvb_get_ntohl(tvb, offset + 2),
 							    "%s (0x%2.2x): %s:%u",
-							    des, tag, tvb_ip_to_str(tvb, offset + 2), tvb_get_ntohs(tvb, offset + 6));
+							    des, tag, tvb_ip_to_str(pinfo->pool, tvb, offset + 2), tvb_get_ntohs(tvb, offset + 6));
 						break;
 					default:
 						proto_tree_add_expert_format(tag_tree, pinfo, &ei_ipdc_ipv4, tvb, offset, len + 2, "%s (0x%2.2x): Invalid IP address length %u",
@@ -1056,15 +1061,13 @@ proto_register_ipdc(void)
 				       "Whether the IPDC dissector should reassemble messages spanning multiple TCP segments."
 				       " To use this option, you must also enable \"Allow subdissectors to reassemble TCP streams\" in the TCP protocol settings.",
 				       &ipdc_desegment);
+
+	ipdc_tcp_handle = register_dissector("ipdc", dissect_ipdc_tcp, proto_ipdc);
 }
 
 void
 proto_reg_handoff_ipdc(void)
 {
-	static dissector_handle_t ipdc_tcp_handle = NULL;
-
-	ipdc_tcp_handle =
-		create_dissector_handle(dissect_ipdc_tcp, proto_ipdc);
 	q931_handle = find_dissector_add_dependency("q931", proto_ipdc);
 
 	dissector_add_uint_with_preference("tcp.port", TCP_PORT_IPDC, ipdc_tcp_handle);

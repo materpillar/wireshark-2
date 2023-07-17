@@ -26,7 +26,7 @@
 #include <epan/prefs.h>
 #include <epan/expert.h>
 #include <epan/reassemble.h>
-#include <wsutil/frequency-utils.h>
+#include <wsutil/802_11-utils.h>
 #include <wsutil/pint.h>
 #include <wsutil/str_util.h>
 
@@ -91,13 +91,13 @@
 #define DOT11_FLAG_FCS_INVALID  0x0004
 #define DOT11_FLAG_PHY_ERROR    0x0008
 
-#define DOT11N_FLAG_GREENFIELD      0x0001
-#define DOT11N_FLAG_HT40            0x0002
-#define DOT11N_FLAG_SHORT_GI        0x0004
-#define DOT11N_FLAG_DUPLICATE_RX    0x0008
-#define DOT11N_FLAG_IS_AGGREGATE    0x0010
-#define DOT11N_FLAG_MORE_AGGREGATES 0x0020
-#define DOT11N_FLAG_AGG_CRC_ERROR   0x0040
+#define DOT11N_FLAG_GREENFIELD      0x00000001
+#define DOT11N_FLAG_HT40            0x00000002
+#define DOT11N_FLAG_SHORT_GI        0x00000004
+#define DOT11N_FLAG_DUPLICATE_RX    0x00000008
+#define DOT11N_FLAG_IS_AGGREGATE    0x00000010
+#define DOT11N_FLAG_MORE_AGGREGATES 0x00000020
+#define DOT11N_FLAG_AGG_CRC_ERROR   0x00000040
 
 #define DOT11N_IS_AGGREGATE(flags)      (flags & DOT11N_FLAG_IS_AGGREGATE)
 #define DOT11N_MORE_AGGREGATES(flags)   ( \
@@ -407,7 +407,7 @@ add_ppi_field_header(tvbuff_t *tvb, proto_tree *tree, int *offset)
 {
     ptvcursor_t *csr;
 
-    csr = ptvcursor_new(tree, tvb, *offset);
+    csr = ptvcursor_new(wmem_packet_scope(), tree, tvb, *offset);
     ptvcursor_add(csr, hf_ppi_field_type, 2, ENC_LITTLE_ENDIAN);
     ptvcursor_add(csr, hf_ppi_field_len, 2, ENC_LITTLE_ENDIAN);
     ptvcursor_free(csr);
@@ -445,7 +445,7 @@ dissect_80211_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int of
     else
         phdr->fcs_len = 0;
 
-    csr = ptvcursor_new(ftree, tvb, offset);
+    csr = ptvcursor_new(pinfo->pool, ftree, tvb, offset);
 
     tsft_raw = tvb_get_letoh64(tvb, offset);
     if (tsft_raw != 0) {
@@ -620,7 +620,7 @@ dissect_80211n_mac(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int 
         return;
     }
 
-    csr = ptvcursor_new(ftree, tvb, offset);
+    csr = ptvcursor_new(pinfo->pool, ftree, tvb, offset);
 
     flags = tvb_get_letohl(tvb, ptvcursor_current_offset(csr));
     *n_mac_flags = flags;
@@ -687,7 +687,7 @@ dissect_80211n_mac_phy(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int 
                        FALSE, n_mac_flags, ampdu_id, phdr);
     offset += PPI_80211N_MAC_PHY_OFF;
 
-    csr = ptvcursor_new(ftree, tvb, offset);
+    csr = ptvcursor_new(pinfo->pool, ftree, tvb, offset);
 
     mcs = tvb_get_guint8(tvb, ptvcursor_current_offset(csr));
     if (mcs != 255) {
@@ -762,7 +762,7 @@ dissect_aggregation_extension(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree 
         return;
     }
 
-    csr = ptvcursor_new(ftree, tvb, offset);
+    csr = ptvcursor_new(pinfo->pool, ftree, tvb, offset);
 
     ptvcursor_add(csr, hf_aggregation_extension_interface_id, 4, ENC_LITTLE_ENDIAN); /* Last */
     ptvcursor_free(csr);
@@ -783,7 +783,7 @@ dissect_8023_extension(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
         return;
     }
 
-    csr = ptvcursor_new(ftree, tvb, offset);
+    csr = ptvcursor_new(pinfo->pool, ftree, tvb, offset);
 
     ptvcursor_add_with_subtree(csr, hf_8023_extension_flags, 4, ENC_LITTLE_ENDIAN, ett_8023_extension_flags);
     ptvcursor_add(csr, hf_8023_extension_flags_fcs_present, 4, ENC_LITTLE_ENDIAN);
@@ -988,6 +988,113 @@ dissect_ppi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         }
     }
 
+    /*
+     * The Channel-Flags field is described as "Radiotap-formatted
+     * channel flags".  The comment in the radiotap.org page about
+     * the suggested xchannel field says:
+     *
+     *  As used, this field conflates channel properties (which
+     *  need not be stored per packet but are more or less fixed)
+     *  with packet properties (like the modulation).
+     *
+     * The radiotap channel field, in practice, seems to be used,
+     * in some cases, to indicate channel properties (from which
+     * the packet modulation cannot be inferred) and, in other
+     * cases, to indicate the packet's modulation.
+     *
+     * The same applies to the Channel-Flags field.  There is a capture
+     * in which the Channel-Flags field indicates that the channel is
+     * an OFDM-only channel with a center frequency of 2422 MHz, and
+     * the data rate field indicates a 2 Mb/s rate, which means you can't
+     * rely on the CCK/OFDM/dynamic CCK/OFDM bits in the channel field
+     * to indicate anything.
+     *
+     * That makes the Channel-Flags field unusable either for determining
+     * the channel type or for determining the packet modulation,
+     * as it cannot be determined how it's being used.
+     *
+     * Fortunately, there are other ways to determine the packet
+     * modulation:
+     *
+     *  if there's an FHSS flag, the packet was transmitted
+     *  using the 802.11 legacy FHSS modulation;
+     *
+     *  otherwise:
+     *
+     *    if there's an 802.11n MAC Extension header or an 802.11n
+     *    MAC+PHY Extension header, the packet was transmitted using
+     *    one of the 11n HT PHY's specified modulations;
+     *
+     *    otherwise:
+     *
+     *      if the data rate is 1 Mb/s or 2 Mb/s, the packet was
+     *      transmitted using the 802.11 legacy DSSS modulation
+     *      (we ignore the IR PHY - was it ever implemented?);
+     *
+     *      if the data rate is 5 Mb/s or 11 Mb/s, the packet
+     *      was transmitted using the 802.11b DSSS/CCK modulation
+     *      (or the now-obsolete DSSS/PBCC modulation; *if* we can
+     *      rely on the channel/xchannel field's "CCK channel" and
+     *      "Dynamic CCK-OFDM channel" flags, the absence of either
+     *      flag would presumably indicate DSSS/PBCC);
+     *
+     *      if the data rate is 22 Mb/s or 33 Mb/s, the packet was
+     *      transmitted using the 802.11b DSSS/PBCC modulation (as
+     *      those speeds aren't supported by DSSS/CCK);
+     *
+     *      if the data rate is one of the OFDM rates for the 11a
+     *      OFDM PHY and the OFDM part of the 11g ERP PHY, the
+     *      packet was transmitted with the 11g/11a OFDM modulation.
+     *
+     * We've already handled the 11n headers, and may have attempted
+     * to use the Channel-Flags field to guess the modulation.  That
+     * guess might get the wrong answer for 11g "Dynamic CCK-OFDM"
+     * channels.
+     *
+     * If we have the data rate, we use it to:
+     *
+     *  fix up the 11g channels;
+     *
+     *  determine the modulation if we haven't been able to
+     *  determine it any other way.
+     */
+    if (phdr.has_data_rate) {
+        if (phdr.phy == PHDR_802_11_PHY_UNKNOWN) {
+            /*
+             * We don't know they PHY, but we do have the
+             * data rate; try to guess it based on the
+             * data rate and channel/center frequency.
+             */
+            if (RATE_IS_DSSS(phdr.data_rate)) {
+                /* 11b */
+                phdr.phy = PHDR_802_11_PHY_11B;
+            } else if (RATE_IS_OFDM(phdr.data_rate)) {
+                /* 11a or 11g, depending on the band. */
+                if (phdr.has_frequency) {
+                    if (FREQ_IS_BG(phdr.frequency)) {
+                        /* 11g */
+                        phdr.phy = PHDR_802_11_PHY_11G;
+                    } else {
+                        /* 11a */
+                        phdr.phy = PHDR_802_11_PHY_11A;
+                    }
+                }
+            }
+        } else if (phdr.phy == PHDR_802_11_PHY_11G) {
+            if (RATE_IS_DSSS(phdr.data_rate)) {
+                /* DSSS, so 11b. */
+                phdr.phy = PHDR_802_11_PHY_11B;
+            }
+        }
+    }
+
+    /*
+     * There is no indication, for HR/DSSS (11b/11g), whether
+     * the packet had a long or short preamble.
+     */
+    if (phdr.phy == PHDR_802_11_PHY_11B)
+        phdr.phy_info.info_11b.has_short_preamble = FALSE;
+
     if (ppi_ampdu_reassemble && DOT11N_IS_AGGREGATE(n_ext_flags)) {
         len_remain = tvb_captured_length_remaining(tvb, offset);
 #if 0 /* XXX: pad_len never actually used ?? */
@@ -1000,9 +1107,10 @@ dissect_ppi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         /* Make sure we aren't going to go past AGGREGATE_MAX
          * and caclulate our full A-MPDU length */
         fd_head = fragment_get(&ampdu_reassembly_table, pinfo, ampdu_id, NULL);
-        while (fd_head) {
-            ampdu_len += fd_head->len + PADDING4(fd_head->len) + 4;
-            fd_head = fd_head->next;
+        if (fd_head) {
+            for (ft_fdh = fd_head->next; ft_fdh; ft_fdh = ft_fdh->next) {
+                ampdu_len += ft_fdh->len + PADDING4(ft_fdh->len) + 4;
+            }
         }
         if (ampdu_len > AGGREGATE_MAX) {
             proto_tree_add_expert_format(ppi_tree, pinfo, &ei_ppi_invalid_length, tvb, offset, -1, "Aggregate length greater than maximum (%u)", AGGREGATE_MAX);
@@ -1025,7 +1133,7 @@ dissect_ppi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 
         /* Show our fragments */
         if (fd_head && tree) {
-            ft_fdh = fd_head;
+            ft_fdh = fd_head->next;
             /* List our fragments */
             seg_tree = proto_tree_add_subtree_format(ppi_tree, tvb, offset, -1,
                     ett_ampdu_segments, &ti, "A-MPDU (%u bytes w/hdrs):", ampdu_len);
@@ -1061,18 +1169,17 @@ dissect_ppi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
                 agg_tree = proto_item_add_subtree(ti, ett_ampdu);
             }
 
-            while (fd_head) {
-                if (fd_head->tvb_data && fd_head->len) {
+            for (ft_fdh = fd_head->next; ft_fdh; ft_fdh = ft_fdh->next) {
+                if (ft_fdh->tvb_data && ft_fdh->len) {
                     mpdu_count++;
-                    mpdu_str = wmem_strdup_printf(wmem_packet_scope(), "MPDU #%d", mpdu_count);
+                    mpdu_str = wmem_strdup_printf(pinfo->pool, "MPDU #%d", mpdu_count);
 
-                    next_tvb = tvb_new_chain(tvb, fd_head->tvb_data);
+                    next_tvb = tvb_new_chain(tvb, ft_fdh->tvb_data);
                     add_new_data_source(pinfo, next_tvb, mpdu_str);
 
                     ampdu_tree = proto_tree_add_subtree(agg_tree, next_tvb, 0, -1, ett_ampdu_segment, NULL, mpdu_str);
                     call_dissector_with_data(ieee80211_radio_handle, next_tvb, pinfo, ampdu_tree, &phdr);
                 }
-                fd_head = fd_head->next;
             }
             proto_tree_add_uint(seg_tree, hf_ampdu_count, tvb, 0, 0, mpdu_count);
             pinfo->fragmented=FALSE;
@@ -1384,25 +1491,25 @@ proto_register_ppi(void)
             FT_UINT32, BASE_HEX, NULL, 0x0, "PPI 802.3 Extension Flags", HFILL } },
     { &hf_8023_extension_flags_fcs_present,
        { "FCS Present Flag", "ppi.8023_extension.flags.fcs_present",
-            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x0001, "FCS (4 bytes) is present at the end of the packet", HFILL } },
+            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x00000001, "FCS (4 bytes) is present at the end of the packet", HFILL } },
     { &hf_8023_extension_errors,
        { "Errors", "ppi.8023_extension.errors",
             FT_UINT32, BASE_HEX, NULL, 0x0, "PPI 802.3 Extension Errors", HFILL } },
     { &hf_8023_extension_errors_fcs,
        { "FCS Error", "ppi.8023_extension.errors.fcs",
-            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x0001,
+            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x00000001,
             "PPI 802.3 Extension FCS Error", HFILL } },
     { &hf_8023_extension_errors_sequence,
        { "Sequence Error", "ppi.8023_extension.errors.sequence",
-            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x0002,
+            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x00000002,
             "PPI 802.3 Extension Sequence Error", HFILL } },
     { &hf_8023_extension_errors_symbol,
        { "Symbol Error", "ppi.8023_extension.errors.symbol",
-            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x0004,
+            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x00000004,
             "PPI 802.3 Extension Symbol Error", HFILL } },
     { &hf_8023_extension_errors_data,
        { "Data Error", "ppi.8023_extension.errors.data",
-            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x0008,
+            FT_BOOLEAN, 32, TFS(&tfs_true_false), 0x00000008,
             "PPI 802.3 Extension Data Error", HFILL } },
 
       /* Generated from convert_proto_tree_add_text.pl */

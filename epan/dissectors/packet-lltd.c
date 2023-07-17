@@ -18,6 +18,8 @@
 void proto_register_lltd(void);
 void proto_reg_handoff_lltd(void);
 
+static dissector_handle_t lltd_handle;
+
 static int proto_lltd = -1;
 
 static int hf_lltd_version                  = -1;
@@ -304,7 +306,7 @@ static const value_string lltd_qos_error_vals[] = {
 };
 
 
-const true_false_string tfs_full_half_duplex = { "Full Duplex", "Half Duplex" };
+static const true_false_string tfs_full_half_duplex = { "Full Duplex", "Half Duplex" };
 
 
 static int
@@ -554,7 +556,7 @@ dissect_lltd_discovery(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int 
 
     func = tvb_get_guint8(tvb, offset);
     proto_tree_add_item(tree, hf_lltd_discovery_func, tvb, offset, 1, ENC_NA);
-    col_add_fstr(pinfo->cinfo, COL_INFO, "%s", val_to_str(func, lltd_discovery_vals, "Unknown (0x%02x)"));
+    col_add_str(pinfo->cinfo, COL_INFO, val_to_str(func, lltd_discovery_vals, "Unknown (0x%02x)"));
     offset++;
 
     /* Demultiplex header */
@@ -671,7 +673,7 @@ dissect_lltd_qos(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset
 
     func = tvb_get_guint8(tvb, offset);
     proto_tree_add_item(tree, hf_lltd_qos_diag_func, tvb, offset, 1, ENC_NA);
-    col_add_fstr(pinfo->cinfo, COL_INFO, "%s", val_to_str(func, lltd_qos_diag_vals, "Unknown (0x%02x)"));
+    col_add_str(pinfo->cinfo, COL_INFO, val_to_str(func, lltd_qos_diag_vals, "Unknown (0x%02x)"));
     offset++;
 
     header_tree = proto_tree_add_subtree(tree, tvb, offset, 14, ett_base_header, &header_item, "Base header");
@@ -942,13 +944,13 @@ proto_register_lltd(void)
     proto_register_subtree_array(ett, array_length(ett));
     expert_lltd = expert_register_protocol(proto_lltd);
     expert_register_field_array(expert_lltd, ei, array_length(ei));
+
+    lltd_handle = register_dissector("lltd", dissect_lltd, proto_lltd);
 }
 
 void
 proto_reg_handoff_lltd(void)
 {
-    dissector_handle_t lltd_handle;
-    lltd_handle = create_dissector_handle(dissect_lltd, proto_lltd);
     dissector_add_uint("ethertype", ETHERTYPE_LLTD, lltd_handle);
 }
 

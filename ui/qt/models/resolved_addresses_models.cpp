@@ -20,20 +20,44 @@ extern "C"
 {
 
 static void
-serv_port_hash_to_qstringlist(gpointer key, gpointer value, gpointer sl_ptr)
+serv_port_hash_to_qstringlist(gpointer key, gpointer value, gpointer member_ptr)
 {
-    QStringList *string_list = (QStringList *) sl_ptr;
+    PortsModel *model = static_cast<PortsModel *>(member_ptr);
     serv_port_t *serv_port = (serv_port_t *)value;
     guint port = GPOINTER_TO_UINT(key);
 
-    QStringList entries;
+    if (serv_port->tcp_name) {
+        QStringList entries;
 
-    if (serv_port->tcp_name) entries << QString("%1 %2 tcp").arg(serv_port->tcp_name).arg(port);
-    if (serv_port->udp_name) entries << QString("%1 %2 udp").arg(serv_port->udp_name).arg(port);
-    if (serv_port->sctp_name) entries << QString("%1 %2 sctp").arg(serv_port->sctp_name).arg(port);
-    if (serv_port->dccp_name) entries << QString("%1 %2 dccp").arg(serv_port->dccp_name).arg(port);
+        entries << serv_port->tcp_name;
+        entries << QString::number(port);
+        entries << "tcp";
+        model->appendRow(entries);
+    }
+    if (serv_port->udp_name) {
+        QStringList entries;
 
-    if (!entries.isEmpty()) *string_list << entries.join("\n");
+        entries << serv_port->udp_name;
+        entries << QString::number(port);
+        entries << "udp";
+        model->appendRow(entries);
+    }
+    if (serv_port->sctp_name) {
+        QStringList entries;
+
+        entries << serv_port->sctp_name;
+        entries << QString::number(port);
+        entries << "sctp";
+        model->appendRow(entries);
+    }
+    if (serv_port->dccp_name) {
+        QStringList entries;
+
+        entries << serv_port->dccp_name;
+        entries << QString::number(port);
+        entries << "dccp";
+        model->appendRow(entries);
+    }
 }
 
 static void
@@ -64,9 +88,7 @@ eth_hash_to_qstringlist(gpointer, gpointer value, gpointer sl_ptr)
     QStringList *string_list = (QStringList *) sl_ptr;
     hashether_t* tp = (hashether_t*)value;
 
-    QString entry = QString("%1 %2")
-            .arg(get_hash_ether_hexaddr(tp))
-            .arg(get_hash_ether_resolved_name(tp));
+    QString entry = QString(get_hash_ether_hexaddr(tp)) + QString(" ") + get_hash_ether_resolved_name(tp);
 
    *string_list << entry;
 }
@@ -145,9 +167,17 @@ void EthernetAddressModel::populate()
     if (wmem_map_t *eth_hashtable = get_eth_hashtable()) {
         wmem_map_foreach(eth_hashtable, eth_hash_to_qstringlist, &values);
     }
+    const QString &eth_label = tr("Ethernet Addresses");
+    foreach (const QString &line, values)
+        appendRow(QStringList() << eth_label << line.split(" "));
+    values.clear();
     if (wmem_map_t *eth_hashtable = get_manuf_hashtable()) {
         wmem_map_foreach(eth_hashtable, manuf_hash_to_qstringlist, &values);
     }
+    const QString &manuf_label = tr("Ethernet Manufacturers");
+    foreach (const QString &line, values)
+        appendRow(QStringList() << manuf_label << line.split(" "));
+    values.clear();
     if (wmem_map_t *eth_hashtable = get_wka_hashtable()) {
         wmem_map_foreach(eth_hashtable, wka_hash_to_qstringlist, &values);
     }
@@ -175,26 +205,8 @@ QStringList PortsModel::headerColumns() const
 
 void PortsModel::populate()
 {
-    QStringList values;
-
     wmem_map_t *serv_port_hashtable = get_serv_port_hashtable();
     if (serv_port_hashtable) {
-        wmem_map_foreach(serv_port_hashtable, serv_port_hash_to_qstringlist, &values);
+        wmem_map_foreach(serv_port_hashtable, serv_port_hash_to_qstringlist, this);
     }
-
-    foreach(QString line, values)
-        appendRow(QStringList() << line.split(" "));
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

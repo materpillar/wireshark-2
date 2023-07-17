@@ -238,6 +238,7 @@ static void modify_times(tvbuff_t *tvb, gint offset, packet_info *pinfo)
         nstime_delta(&ts_delta, &ts, &pinfo->abs_ts);
 
         pinfo->abs_ts = ts;
+        pinfo->fd->abs_ts = ts;
         nstime_add(&pinfo->rel_ts, &ts_delta);
     }
 }
@@ -336,7 +337,7 @@ proto_register_esl(void) {
     proto_esl = proto_register_protocol("EtherCAT Switch Link",
                                         "ESL","esl");
 
-    esl_module = prefs_register_protocol(proto_esl, proto_reg_handoff_esl);
+    esl_module = prefs_register_protocol_obsolete(proto_esl);
 
     prefs_register_obsolete_preference(esl_module, "enable");
 

@@ -65,24 +65,24 @@ static int hf_dplay_flags_optimize_latency = -1;
 static int hf_dplay_flags_acqire_voice = -1;
 static int hf_dplay_flags_no_sess_desc_changes = -1;
 
-#define DPLAY_FLAG_NO_CREATE_PLAYERS 0x0001
-#define DPLAY_FLAG_0002 0x0002
-#define DPLAY_FLAG_MIGRATE_HOST 0x0004
-#define DPLAY_FLAG_SHORT_PLAYER_MSG 0x0008
-#define DPLAY_FLAG_IGNORED 0x0010
-#define DPLAY_FLAG_CAN_JOIN 0x0020
-#define DPLAY_FLAG_USE_PING 0x0040
-#define DPLAY_FLAG_NO_P_UPD 0x0080
-#define DPLAY_FLAG_USE_AUTH 0x0100
-#define DPLAY_FLAG_PRIV_SESS 0x0200
-#define DPLAY_FLAG_PASS_REQ 0x0400
-#define DPLAY_FLAG_ROUTE 0x0800
-#define DPLAY_FLAG_SRV_ONLY 0x1000
-#define DPLAY_FLAG_RELIABLE 0x2000
-#define DPLAY_FLAG_ORDER 0x4000
-#define DPLAY_FLAG_OPT_LAT 0x8000
-#define DPLAY_FLAG_ACQ_VOICE 0x10000
-#define DPLAY_FLAG_NO_SESS_DESC_CHANGES 0x20000
+#define DPLAY_FLAG_NO_CREATE_PLAYERS 0x00000001
+#define DPLAY_FLAG_0002 0x00000002
+#define DPLAY_FLAG_MIGRATE_HOST 0x00000004
+#define DPLAY_FLAG_SHORT_PLAYER_MSG 0x00000008
+#define DPLAY_FLAG_IGNORED 0x00000010
+#define DPLAY_FLAG_CAN_JOIN 0x00000020
+#define DPLAY_FLAG_USE_PING 0x00000040
+#define DPLAY_FLAG_NO_P_UPD 0x00000080
+#define DPLAY_FLAG_USE_AUTH 0x00000100
+#define DPLAY_FLAG_PRIV_SESS 0x00000200
+#define DPLAY_FLAG_PASS_REQ 0x00000400
+#define DPLAY_FLAG_ROUTE 0x00000800
+#define DPLAY_FLAG_SRV_ONLY 0x00001000
+#define DPLAY_FLAG_RELIABLE 0x00002000
+#define DPLAY_FLAG_ORDER 0x00004000
+#define DPLAY_FLAG_OPT_LAT 0x00008000
+#define DPLAY_FLAG_ACQ_VOICE 0x00010000
+#define DPLAY_FLAG_NO_SESS_DESC_CHANGES 0x00020000
 
 /* Session description structure fields */
 static int hf_dplay_sess_desc_length = -1;
@@ -122,10 +122,10 @@ static int hf_dplay_pp_sp_data = -1;
 static int hf_dplay_pp_player_data = -1;
 static int hf_dplay_pp_player_id = -1;
 static int hf_dplay_pp_parent_id = -1;
-#define DPLAY_PP_FLAG_SYSPLAYER 0x01
-#define DPLAY_PP_FLAG_NAMESERVER 0x02
-#define DPLAY_PP_FLAG_IN_GROUP 0x04
-#define DPLAY_PP_FLAG_SENDING 0x08
+#define DPLAY_PP_FLAG_SYSPLAYER 0x00000001
+#define DPLAY_PP_FLAG_NAMESERVER 0x00000002
+#define DPLAY_PP_FLAG_IN_GROUP 0x00000004
+#define DPLAY_PP_FLAG_SENDING 0x00000008
 
 /* SuperPackedPlayer structure fields */
 static int hf_dplay_spp_size = -1;
@@ -156,10 +156,10 @@ static int hf_dplay_spp_player_id = -1;
 static int hf_dplay_spp_parent_id = -1;
 static int hf_dplay_spp_shortcut_count = -1;
 static int hf_dplay_spp_shortcut_id = -1;
-#define DPLAY_SPP_FLAG_SYSPLAYER 0x01
-#define DPLAY_SPP_FLAG_NAMESERVER 0x02
-#define DPLAY_SPP_FLAG_IN_GROUP 0x04
-#define DPLAY_SPP_FLAG_SENDING 0x08
+#define DPLAY_SPP_FLAG_SYSPLAYER 0x00000001
+#define DPLAY_SPP_FLAG_NAMESERVER 0x00000002
+#define DPLAY_SPP_FLAG_IN_GROUP 0x00000004
+#define DPLAY_SPP_FLAG_SENDING 0x00000008
 
 /* SecurityDesc structure fields */
 static int hf_dplay_sd_size = -1;
@@ -181,9 +181,9 @@ static int hf_dplay_type_02_password = -1;
 static int hf_enum_sess_flag_join = -1;
 static int hf_enum_sess_flag_all = -1;
 static int hf_enum_sess_flag_passwd = -1;
-#define DPLAY_ENUM_SESS_FLAG_JOIN 0x0001
-#define DPLAY_ENUM_SESS_FLAG_ALL 0x0002
-#define DPLAY_ENUM_SESS_FLAG_PASSWD 0x0040
+#define DPLAY_ENUM_SESS_FLAG_JOIN 0x00000001
+#define DPLAY_ENUM_SESS_FLAG_ALL 0x00000002
+#define DPLAY_ENUM_SESS_FLAG_PASSWD 0x00000040
 
 /* Message Type 0x0005 data fields */
 static int hf_dplay_type_05_flags = -1;
@@ -192,11 +192,11 @@ static int hf_dplay_type_05_name_server = -1;
 static int hf_dplay_type_05_local = -1;
 static int hf_dplay_type_05_unknown = -1; /* unknown, but always set */
 static int hf_dplay_type_05_secure = -1;
-#define DPLAY_TYPE05_FLAG_SYSPLAYER 0x001
-#define DPLAY_TYPE05_FLAG_NAMESERVER 0x002
-#define DPLAY_TYPE05_FLAG_LOCAL 0x004
-#define DPLAY_TYPE05_FLAG_UNKNOWN 0x008
-#define DPLAY_TYPE05_FLAG_SECURE 0x200
+#define DPLAY_TYPE05_FLAG_SYSPLAYER 0x00000001
+#define DPLAY_TYPE05_FLAG_NAMESERVER 0x00000002
+#define DPLAY_TYPE05_FLAG_LOCAL 0x00000004
+#define DPLAY_TYPE05_FLAG_UNKNOWN 0x00000008
+#define DPLAY_TYPE05_FLAG_SECURE 0x00000200
 
 /* Message Type 0x0007 data fields */
 static int hf_dplay_type_07_dpid = -1;
@@ -383,51 +383,16 @@ static const value_string yes_no_val[] = {
     { 0  , NULL },
 };
 
-static const true_false_string tfs_dplay_flag = {
-    "present",
-    "absent"
-};
 
 /* borrowed from epan/dissectors/packets-smb-common.c */
 static gint display_unicode_string(proto_tree *tree, gint hf_index, tvbuff_t *tvb, gint offset)
 {
-    char *str, *p;
+    char *str;
     gint len;
-    gint charoffset;
-    guint16 character;
 
     /* display a unicode string from the tree and return new offset */
 
-    /*
-     * Get the length of the string.
-     * XXX - is it a bug or a feature that this will throw an exception
-     * if we don't find the '\0'?  I think it's a feature.
-     */
-    len = 0;
-    while (tvb_get_letohs(tvb, offset + len) != '\0')
-        len += 2;
-    len += 2;   /* count the '\0' too */
-
-    /*
-     * Allocate a buffer for the string; "len" is the length in
-     * bytes, not the length in characters.
-     */
-    str = (char *)wmem_alloc(wmem_packet_scope(), len/2);
-
-    /*
-     * XXX - this assumes the string is just ISO 8859-1; we need
-     * to better handle multiple character sets in Wireshark,
-     * including Unicode/ISO 10646, and multiple encodings of
-     * that character set (UCS-2, UTF-8, etc.).
-     */
-    charoffset = offset;
-    p = str;
-    while ((character = tvb_get_letohs(tvb, charoffset)) != '\0') {
-        *p++ = (char) character;
-        charoffset += 2;
-    }
-    *p = '\0';
-
+    str = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &len, ENC_UTF_16|ENC_LITTLE_ENDIAN);
     proto_tree_add_string(tree, hf_index, tvb, offset, len, str);
 
     return  offset+len;
@@ -702,7 +667,7 @@ static gint dissect_dplay_header(proto_tree *tree, tvbuff_t *tvb, gint offset)
     proto_tree_add_uint(tree, hf_dplay_token, tvb, offset, 4, token);
     offset += 4;
     offset = dissect_sockaddr_in(tree, tvb, offset);
-    proto_tree_add_item(tree, hf_dplay_play_str, tvb, offset, 4, ENC_ASCII|ENC_NA); offset += 4;
+    proto_tree_add_item(tree, hf_dplay_play_str, tvb, offset, 4, ENC_ASCII); offset += 4;
     proto_tree_add_item(tree, hf_dplay_command, tvb, offset, 2, ENC_LITTLE_ENDIAN); offset += 2;
     proto_tree_add_item(tree, hf_dplay_proto_dialect, tvb, offset, 2, ENC_LITTLE_ENDIAN); offset += 2;
     return offset;
@@ -853,7 +818,7 @@ static gint dissect_type15_message(proto_tree *tree, tvbuff_t *tvb, gint offset)
 
     enc_tree = proto_tree_add_subtree(tree, tvb, offset, -1, ett_dplay_enc_packet, NULL, "DirectPlay encapsulated packet");
 
-    proto_tree_add_item(enc_tree, hf_dplay_play_str_2, tvb, offset, 4, ENC_ASCII|ENC_NA); offset += 4;
+    proto_tree_add_item(enc_tree, hf_dplay_play_str_2, tvb, offset, 4, ENC_ASCII); offset += 4;
     proto_tree_add_item(enc_tree, hf_dplay_command_2, tvb, offset, 2, ENC_LITTLE_ENDIAN); offset += 2;
     proto_tree_add_item(enc_tree, hf_dplay_proto_dialect_2, tvb, offset, 2, ENC_LITTLE_ENDIAN); offset += 2;
 
@@ -1191,58 +1156,58 @@ void proto_register_dplay(void)
         NULL, 0x0, NULL, HFILL}},
     { &hf_dplay_flags_no_create_players,
         { "no create players flag", "dplay.flags.no_create_players", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_NO_CREATE_PLAYERS, "No Create Players", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_NO_CREATE_PLAYERS, "No Create Players", HFILL}},
     { &hf_dplay_flags_0002,
         { "unused", "dplay.flags.unused", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_0002, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_0002, NULL, HFILL}},
     { &hf_dplay_flags_migrate_host,
         { "migrate host flag", "dplay.flags.migrate_host", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_MIGRATE_HOST, "Migrate Host", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_MIGRATE_HOST, "Migrate Host", HFILL}},
     { &hf_dplay_flags_short_player_msg,
         { "short player message", "dplay.flags.short_player_msg", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_SHORT_PLAYER_MSG, "Short Player Msg", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_SHORT_PLAYER_MSG, "Short Player Msg", HFILL}},
     { &hf_dplay_flags_ignored,
         { "ignored", "dplay.ignored", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_IGNORED, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_IGNORED, NULL, HFILL}},
     { &hf_dplay_flags_can_join,
         { "can join", "dplay.flags.can_join", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_CAN_JOIN, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_CAN_JOIN, NULL, HFILL}},
     { &hf_dplay_flags_use_ping,
         { "use ping", "dplay.flags.use_ping", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_USE_PING, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_USE_PING, NULL, HFILL}},
     { &hf_dplay_flags_no_player_updates,
         { "no player updates", "dplay.flags.no_player_updates", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_NO_P_UPD, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_NO_P_UPD, NULL, HFILL}},
     { &hf_dplay_flags_use_auth,
         { "use authentication", "dplay.flags.use_auth", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_USE_AUTH, "Use Auth", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_USE_AUTH, "Use Auth", HFILL}},
     { &hf_dplay_flags_private_session,
         { "private session", "dplay.flags.priv_sess", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_PRIV_SESS, "Priv Session", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_PRIV_SESS, "Priv Session", HFILL}},
     { &hf_dplay_flags_password_req,
         { "password required", "dplay.flags.pass_req", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_PASS_REQ, "Pass Req", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_PASS_REQ, "Pass Req", HFILL}},
     { &hf_dplay_flags_route,
         { "route via game host", "dplay.flags.route", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_ROUTE, "Route", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_ROUTE, "Route", HFILL}},
     { &hf_dplay_flags_server_player_only,
         { "get server player only", "dplay.flags.srv_p_only", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_SRV_ONLY, "Svr Player Only", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_SRV_ONLY, "Svr Player Only", HFILL}},
     { &hf_dplay_flags_reliable,
         { "use reliable protocol", "dplay.flags.reliable", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_RELIABLE, "Reliable", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_RELIABLE, "Reliable", HFILL}},
     { &hf_dplay_flags_preserve_order,
         { "preserve order", "dplay.flags.order", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_ORDER, "Order", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_ORDER, "Order", HFILL}},
     { &hf_dplay_flags_optimize_latency,
         { "optimize for latency", "dplay.flags.opt_latency", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_OPT_LAT, "Opt Latency", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_OPT_LAT, "Opt Latency", HFILL}},
     { &hf_dplay_flags_acqire_voice,
         { "acquire voice", "dplay.flags.acq_voice", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_ACQ_VOICE, "Acq Voice", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_ACQ_VOICE, "Acq Voice", HFILL}},
     { &hf_dplay_flags_no_sess_desc_changes,
         { "no session desc changes", "dplay.flags.no_sess_desc", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_FLAG_NO_SESS_DESC_CHANGES, "No Sess Desc Changes", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_FLAG_NO_SESS_DESC_CHANGES, "No Sess Desc Changes", HFILL}},
     { &hf_dplay_instance_guid,
         { "DirectPlay instance guid", "dplay.instance.guid", FT_GUID, BASE_NONE,
         NULL, 0x0, NULL, HFILL}},
@@ -1292,16 +1257,16 @@ void proto_register_dplay(void)
         NULL, 0x0, NULL, HFILL}},
     { &hf_dplay_pp_flag_sysplayer,
         { "is system player", "dplay.pp.flags.sysplayer", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_PP_FLAG_SYSPLAYER, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_PP_FLAG_SYSPLAYER, NULL, HFILL}},
     { &hf_dplay_pp_flag_nameserver,
         { "is name server", "dplay.pp.flags.nameserver", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_PP_FLAG_NAMESERVER, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_PP_FLAG_NAMESERVER, NULL, HFILL}},
     { &hf_dplay_pp_flag_in_group,
         { "in group", "dplay.pp.flags.in_group", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_PP_FLAG_IN_GROUP, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_PP_FLAG_IN_GROUP, NULL, HFILL}},
     { &hf_dplay_pp_flag_sending,
         { "sending player on local machine", "dplay.pp.flags.sending", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_SPP_FLAG_SENDING, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_SPP_FLAG_SENDING, NULL, HFILL}},
     { &hf_dplay_pp_id,
         { "PackedPlayer ID", "dplay.pp.id", FT_BYTES, BASE_NONE,
         NULL, 0x0, NULL, HFILL}},
@@ -1360,16 +1325,16 @@ void proto_register_dplay(void)
         NULL, 0x0, NULL, HFILL}},
     { &hf_dplay_spp_flags_sysplayer,
         { "is system player", "dplay.spp.flags.sysplayer", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_SPP_FLAG_SYSPLAYER, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_SPP_FLAG_SYSPLAYER, NULL, HFILL}},
     { &hf_dplay_spp_flags_nameserver,
         { "is name server", "dplay.spp.flags.nameserver", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_SPP_FLAG_NAMESERVER, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_SPP_FLAG_NAMESERVER, NULL, HFILL}},
     { &hf_dplay_spp_flags_in_group,
         { "in group", "dplay.spp.flags.in_group", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_SPP_FLAG_IN_GROUP, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_SPP_FLAG_IN_GROUP, NULL, HFILL}},
     { &hf_dplay_spp_flags_sending,
         { "sending player on local machine", "dplay.spp.flags.sending", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_SPP_FLAG_SENDING, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_SPP_FLAG_SENDING, NULL, HFILL}},
     { &hf_dplay_spp_id,
         { "SuperPackedPlayer ID", "dplay.spp.id", FT_BYTES, BASE_NONE,
         NULL, 0x0, NULL, HFILL}},
@@ -1454,7 +1419,7 @@ void proto_register_dplay(void)
         { "SecDesc CAPI provider type", "dplay.sd.capi_type", FT_UINT32, BASE_HEX,
         NULL, 0x0, NULL, HFILL}},
     { &hf_dplay_sd_enc_alg,
-        { "SecDesc encryption algorithm" , "dplay.sd.enc_alg", FT_UINT32, BASE_HEX,
+        { "SecDesc encryption algorithm", "dplay.sd.enc_alg", FT_UINT32, BASE_HEX,
         VALS(dplay_enc_alg_val), 0x0, NULL, HFILL}},
 
     /* Data fields for message type 0x0001 */
@@ -1480,13 +1445,13 @@ void proto_register_dplay(void)
         NULL, 0x0, NULL, HFILL}},
     { &hf_enum_sess_flag_join,
         { "Enumerate joinable sessions", "dplay.type02.joinable", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_ENUM_SESS_FLAG_JOIN, "Joinable", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_ENUM_SESS_FLAG_JOIN, "Joinable", HFILL}},
     { &hf_enum_sess_flag_all,
         { "Enumerate all sessions", "dplay.type02.all", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_ENUM_SESS_FLAG_ALL, "All", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_ENUM_SESS_FLAG_ALL, "All", HFILL}},
     { &hf_enum_sess_flag_passwd,
         { "Enumerate sessions requiring a password", "dplay.type02.pw_req", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_ENUM_SESS_FLAG_PASSWD, "Password", HFILL}},
+        TFS(&tfs_present_absent), DPLAY_ENUM_SESS_FLAG_PASSWD, "Password", HFILL}},
 
     /* Data fields for message type 0x0005 */
     { &hf_dplay_type_05_flags,
@@ -1494,19 +1459,19 @@ void proto_register_dplay(void)
         NULL, 0x0, NULL, HFILL}},
     { &hf_dplay_type_05_system_player,
         { "is system player", "dplay.type_05.flags.sys_player", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_TYPE05_FLAG_SYSPLAYER, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_TYPE05_FLAG_SYSPLAYER, NULL, HFILL}},
     { &hf_dplay_type_05_name_server,
         { "is name server", "dplay.type_05.flags.name_server", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_TYPE05_FLAG_NAMESERVER, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_TYPE05_FLAG_NAMESERVER, NULL, HFILL}},
     { &hf_dplay_type_05_local,
         { "is local player", "dplay.type_05.flags.local", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_TYPE05_FLAG_LOCAL, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_TYPE05_FLAG_LOCAL, NULL, HFILL}},
     { &hf_dplay_type_05_unknown,
         { "unknown", "dplay.type_05.flags.unknown", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_TYPE05_FLAG_UNKNOWN, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_TYPE05_FLAG_UNKNOWN, NULL, HFILL}},
     { &hf_dplay_type_05_secure,
         { "is secure session", "dplay.type_05.flags.secure", FT_BOOLEAN, 32,
-        TFS(&tfs_dplay_flag), DPLAY_TYPE05_FLAG_SECURE, NULL, HFILL}},
+        TFS(&tfs_present_absent), DPLAY_TYPE05_FLAG_SECURE, NULL, HFILL}},
 
     /* Data fields for message type 0x0007 */
     { &hf_dplay_type_07_dpid,

@@ -10,18 +10,20 @@
 -- SPDX-License-Identifier: GPL-2.0-or-later
 
 
-if (gui_enabled()) then 
-	-- Note that everything is "local" to this "if then" 
-	-- this way we don't add globals
+if (gui_enabled()) then
+	-- Note that evaluate_lua and run_console are NOT "local"
+	-- to allow them to be used in scripts (#12250)
+	-- Everything else is "local" to this "if then"
+	-- this way we don't add extra globals
 
 	-- Evaluate Window
-	local function evaluate_lua()
+	function evaluate_lua()
 		local w = TextWindow.new("Evaluate Lua")
 		w:set_editable()
 
 		-- button callback
 		local function eval()
-			-- get the window's text and remove the result 
+			-- get the window's text and remove the result
 			local text = string.gsub(w:get_text(),"%c*--%[%[.*--%]%]$","")
 
 			-- if the text begins with '=' then convert = into return
@@ -50,11 +52,12 @@ if (gui_enabled()) then
 	end
 
 	-- Console Window
-	local function run_console()
+	function run_console()
 		if console_open then return end
 		console_open = true
 
 		local w = TextWindow.new("Console")
+		w:add_button("Clear", function() w:clear(); print("Console cleared") end)
 
 		-- save original logger functions
 		local orig_print = print
@@ -73,7 +76,7 @@ if (gui_enabled()) then
 
 		-- when the window gets closed restore the original logger functions
 		local function at_close()
-			print = old_print
+			print = orig_print
 
 			console_open = false
 		end
@@ -87,7 +90,7 @@ if (gui_enabled()) then
 	end
 
 	function wiki_page()
-		browser_open_url("https://wiki.wireshark.org/Lua")
+		browser_open_url("https://gitlab.com/wireshark/wireshark/-/wikis/Lua")
 	end
 
 	register_menu("Lua/Evaluate", evaluate_lua, MENU_TOOLS_UNSORTED)

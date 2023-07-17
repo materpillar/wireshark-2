@@ -14,6 +14,7 @@
 #include <epan/packet.h>
 #include <epan/oids.h>
 #include <epan/asn1.h>
+#include <epan/strutil.h>
 
 #include "packet-ber.h"
 #include "packet-x509af.h"
@@ -32,6 +33,8 @@
 
 void proto_register_x509af(void);
 void proto_reg_handoff_x509af(void);
+
+static dissector_handle_t pkix_crl_handle;
 
 /* Initialize the protocol and registered fields */
 static int proto_x509af = -1;
@@ -122,6 +125,8 @@ void proto_register_x509af(void) {
 
   register_cleanup_routine(&x509af_cleanup_protocol);
 
+  pkix_crl_handle = register_dissector(PFNAME, dissect_pkix_crl, proto_x509af);
+
   register_ber_syntax_dissector("Certificate", proto_x509af, dissect_x509af_Certificate_PDU);
   register_ber_syntax_dissector("CertificateList", proto_x509af, dissect_CertificateList_PDU);
   register_ber_syntax_dissector("CrossCertificatePair", proto_x509af, dissect_CertificatePair_PDU);
@@ -134,9 +139,7 @@ void proto_register_x509af(void) {
 
 /*--- proto_reg_handoff_x509af -------------------------------------------*/
 void proto_reg_handoff_x509af(void) {
-	dissector_handle_t pkix_crl_handle;
 
-	pkix_crl_handle = create_dissector_handle(dissect_pkix_crl, proto_x509af);
 	dissector_add_string("media_type", "application/pkix-crl", pkix_crl_handle);
 
 #include "packet-x509af-dis-tab.c"
@@ -187,4 +190,5 @@ void proto_reg_handoff_x509af(void) {
 	dissector_add_string("rfc7468.preeb_label", "CERTIFICATE", create_dissector_handle(dissect_x509af_Certificate_PDU, proto_x509af));
 	dissector_add_string("rfc7468.preeb_label", "X509 CRL", create_dissector_handle(dissect_CertificateList_PDU, proto_x509af));
 	dissector_add_string("rfc7468.preeb_label", "ATTRIBUTE CERTIFICATE", create_dissector_handle(dissect_AttributeCertificate_PDU, proto_x509af));
+	dissector_add_string("rfc7468.preeb_label", "PUBLIC KEY", create_dissector_handle(dissect_SubjectPublicKeyInfo_PDU, proto_x509af));
 }

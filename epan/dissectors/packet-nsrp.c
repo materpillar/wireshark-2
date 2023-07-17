@@ -38,6 +38,8 @@
 void proto_register_nsrp(void);
 void proto_reg_handoff_nsrp(void);
 
+static dissector_handle_t nsrp_handle;
+
 #define NSRP_MIN_LEN    32
 
 /* Initialize the protocol and registered fields */
@@ -234,7 +236,7 @@ dissect_nsrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
         proto_tree_add_checksum(nsrp_tree, tvb, offset, hf_nsrp_checksum, -1, NULL, pinfo, 0, ENC_BIG_ENDIAN, PROTO_CHECKSUM_NO_FLAGS);
         offset += 2;
 
-        proto_tree_add_item(nsrp_tree, hf_nsrp_data, tvb, offset, -1, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(nsrp_tree, hf_nsrp_data, tvb, offset, -1, ENC_ASCII);
 
     }
 
@@ -284,7 +286,7 @@ dissect_nsrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
         proto_tree_add_checksum(nsrp_tree, tvb, offset, hf_nsrp_authchecksum, -1, NULL, pinfo, 0, ENC_BIG_ENDIAN, PROTO_CHECKSUM_NO_FLAGS);
         offset += 2;
 
-        proto_tree_add_item(nsrp_tree, hf_nsrp_data, tvb, offset, -1, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(nsrp_tree, hf_nsrp_data, tvb, offset, -1, ENC_ASCII);
 
     }
 
@@ -329,7 +331,7 @@ dissect_nsrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
         proto_tree_add_item(nsrp_tree, hf_nsrp_total_size, tvb, offset, 4, ENC_BIG_ENDIAN);
         offset += 4;
 
-        proto_tree_add_item(nsrp_tree, hf_nsrp_data, tvb, offset, -1, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(nsrp_tree, hf_nsrp_data, tvb, offset, -1, ENC_ASCII);
 
     }
 
@@ -490,15 +492,14 @@ proto_register_nsrp(void)
                                          "NSRP", "nsrp");
     proto_register_field_array(proto_nsrp, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    nsrp_handle = register_dissector("nsrp", dissect_nsrp, proto_nsrp);
 }
 
 
 void
 proto_reg_handoff_nsrp(void)
 {
-    dissector_handle_t nsrp_handle;
-
-    nsrp_handle = create_dissector_handle(dissect_nsrp, proto_nsrp);
     dissector_add_uint("ethertype", ETHERTYPE_NSRP, nsrp_handle);
 }
 

@@ -18,6 +18,8 @@
 void proto_register_fefd(void);
 void proto_reg_handoff_fefd(void);
 
+static dissector_handle_t fefd_handle;
+
 /* Offsets in TLV structure. */
 #define TLV_TYPE        0
 #define TLV_LENGTH      2
@@ -131,13 +133,13 @@ dissect_fefd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 
             col_append_sep_fstr(pinfo->cinfo, COL_INFO, NULL,
                                     "Device ID: %s",
-                                    tvb_format_stringzpad(tvb, offset + 4,
+                                    tvb_format_stringzpad(pinfo->pool, tvb, offset + 4,
                                                           length - 4));
 
             if (tree) {
                 tlv_tree = proto_tree_add_subtree_format(fefd_tree, tvb, offset,
                                            length, ett_fefd_tlv, NULL, "Device ID: %s",
-                                           tvb_format_stringzpad(tvb, offset + 4, length - 4));
+                                           tvb_format_stringzpad(pinfo->pool, tvb, offset + 4, length - 4));
                 proto_tree_add_uint(tlv_tree, hf_fefd_tlvtype, tvb,
                                     offset + TLV_TYPE, 2, type);
                 proto_tree_add_uint(tlv_tree, hf_fefd_tlvlength, tvb,
@@ -162,12 +164,12 @@ dissect_fefd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 
             col_append_sep_fstr(pinfo->cinfo, COL_INFO, NULL,
                                     "Port ID: %s",
-                                    tvb_format_stringzpad(tvb, offset + 4, real_length - 4));
+                                    tvb_format_stringzpad(pinfo->pool, tvb, offset + 4, real_length - 4));
 
             if (tree) {
                 tlv_tree = proto_tree_add_subtree_format(fefd_tree, tvb, offset,
                                            real_length, ett_fefd_tlv, NULL, "Port ID: %s",
-                                           tvb_format_text(tvb, offset + 4, real_length - 4));
+                                           tvb_format_text(pinfo->pool, tvb, offset + 4, real_length - 4));
                 proto_tree_add_uint(tlv_tree, hf_fefd_tlvtype, tvb,
                                     offset + TLV_TYPE, 2, type);
                 proto_tree_add_uint(tlv_tree, hf_fefd_tlvlength, tvb,
@@ -264,14 +266,13 @@ proto_register_fefd(void)
     proto_fefd = proto_register_protocol("Far End Failure Detection", "FEFD", "fefd");
     proto_register_field_array(proto_fefd, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    fefd_handle = register_dissector("fefd", dissect_fefd, proto_fefd);
 }
 
 void
 proto_reg_handoff_fefd(void)
 {
-    dissector_handle_t fefd_handle;
-
-    fefd_handle = create_dissector_handle(dissect_fefd, proto_fefd);
     dissector_add_uint("llc.force10_pid", 0x0111, fefd_handle);
 }
 

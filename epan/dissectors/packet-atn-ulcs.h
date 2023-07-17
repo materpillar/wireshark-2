@@ -3,9 +3,6 @@
 /* packet-atn-ulcs.h                                                          */
 /* asn2wrs.py -u -L -p atn-ulcs -c ./atn-ulcs.cnf -s ./packet-atn-ulcs-template -D . -O ../.. atn-ulcs.asn */
 
-/* Input file: packet-atn-ulcs-template.h */
-
-#line 1 "./asn1/atn-ulcs/packet-atn-ulcs-template.h"
 /* packet-atn-ulcs.h
  * Definitions for atn packet disassembly structures and routines
  *
@@ -18,11 +15,9 @@
 #ifndef PACKET_ATN_ULCS_H
 #define PACKET_ATN_ULCS_H
 
-#include <config.h>
-
 #include "packet.h"
 
-#include <epan/wmem/wmem.h>
+#include <epan/wmem_scopes.h>
 
 enum msg_type {
     um,

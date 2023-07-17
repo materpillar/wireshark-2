@@ -1,5 +1,8 @@
-/* column.h
+/** @file
  * Definitions for column handling routines
+ * Column preference and format settings.
+ *
+ * For internal Wireshark useonly. Don't include this header in dissectors!
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -12,7 +15,7 @@
 #define __COLUMN_H__
 
 #include "ws_symbol_export.h"
-#include <epan/column-info.h>
+#include <epan/column-utils.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,6 +69,19 @@ gint                 get_column_char_width(const gint format);
 WS_DLL_PUBLIC
 gchar               *get_column_tooltip(const gint col);
 
+/** Get the text of a column element. The string returned may
+ * depend on whether the resolved member variable is set.
+ * For internal Wireshark use, not to be called from dissectors.
+ * Dissectors use col_get_text() in column-utils.h
+ *
+ * @param cinfo the column information
+ * @param col the column index to use (not the format)
+ *
+ * @return the text string
+ */
+WS_DLL_PUBLIC
+const gchar         *get_column_text(column_info *cinfo, const gint col);
+
 WS_DLL_PUBLIC
 void
 col_finalize(column_info *cinfo);
@@ -77,6 +93,30 @@ build_column_format_array(column_info *cinfo, const gint num_cols, const gboolea
 WS_DLL_PUBLIC
 void                 column_dump_column_formats(void);
 
+/** Parse a column format string into a fmt_data struct.
+ * If the format string possibly can be that of a deprecated column
+ * that has been migrated to a custom column (e.g., upon first being
+ * read from a preference file), call try_convert_to_custom_column() first.
+ *
+ * @param[out] cfmt The parsed cfmt, still owned by the caller.
+ * For custom columns, the caller is responsible for freeing
+ * the custom_fields member as well.
+ * @param[in] fmt The column format to parse.
+ *
+ * @return TRUE if conversion was successful, FALSE if unsuccessful
+ */
+WS_DLL_PUBLIC
+gboolean parse_column_format(fmt_data *cfmt, const char *fmt);
+
+/** Checks a column format string to see if it is a deprecated column
+ * that has been migrated to a custom column, and converts the format
+ * to the corresponding custom column format if so, otherwise leaving
+ * it unchanged.
+ *
+ * @param[in,out] fmt The column format to check and possibly convert.
+ */
+WS_DLL_PUBLIC
+void try_convert_to_custom_column(char **fmt);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

@@ -858,7 +858,7 @@ dissect_usb_video_extension_unit(proto_tree *tree, tvbuff_t *tvb, int offset)
         {
             /* Too big to display as integer */
             /* @todo Display as FT_BYTES with a big-endian disclaimer?
-             * See https://bugs.wireshark.org/bugzilla/show_bug.cgi?id=7933
+             * See https://gitlab.com/wireshark/wireshark/-/issues/7933
              */
             proto_tree_add_bytes_format(tree, hf_usb_vid_bmControl_bytes, tvb, offset, control_size, NULL, "bmControl");
         }
@@ -1159,10 +1159,7 @@ dissect_usb_video_format(proto_tree *tree, tvbuff_t *tvb, int offset,
     if ((subtype == VS_FORMAT_UNCOMPRESSED) || (subtype == VS_FORMAT_FRAME_BASED))
     {
         /* Augment the descriptor root item with the format's four-character-code */
-        char fourcc[5];
-        tvb_memcpy(tvb, (guint8 *)fourcc, offset, 4);
-        fourcc[4] = '\0';
-        proto_item_append_text(desc_item, ": %s", fourcc);
+        proto_item_append_text(desc_item, ": %s", tvb_format_text(wmem_packet_scope(), tvb, offset, 4));
 
         proto_tree_add_item(tree, hf_usb_vid_format_guid, tvb, offset,   16, ENC_LITTLE_ENDIAN);
         proto_tree_add_item(tree, hf_usb_vid_format_bits_per_pixel,        tvb, offset+16, 1, ENC_LITTLE_ENDIAN);
@@ -1742,7 +1739,7 @@ dissect_usb_vid_control_value(proto_tree *tree, tvbuff_t *tvb, int offset, guint
     {
         header_field_info *hfinfo;
         hfinfo = proto_registrar_get_nth(hf);
-        DISSECTOR_ASSERT(IS_FT_INT(hfinfo->type) || IS_FT_UINT(hfinfo->type));
+        DISSECTOR_ASSERT(FT_IS_INT(hfinfo->type) || FT_IS_UINT(hfinfo->type));
     }
 
     if ((hf != -1) && (value_size <= 4))
@@ -1752,7 +1749,7 @@ dissect_usb_vid_control_value(proto_tree *tree, tvbuff_t *tvb, int offset, guint
     else
     {
         /* @todo Display as FT_BYTES with a big-endian disclaimer?
-         * See https://bugs.wireshark.org/bugzilla/show_bug.cgi?id=7933
+         * See https://gitlab.com/wireshark/wireshark/-/issues/7933
          */
         proto_tree_add_bytes_format(tree, hf_usb_vid_control_value, tvb, offset, value_size, NULL, "%s", fallback_name);
     }
@@ -2746,7 +2743,7 @@ proto_register_usb_vid(void)
 
             { &hf_usb_vid_probe_framing,
                     { "bmFramingInfo", "usbvideo.probe.framing",
-                            FT_UINT16, BASE_HEX, NULL, 0,
+                            FT_UINT8, BASE_HEX, NULL, 0,
                             NULL, HFILL }
             },
 
@@ -2772,7 +2769,7 @@ proto_register_usb_vid(void)
                             "Min supported payload format version", HFILL }
             },
             { &hf_usb_vid_probe_max_ver,
-                    { "bPreferredVersion", "usbvideo.probe.maxVer",
+                    { "bMaxVersion", "usbvideo.probe.maxVer",
                             FT_UINT8, BASE_DEC, NULL, 0,
                             "Max supported payload format version", HFILL }
             },

@@ -19,7 +19,6 @@
 capture_file cfile;
 
 #include "file.h"
-#include "log.h"
 
 #include "epan/epan_dissect.h"
 
@@ -98,17 +97,10 @@ CaptureFile::~CaptureFile()
 
 bool CaptureFile::isValid() const
 {
-    if (cap_file_ && cap_file_->state != FILE_CLOSED) { // XXX FILE_READ_IN_PROGRESS as well?
+    if (cap_file_ && cap_file_->state != FILE_CLOSED && cap_file_->state != FILE_READ_PENDING) { // XXX FILE_READ_IN_PROGRESS as well?
         return true;
     }
     return false;
-}
-
-int CaptureFile::currentRow()
-{
-    if (isValid())
-        return cap_file_->current_row;
-    return -1;
 }
 
 const QString CaptureFile::filePath()
@@ -233,6 +225,13 @@ void CaptureFile::reload()
 void CaptureFile::stopLoading()
 {
     setCaptureStopFlag(true);
+}
+
+QString CaptureFile::displayFilter() const
+{
+    if (isValid())
+        return QString(cap_file_->dfilter);
+    return QString();
 }
 
 capture_file *CaptureFile::globalCapFile()
@@ -385,16 +384,3 @@ void CaptureFile::captureSessionEvent(int event, capture_session *cap_session)
     }
 }
 #endif // HAVE_LIBPCAP
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

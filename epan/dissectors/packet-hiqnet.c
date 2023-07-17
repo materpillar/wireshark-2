@@ -36,7 +36,7 @@
 
 #define HIQNET_SUBSCRIPTION_TYPE_MASK      0x07
 
-#define HIQNET_SUBSCRIPTION_FLAGS_MASK      0x00000001
+#define HIQNET_SUBSCRIPTION_FLAGS_MASK      0x0001
 
 #define HIQNET_CATEGORIES_MASK  0x00004fff
 
@@ -429,6 +429,8 @@ static int * const hiqnet_cat_fields[] = {
 void proto_register_hiqnet(void);
 void proto_reg_handoff_hiqnet(void);
 
+static dissector_handle_t hiqnet_udp_handle;
+static dissector_handle_t hiqnet_tcp_handle;
 
 static void
 hiqnet_display_vdobjectaddr(proto_tree *hiqnet_tree, int hf_hiqnet, tvbuff_t *tvb, gint offset) {
@@ -1137,7 +1139,7 @@ proto_register_hiqnet(void)
         },
         { &hf_hiqnet_sourcedev,
             { "Source device", "hiqnet.srcdev",
-                FT_UINT8, BASE_DEC_HEX,
+                FT_UINT16, BASE_DEC_HEX,
                 NULL, 0x0,
                 NULL, HFILL }
         },
@@ -1149,7 +1151,7 @@ proto_register_hiqnet(void)
         },
         { &hf_hiqnet_destdev,
             { "Destination device", "hiqnet.dstdev",
-                FT_UINT8, BASE_DEC_HEX,
+                FT_UINT16, BASE_DEC_HEX,
                 NULL, 0x0,
                 NULL, HFILL }
         },
@@ -1233,7 +1235,7 @@ proto_register_hiqnet(void)
         },
         { &hf_hiqnet_errstr,
             { "Error string", "hiqnet.errstr",
-                FT_STRINGZ, STR_UNICODE,
+                FT_STRINGZ, BASE_NONE,
                 NULL, 0x0,
                 NULL, HFILL }
         },
@@ -1488,7 +1490,7 @@ proto_register_hiqnet(void)
         /* Counted *and* null-terminated */
         { &hf_hiqnet_string_value,
             { "Value", "hiqnet.string_value",
-                FT_STRINGZ, STR_UNICODE,
+                FT_STRINGZ, BASE_NONE,
                 NULL, 0x0,
                 NULL, HFILL }
         },
@@ -1506,7 +1508,7 @@ proto_register_hiqnet(void)
         },
         { &hf_hiqnet_wrkgrppath,
             { "Workgroup Path", "hiqnet.wrkgrppath",
-                FT_STRINGZ, STR_UNICODE,
+                FT_STRINGZ, BASE_NONE,
                 NULL, 0x0,
                 NULL, HFILL }
         },
@@ -1625,7 +1627,7 @@ proto_register_hiqnet(void)
                 NULL, HFILL }
         },
         { &hf_hiqnet_misc_cat,
-            { "Miscellenaous", "hiqnet.misccat",
+            { "Miscellaneous", "hiqnet.misccat",
                 FT_BOOLEAN, 32,
                 NULL, HIQNET_MISC_CAT,
                 NULL, HFILL }
@@ -1686,19 +1688,19 @@ proto_register_hiqnet(void)
         },
         { &hf_hiqnet_eventtime,
             { "Time", "hiqnet.eventtime",
-                FT_STRING, STR_UNICODE,
+                FT_STRING, BASE_NONE,
                 NULL, 0x0,
                 NULL, HFILL }
         },
         { &hf_hiqnet_eventdate,
             { "Date", "hiqnet.eventdate",
-                FT_STRING, STR_UNICODE,
+                FT_STRING, BASE_NONE,
                 NULL, 0x0,
                 NULL, HFILL }
         },
         { &hf_hiqnet_eventinfo,
             { "Information", "hiqnet.information",
-                FT_STRING, STR_UNICODE,
+                FT_STRING, BASE_NONE,
                 NULL, 0x0,
                 NULL, HFILL }
         },
@@ -1795,17 +1797,15 @@ proto_register_hiqnet(void)
     proto_register_subtree_array(ett, array_length(ett));
     expert_hiqnet = expert_register_protocol(proto_hiqnet);
     expert_register_field_array(expert_hiqnet, ei, array_length(ei));
+
+    hiqnet_udp_handle = register_dissector("hiqnet.udp", dissect_hiqnet_udp, proto_hiqnet);
+    hiqnet_tcp_handle = register_dissector("hiqnet.tcp", dissect_hiqnet_tcp, proto_hiqnet);
 }
 
 
 void
 proto_reg_handoff_hiqnet(void)
 {
-    static dissector_handle_t hiqnet_udp_handle;
-    static dissector_handle_t hiqnet_tcp_handle;
-
-    hiqnet_udp_handle = create_dissector_handle(dissect_hiqnet_udp, proto_hiqnet);
-    hiqnet_tcp_handle = create_dissector_handle(dissect_hiqnet_tcp, proto_hiqnet);
     dissector_add_uint_with_preference("udp.port", HIQNET_PORT, hiqnet_udp_handle);
     dissector_add_uint_with_preference("tcp.port", HIQNET_PORT, hiqnet_tcp_handle);
 }

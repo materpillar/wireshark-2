@@ -3,9 +3,8 @@ on Wireshark protocol dissectors. It describes expected code patterns and the
 use of some of the important functions and variables.
 
 This file is compiled to give in depth information on Wireshark.
-It is by no means all inclusive and complete. Please feel free to send
-remarks and patches to the developer mailing list.
-
+It is by no means all inclusive and complete. Please feel free to discuss on
+the developer mailing list or upload merge requests to gitlab.
 If you haven't read README.developer, read that first!
 
 0. Prerequisites.
@@ -24,10 +23,10 @@ README.md files of the sources root dir.
 You'll find additional dissector related information in the following README
 files:
 
-- README.heuristic      - what are heuristic dissectors and how to write them
-- README.plugins        - how to "pluginize" a dissector
-- README.request_response_tracking - how to track req./resp. times and such
-- README.wmem           - how to obtain "memory leak free" memory
+- doc/README.heuristic      - what are heuristic dissectors and how to write them
+- doc/README.plugins        - how to "pluginize" a dissector
+- doc/README.request_response_tracking - how to track req./resp. times and such
+- doc/README.wmem           - how to obtain "memory leak free" memory
 
 0.2 Contributors
 
@@ -94,23 +93,38 @@ PROTOSHORTNAME  An abbreviated name for the protocol; this is displayed
                 any preferences, in the dialog box of enabled protocols,
                 and in the dialog box for filter fields when constructing
                 a filter expression.
-PROTOABBREV     A name for the protocol for use in filter expressions;
-                it may contain only lower-case letters, digits, and hyphens,
-                underscores, and periods.
+PROTOFILTERNAME A name for the protocol for use in filter expressions;
+                it may contain only letters, digits, hyphens, underscores and
+                periods. Names should use lower case only. (Support for
+                upper/mixed case may be removed in the future.)
+PROTOABBREV     An abbreviation for the protocol; this is used in code and
+                must be a valid C identifier. Additionally it should follow
+                any applicable C style guidelines. It is usually the same as
+                PROTOFILTERNAME with all lower-case letters and
+                non-alphanumerics replaced with underscores.
 LICENSE         The license this dissector is under. Please use a SPDX License
                 identifier.
 YEARS           The years the above license is valid for.
 FIELDNAME       The displayed name for the header field.
-FIELDABBREV     The abbreviated name for the header field; it may contain
-                only letters, digits, hyphens, underscores, and periods.
+FIELDFILTERNAME A name for the header field for use in filter expressions;
+                it may contain only letters, digits, hyphens, underscores and
+                periods. It must start with PROTOFILTERNAME followed by a dot.
+                Names should use lower case only. (Support for upper/mixed case
+                may be removed in the future.)
+FIELDABBREV     An abbreviation for the header field; this is used in code and
+                must be a valid C identifier. Additionally it should follow
+                any applicable C style guidelines. It is usually the same as
+                FIELDFILTERNAME with all lower-case letters and
+                non-alphanumerics replaced with underscores.
 FIELDTYPE       FT_NONE, FT_BOOLEAN, FT_CHAR, FT_UINT8, FT_UINT16, FT_UINT24,
                 FT_UINT32, FT_UINT40, FT_UINT48, FT_UINT56, FT_UINT64,
                 FT_INT8, FT_INT16, FT_INT24, FT_INT32, FT_INT40, FT_INT48,
-                FT_INT56, FT_INT64, FT_FLOAT, FT_DOUBLE, FT_ABSOLUTE_TIME,
-                FT_RELATIVE_TIME, FT_STRING, FT_STRINGZ, FT_EUI64,
+                FT_INT56, FT_INT64, FT_IEEE_11073_SFLOAT, FT_IEEE_11073_FLOAT,
+                FT_FLOAT, FT_DOUBLE, FT_ABSOLUTE_TIME, FT_RELATIVE_TIME,
+                FT_STRING, FT_STRINGZ, FT_STRINGZPAD, FT_STRINGZTRUNC,
                 FT_UINT_STRING, FT_ETHER, FT_BYTES, FT_UINT_BYTES, FT_IPv4,
-                FT_IPv6, FT_IPXNET, FT_FRAMENUM, FT_PROTOCOL, FT_GUID, FT_OID,
-                FT_REL_OID, FT_AX25, FT_VINES, FT_SYSTEM_ID, FT_FC, FT_FCWWN
+                FT_IPv6, FT_IPXNET, FT_FRAMENUM, FT_PROTOCOL, FT_EUI64, FT_GUID,
+                FT_OID, FT_REL_OID, FT_AX25, FT_VINES, FT_SYSTEM_ID, FT_FCWWN
 FIELDDISPLAY    --For FT_UINT{8,16,24,32,40,48,56,64} and
                        FT_INT{8,16,24,32,40,48,56,64):
 
@@ -118,7 +132,8 @@ FIELDDISPLAY    --For FT_UINT{8,16,24,32,40,48,56,64} and
                   BASE_CUSTOM, or BASE_NONE, possibly ORed with
                   BASE_RANGE_STRING, BASE_EXT_STRING, BASE_VAL64_STRING,
                   BASE_ALLOW_ZERO, BASE_UNIT_STRING, BASE_SPECIAL_VALS,
-                  BASE_NO_DISPLAY_VALUE, or BASE_SHOW_ASCII_PRINTABLE
+                  BASE_NO_DISPLAY_VALUE, BASE_SHOW_ASCII_PRINTABLE, or
+                  BASE_SHOW_UTF_8_PRINTABLE
 
                   BASE_NONE may be used with a non-NULL FIELDCONVERT when the
                   numeric value of the field itself is not of significance to
@@ -147,6 +162,12 @@ FIELDDISPLAY    --For FT_UINT{8,16,24,32,40,48,56,64} and
 
                   BASE_NONE can be used in the same way as with FT_UINT8.
 
+                --For FT_FLOAT, FT_DOUBLE:
+                  BASE_NONE, BASE_DEC, BASE_HEX, BASE_EXP or BASE_CUSTOM.
+
+                  BASE_NONE uses BASE_DEC or BASE_EXP, similarly to the
+                  %g double format for the printf() function.
+
                 --For FT_ABSOLUTE_TIME:
 
                   ABSOLUTE_TIME_LOCAL, ABSOLUTE_TIME_UTC, or
@@ -162,14 +183,14 @@ FIELDDISPLAY    --For FT_UINT{8,16,24,32,40,48,56,64} and
 
                 --For FT_STRING, FT_STRINGZ and FT_UINT_STRING:
 
-                  STR_ASCII or STR_UNICODE
+                  (must be) BASE_NONE
 
                 --For FT_BYTES and FT_UINT_BYTES:
 
                   SEP_DOT, SEP_DASH, SEP_COLON, or SEP_SPACE to provide
                   a separator between bytes; BASE_NONE has no separator
-                  between bytes.  These can be ORed with BASE_ALLOW_ZERO
-                  and BASE_SHOW_ASCII_PRINTABLE.
+                  between bytes.  These can be ORed with BASE_ALLOW_ZERO,
+                  BASE_SHOW_ASCII_PRINTABLE, or BASE_SHOW_UTF_8_PRINTABLE.
 
                   BASE_ALLOW_ZERO displays <none> instead of <MISSING>
                   for a zero-sized byte array.
@@ -177,6 +198,11 @@ FIELDDISPLAY    --For FT_UINT{8,16,24,32,40,48,56,64} and
                   field's value consists entirely of printable ASCII
                   characters and, if so, will display the field's value
                   as a string, in quotes.  The value will still be
+                  filterable as a byte value.
+                  BASE_SHOW_UTF_8_PRINTABLE will check whether the
+                  field's value is valid UTF-8 consisting entirely of
+                  printable characters and, if so, will display the field's
+                  value as a string, in quotes.  The value will still be
                   filterable as a byte value.
 
                 --For FT_IPv4:
@@ -195,7 +221,7 @@ BITMASK         Used to mask a field not 8-bit aligned or with a size other
 FIELDDESCR      A brief description of the field, or NULL. [Please do not use ""].
 
 If, for example, PROTONAME is "Internet Bogosity Discovery Protocol",
-PROTOSHORTNAME would be "IBDP", and PROTOABBREV would be "ibdp". Try to
+PROTOSHORTNAME would be "IBDP", and PROTOFILTERNAME would be "ibdp". Try to
 conform with IANA names.
 
 1.2.1 Automatic substitution in code skeleton
@@ -400,8 +426,8 @@ wrong answer on the PC on which you're doing development, and try
 "tvb_get_letohl()" instead, as "tvb_get_letohl()" will give the wrong
 answer on big-endian machines.
 
-gchar *tvb_ip_to_str(tvbuff_t *tvb, const gint offset)
-gchar *tvb_ip6_to_str(tvbuff_t *tvb, const gint offset)
+gchar *tvb_ip_to_str(wmem_allocator_t *scope, tvbuff_t *tvb, const gint offset)
+gchar *tvb_ip6_to_str(wmem_allocator_t *scope, tvbuff_t *tvb, const gint offset)
 
 Returns a null-terminated buffer containing a string with IPv4 or IPv6 Address
 from the specified tvbuff, starting at the specified offset.
@@ -436,20 +462,6 @@ the string, including the terminating null.
 
 The buffer is allocated in the given wmem scope (see README.wmem for more
 information).
-
-const guint8 *tvb_get_const_stringz(tvbuff_t *tvb, const gint offset, gint *lengthp);
-
-Returns a null-terminated const buffer containing data from the
-specified tvbuff, starting at the specified offset, and containing all
-bytes from the tvbuff up to and including a terminating null character
-in the tvbuff. "*lengthp" will be set to the length of the string,
-including the terminating null.
-
-You do not need to free() this buffer; it will happen automatically once
-the next packet is dissected. This function is slightly more efficient
-than the others because it does not allocate memory and copy the string,
-but it does not do any mapping to UTF-8 or checks for valid octet
-sequences.
 
 gint tvb_get_nstringz(tvbuff_t *tvb, const gint offset, const guint bufsize, guint8* buffer);
 gint tvb_get_nstringz0(tvbuff_t *tvb, const gint offset, const guint bufsize, guint8* buffer);
@@ -578,9 +590,9 @@ anyway, so it's best to use 'col_add_str' rather than 'col_set_str' in
 that case.
 
 For example, to set the "Protocol" column
-to "PROTOABBREV":
+to "PROTOFILTERNAME":
 
-    col_set_str(pinfo->cinfo, COL_PROTOCOL, "PROTOABBREV");
+    col_set_str(pinfo->cinfo, COL_PROTOCOL, "PROTOFILTERNAME");
 
 
 1.4.2 The col_add_str function.
@@ -828,18 +840,16 @@ A string representing the name of the field. This is the name
 that will appear in the graphical protocol tree. It must be a non-empty
 string.
 
-abbrev (FIELDABBREV)
+abbrev (FIELDFILTERNAME)
 --------------------
-A string with an abbreviation of the field. The abbreviation should start
-with the abbreviation of the parent protocol followed by a period as a
+A string with a filter name for the field. The name should start
+with the filter name of the parent protocol followed by a period as a
 separator. For example, the "src" field in an IP packet would have "ip.src"
-as an abbreviation. It is acceptable to have multiple levels of periods if,
+as a filter name. It is acceptable to have multiple levels of periods if,
 for example, you have fields in your protocol that are then subdivided into
-subfields. For example, TRMAC has multiple error fields, so the abbreviations
+subfields. For example, TRMAC has multiple error fields, so the names
 follow this pattern: "trmac.errors.iso", "trmac.errors.noniso", etc.
-
-The abbreviation is the identifier used in a display filter. As such it
-cannot be an empty string.
+It must be a non-empty string.
 
 type (FIELDTYPE)
 ----------------
@@ -882,6 +892,10 @@ The type of value this field holds. The current field types are:
     FT_INT48    A 48-bit signed integer.
     FT_INT56    A 56-bit signed integer.
     FT_INT64    A 64-bit signed integer.
+    FT_IEEE_11073_SFLOAT    A 16-bit floating point number, consisting
+                of an 4-bit exponent and 12-bit mantissa.
+    FT_IEEE_11073_FLOAT     A 32-bit floating point number, consisting
+                of an 8-bit exponent and 24-bit mantissa.
     FT_FLOAT    A single-precision floating point number.
     FT_DOUBLE   A double-precision floating point number.
     FT_ABSOLUTE_TIME    An absolute time from some fixed point in time,
@@ -1091,7 +1105,7 @@ If the values in the array are not contiguous (ie: there are "gaps"), but are
 in ascending order a binary search will be used.
 
 Note: "gaps" in a value_string array can be filled with "empty" entries eg:
-{value, "Unknown"} so that direct access to the array is is possible.
+{value, "Unknown"} so that direct access to the array is possible.
 
 Note: the value_string array values are *unsigned*; IOW: -1 is greater than 0.
       So:
@@ -1165,14 +1179,14 @@ For fields with that unit name, you would declare a "unit_name_string":
 (the second entry can be NULL if there is no plural form of the unit name.
 This is typically the case when abbreviations are used instead of full words.)
 
-There are several "common" unit name structures already defined in
-epan/unit_strings.h. Dissector authors may choose to add the unit name
-structure there rather than locally in a dissector.
-
-For hf[] array FT_(U)INT*, FT_FlOAT and FT_DOUBLE fields that need a
+For hf[] array FT_(U)INT*, FT_FLOAT and FT_DOUBLE fields that need a
 'unit_name_string' struct, the 'strings' field would be set to
-'&units_second_seconds'. Furthermore, the 'display' field must be ORed
+'&unitname'. Furthermore, the 'display' field must be ORed
 with 'BASE_UNIT_STRING' (e.g. BASE_DEC|BASE_UNIT_STRING).
+
+There are several "common" unit name structures already defined in
+epan/unit_strings.h, e.g. 'units_second_seconds'. Dissector authors may choose
+to add the unit name structure there rather than locally in a dissector.
 
 -- Ranges
 If the field has a numeric type that might logically fit in ranges of values
@@ -1236,6 +1250,22 @@ in tfs.h, included via packet.h.
 -- Custom
 Custom fields (BASE_CUSTOM) should use CF_FUNC(&custom_format_func) for the
 'strings' field.
+
+-- Frame numbers
+FT_FRAMENUMs can use the 'strings' field to indicate their purpose by
+setting the field to 'FRAMENUM_TYPE(x)', where x is one of the values of
+the ft_framenum_type enum:
+
+    FT_FRAMENUM_NONE
+    FT_FRAMENUM_REQUEST
+    FT_FRAMENUM_RESPONSE
+    FT_FRAMENUM_ACK
+    FT_FRAMENUM_DUP_ACK
+    FT_FRAMENUM_RETRANS_PREV
+    FT_FRAMENUM_RETRANS_NEXT
+
+The packet list uses the value to determine the related packet symbol to draw.
+Note that 'strings' field NULL is equal to FRAMENUM_TYPE(FT_FRAMENUM_NONE).
 
 -- Note to plugin authors
 Data cannot get exported from DLLs. For this reason plugin authors cannot use
@@ -1337,7 +1367,7 @@ Note that the formats used must all belong to the same group as defined below:
 - FT_UINT40, FT_UINT48, FT_UINT56, FT_UINT64 and FT_EUI64
 - FT_ABSOLUTE_TIME and FT_RELATIVE_TIME
 - FT_STRING, FT_STRINGZ, FT_UINT_STRING, FT_STRINGZPAD, and FT_STRINGZTRUNC
-- FT_FLOAT and FT_DOUBLE
+- FT_FLOAT, FT_DOUBLE, FT_IEEE_11073_SFLOAT and FT_IEEE_11073_FLOAT
 - FT_BYTES, FT_UINT_BYTES, FT_ETHER, FT_AX25, FT_VINES and FT_FCWWN
 - FT_OID, FT_REL_OID and FT_SYSTEM_ID
 
@@ -1386,8 +1416,8 @@ another packet, it automatically opens all subtrees of that type.
 If you close one of them, all subtrees of that type will be closed when
 you move to another packet.
 
-There are several functions that the programmer can use to add either
-protocol or field labels to the proto_tree:
+There are many functions that the programmer can use to add either
+protocol or field labels to the proto_tree, for example:
 
     proto_item*
     proto_tree_add_item(tree, id, tvb, start, length, encoding);
@@ -1397,286 +1427,26 @@ protocol or field labels to the proto_tree:
         *retval);
 
     proto_item*
-    proto_tree_add_item_ret_uint(tree, id, tvb, start, length, encoding,
-        *retval);
-
-    proto_item*
-    proto_tree_add_item_ret_uint64(tree, id, tvb, start, length, encoding,
-        *retval);
-
-    proto_item*
-    proto_tree_add_item_ret_boolean(tree, id, tvb, start, length, encoding,
-        *retval);
-
-    proto_item*
     proto_tree_add_subtree(tree, tvb, start, length, idx, tree_item,
         text);
-
-    proto_item*
-    proto_tree_add_subtree_format(tree, tvb, start, length, idx, tree_item,
-        format, ...);
-
-    proto_item*
-    proto_tree_add_none_format(tree, id, tvb, start, length, format, ...);
-
-    proto_item*
-    proto_tree_add_protocol_format(tree, id, tvb, start, length,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_bytes(tree, id, tvb, start, length, start_ptr);
-
-    proto_item *
-    proto_tree_add_bytes_item(tree, id, tvb, start, length, encoding,
-        retval, endoff, err);
-
-    proto_item *
-    proto_tree_add_bytes_format(tree, id, tvb, start, length, start_ptr,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_bytes_format_value(tree, id, tvb, start, length,
-        start_ptr, format, ...);
-
-    proto_item *
-    proto_tree_add_bytes_with_length(tree, id, tvb, start, tvb_length, start_ptr, ptr_length);
-
-    proto_item *
-    proto_tree_add_time(tree, id, tvb, start, length, value_ptr);
-
-    proto_item *
-    proto_tree_add_time_item(tree, id, tvb, start, length, encoding,
-        retval, endoff, err);
-
-    proto_item *
-    proto_tree_add_time_format(tree, id, tvb, start, length, value_ptr,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_time_format_value(tree, id, tvb, start, length,
-        value_ptr, format, ...);
-
-    proto_item *
-    proto_tree_add_ipxnet(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_ipxnet_format(tree, id, tvb, start, length, value,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_ipxnet_format_value(tree, id, tvb, start, length,
-        value, format, ...);
-
-    proto_item *
-    proto_tree_add_ipv4(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_ipv4_format(tree, id, tvb, start, length, value,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_ipv4_format_value(tree, id, tvb, start, length,
-        value, format, ...);
-
-    proto_item *
-    proto_tree_add_ipv6(tree, id, tvb, start, length, value_ptr);
-
-    proto_item *
-    proto_tree_add_ipv6_format(tree, id, tvb, start, length, value_ptr,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_ipv6_format_value(tree, id, tvb, start, length,
-        value_ptr, format, ...);
-
-    proto_item *
-    proto_tree_add_ether(tree, id, tvb, start, length, value_ptr);
-
-    proto_item *
-    proto_tree_add_ether_format(tree, id, tvb, start, length, value_ptr,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_ether_format_value(tree, id, tvb, start, length,
-        value_ptr, format, ...);
-
-    proto_item *
-    proto_tree_add_guid(tree, id, tvb, start, length, value_ptr);
-
-    proto_item *
-    proto_tree_add_guid_format(tree, id, tvb, start, length, value_ptr,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_guid_format_value(tree, id, tvb, start, length,
-        value_ptr, format, ...);
-
-    proto_item *
-    proto_tree_add_oid(tree, id, tvb, start, length, value_ptr);
-
-    proto_item *
-    proto_tree_add_oid_format(tree, id, tvb, start, length, value_ptr,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_oid_format_value(tree, id, tvb, start, length,
-        value_ptr, format, ...);
-
-    proto_item *
-    proto_tree_add_string(tree, id, tvb, start, length, value_ptr);
-
-    proto_item *
-    proto_tree_add_string_format(tree, id, tvb, start, length, value_ptr,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_string_format_value(tree, id, tvb, start, length,
-        value_ptr, format, ...);
-
-    proto_item *
-    proto_tree_add_boolean(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_boolean_format(tree, id, tvb, start, length, value,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_boolean_format_value(tree, id, tvb, start, length,
-        value, format, ...);
-
-    proto_item *
-    proto_tree_add_float(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_float_format(tree, id, tvb, start, length, value,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_float_format_value(tree, id, tvb, start, length,
-        value, format, ...);
-
-    proto_item *
-    proto_tree_add_double(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_double_format(tree, id, tvb, start, length, value,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_double_format_value(tree, id, tvb, start, length,
-        value, format, ...);
-
-    proto_item *
-    proto_tree_add_uint(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_uint_format(tree, id, tvb, start, length, value,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_uint_format_value(tree, id, tvb, start, length,
-        value, format, ...);
-
-    proto_item *
-    proto_tree_add_uint64(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_uint64_format(tree, id, tvb, start, length, value,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_uint64_format_value(tree, id, tvb, start, length,
-        value, format, ...);
-
-    proto_item *
-    proto_tree_add_int(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_int_format(tree, id, tvb, start, length, value,
-        format, ...);
 
     proto_item *
     proto_tree_add_int_format_value(tree, id, tvb, start, length,
         value, format, ...);
 
     proto_item *
-    proto_tree_add_int64(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_int64_format(tree, id, tvb, start, length, value,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_int64_format_value(tree, id, tvb, start, length,
-        value, format, ...);
-
-    proto_item *
-    proto_tree_add_eui64(tree, id, tvb, start, length, value);
-
-    proto_item *
-    proto_tree_add_eui64_format(tree, id, tvb, start, length, value,
-        format, ...);
-
-    proto_item *
-    proto_tree_add_eui64_format_value(tree, id, tvb, start, length,
-        value, format, ...);
-
-    proto_item *
     proto_tree_add_checksum(proto_tree *tree, tvbuff_t *tvb, const guint offset,
-        const int hf_checksum, const int hf_checksum_status, struct expert_field* bad_checksum_expert,
-        packet_info *pinfo, guint32 computed_checksum, const guint encoding, const guint flags);
+        const int hf_checksum, const int hf_checksum_status,
+        struct expert_field* bad_checksum_expert, packet_info *pinfo,
+        guint32 computed_checksum, const guint encoding, const guint flags);
 
     proto_item *
     proto_tree_add_bitmask(tree, tvb, start, header, ett, fields,
         encoding);
 
     proto_item *
-    proto_tree_add_bitmask_len(tree, tvb, start, len, header, ett, fields,
-        exp, encoding);
-
-    proto_item *
-    proto_tree_add_bitmask_text(tree, tvb, offset, len, name, fallback,
-        ett, fields, encoding, flags);
-
-    proto_item *
-    proto_tree_add_bitmask_with_flags(tree, tvb, offset, hf_hdr, ett,
-        fields, encoding, flags);
-
-    proto_item*
     proto_tree_add_bits_item(tree, id, tvb, bit_offset, no_of_bits,
         encoding);
-
-    proto_item *
-    proto_tree_add_split_bits_item_ret_val(tree, hf_index, tvb, bit_offset,
-        crumb_spec, return_value);
-
-    void
-    proto_tree_add_split_bits_crumb(tree, hf_index, tvb, bit_offset,
-        crumb_spec, crumb_index);
-
-    proto_item *
-    proto_tree_add_bits_ret_val(tree, id, tvb, bit_offset, no_of_bits,
-        return_value, encoding);
-
-    proto_item *
-    proto_tree_add_uint_bits_format_value(tree, id, tvb, bit_offset,
-        no_of_bits, value, format, ...);
-
-    proto_item *
-    proto_tree_add_boolean_bits_format_value(tree, id, tvb, bit_offset,
-        no_of_bits, value, format, ...);
-
-    proto_item *
-    proto_tree_add_int_bits_format_value(tree, id, tvb, bit_offset,
-        no_of_bits, value, format, ...);
-
-    proto_item *
-    proto_tree_add_float_bits_format_value(tree, id, tvb, bit_offset,
-        no_of_bits, value, format, ...);
-
-    proto_item *
-    proto_tree_add_ts_23_038_7bits_item(tree, hf_index, tvb,
-        bit_offset, no_of_chars);
 
 The 'tree' argument is the tree to which the item is to be added. The
 'tvb' argument is the tvbuff from which the item's value is being
@@ -1694,6 +1464,10 @@ dissection is complete, set the length with 'proto_item_set_len()':
 
 The "ti" argument is the value returned by the call that added the item
 to the tree, and the "length" argument is the length of the item.
+
+All available protocol tree functions are declared in epan/proto.h, with
+their documentation. The details of these functions and their parameters
+are described below.
 
 proto_tree_add_item()
 ---------------------
@@ -1726,11 +1500,15 @@ order.
 For string fields, the encoding specifies the character set used for the
 string and the way individual code points in that character set are
 encoded. For FT_UINT_STRING fields, the byte order of the count must be
-specified; for UCS-2 and UTF-16, the byte order of the encoding must be
-specified (for counted UCS-2 and UTF-16 strings, the byte order of the
-count and the 16-bit values in the string must be the same). In other
-cases, ENC_NA should be used. The character encodings that are
-currently supported are:
+specified. For UTF-16, UCS-2, and UCS-4, the byte order of the encoding
+must be specified, and optionally ENC_BOM can also be indicated to detect
+an initial BYTE ORDER MARK (the specified value is used if the field does
+not begin with a BOM.) For counted UTF-16, UCS-2, and UCS-4 strings, the
+byte order of the count and the characters in the string must be the same,
+unless a BOM overrides the value for the characters. In other cases the
+string encoding has no endianness or the endianness is implicitly specified
+and nothing should be used. The character encodings that are currently
+supported are:
 
     ENC_ASCII - ASCII (currently treated as UTF-8; in the future,
         all bytes with the 8th bit set will be treated as
@@ -1739,7 +1517,7 @@ currently supported are:
     ENC_UTF_16 - UTF-16-encoded Unicode, with surrogate pairs
     ENC_UCS_2 - UCS-2-encoded subset of Unicode, with no surrogate pairs
         and thus no code points above 0xFFFF
-    ENC_UCS_4 - UCS-4-encoded Unicode
+    ENC_UCS_4 - UCS-4-encoded Unicode (aka UTF-32)
     ENC_WINDOWS_1250 - Windows-1250 code page
     ENC_WINDOWS_1251 - Windows-1251 code page
     ENC_WINDOWS_1252 - Windows-1252 code page
@@ -1759,11 +1537,16 @@ currently supported are:
     ENC_ISO_8859_14 - ISO 8859-14
     ENC_ISO_8859_15 - ISO 8859-15
     ENC_ISO_8859_16 - ISO 8859-16
-    ENC_WINDOWS_1250 - Windows-1250
     ENC_3GPP_TS_23_038_7BITS - GSM 7 bits alphabet as described
         in 3GPP TS 23.038
+    ENC_3GPP_TS_23_038_7BITS_UNPACKED - GSM 7 bits alphabet where each
+        7 bit character occupies a distinct octet
+    ENC_ETSI_TS_102_221_ANNEX_A - Coding scheme for SIM cards with GSM 7 bit
+        alphabet, UCS-2 characters, or a mixture of the two as described
+        in ETSI TS 102 221 Annex A
     ENC_EBCDIC - EBCDIC
     ENC_EBCDIC_CP037 - EBCDIC code page 037
+    ENC_EBCDIC_CP500 - EBCDIC code page 500
     ENC_MAC_ROMAN - MAC ROMAN
     ENC_CP437 - DOS code page 437
     ENC_CP855 - DOS code page 855
@@ -1773,6 +1556,12 @@ currently supported are:
     ENC_BCD_DIGITS_0_9 - packed BCD (one digit per nibble), digits 0-9
     ENC_KEYPAD_ABC_TBCD - keypad-with-a/b/c "telephony packed BCD" = 0-9, *, #, a, b, c
     ENC_KEYPAD_BC_TBCD - keypad-with-B/C "telephony packed BCD" = 0-9, B, C, *, #
+    ENC_GB18030 - GB 18030
+    ENC_EUC_KR - EUC-KR
+    ENC_DECT_STANDARD_8BITS - DECT standard 8 bit character set as defined in
+        ETSI EN 300 175-5
+    ENC_DECT_STANDARD_4BITS_TBCD - DECT standard 4 bit character set "telephony
+        packet BCD" = 0-9, 0xb = SPACE
 
 Other encodings will be added in the future.
 
@@ -1799,7 +1588,7 @@ encodings that are currently supported are:
         and z/Architecture epoch (1900-01-01 00:00:00 GMT).
 
     ENC_TIME_RTPS - 8 bytes; the first 4 bytes are seconds since the UN*X
-        epoch and the next 4 bytes are are 1/2^32's of a second since that
+        epoch and the next 4 bytes are 1/2^32's of a second since that
         second. (I.e., it's the offspring of a mating between UN*X time and
         NTP time). It's used by the Object Management Group's Real-Time
         Publish-Subscribe Wire Protocol for the Data Distribution Service.
@@ -1814,15 +1603,28 @@ encodings that are currently supported are:
     ENC_TIME_MSECS - 6 to 8 bytes, representing a value in milliseconds
         since the UN*X epoch.
 
+    ENC_TIME_USECS - 8 bytes, representing a value in microseconds since
+        the UN*X epoch.
+
+    ENC_TIME_NSECS - 8 bytes, representing a value in nanoseconds since
+        the UN*X epoch.
+
     ENC_TIME_SECS_NTP - 4 bytes, representing a count of seconds since
-        the NTP epoch. (I.e., seconds since the NTP epoch.)
+        the NTP epoch.
 
     ENC_TIME_RFC_3971 - 8 bytes, representing a count of 1/64ths of a
         second since the UN*X epoch; see section 5.3.1 "Timestamp Option"
         in RFC 3971.
 
     ENC_TIME_MSEC_NTP - 4-8 bytes, representing a count of milliseconds since
-        the NTP epoch. (I.e., milliseconds since the NTP epoch.)
+        the NTP epoch.
+
+    ENC_TIME_MIP6 - 8 bytes; the first 48 bits are seconds since the UN*X epoch
+        and the remaining 16 bits indicate the number of 1/65536's of a second
+        since that second.
+
+    ENC_TIME_CLASSIC_MAC_OS_SECS - 4-8 bytes, representing a count of seconds
+        since January 1, 1904, 00:00:00 UTC.
 
 For FT_RELATIVE_TIME fields, the encoding specifies the form in which
 the time stamp is specified, as well as its byte order. The time stamp
@@ -1840,6 +1642,10 @@ encodings that are currently supported are:
     ENC_TIME_SECS - 4 to 8 bytes, representing a value in seconds.
 
     ENC_TIME_MSECS - 6 to 8 bytes, representing a value in milliseconds.
+
+    ENC_TIME_USECS - 8 bytes, representing a value in microseconds.
+
+    ENC_TIME_NSECS - 8 bytes, representing a value in nanoseconds.
 
 For other types, there is no support for proto_tree_add_item().
 
@@ -1893,7 +1699,7 @@ in the past.
 proto_tree_add_item_ret_XXX()
 ------------------------------
 proto_tree_add_item_ret_XXX is used when you want the displayed value returned
-for futher processing only integer and unsigned integer types up to 32 bits are
+for further processing only integer and unsigned integer types up to 32 bits are
 supported usage of proper FT_ is checked.
 
 proto_tree_add_XXX_item()
@@ -2470,7 +2276,7 @@ Where:
     next_tvb is the new TVBUFF_SUBSET.
 
     offset is the byte offset of 'tvb' at which the new tvbuff
-    should start. The first byte is the 0th byte.
+    should start. The first byte is the byte at offset 0.
 
 To create a new TVBUFF_SUBSET that begins at a specified offset in a
 parent tvbuff, with a specified number of bytes in the payload, the
@@ -2485,7 +2291,7 @@ Where:
     next_tvb is the new TVBUFF_SUBSET.
 
     offset is the byte offset of 'tvb' at which the new tvbuff
-    should start. The first byte is the 0th byte.
+    should start. The first byte is the byte at offset 0.
 
     reported_length is the number of bytes that the current protocol
     says should be in the payload.
@@ -2504,7 +2310,7 @@ Where:
     next_tvb is the new TVBUFF_SUBSET.
 
     offset is the byte offset of 'tvb' at which the new tvbuff
-    should start. The first byte is the 0th byte.
+    should start. The first byte is the byte at offset 0.
 
     length is the number of bytes in the new TVBUFF_SUBSET. A length
     argument of -1 says to use as many bytes as are available in
@@ -2542,7 +2348,7 @@ table using their unique identifier using one of the following APIs:
     table, but it lets the user add it from the command line or, in Wireshark,
     through the "Decode As" UI.
 
-Then when the dissector hits the common identifier field, it will useone of the
+Then when the dissector hits the common identifier field, it will use one of the
 following APIs to invoke the subdissector:
 
     int dissector_try_uint(dissector_table_t sub_dissectors,
@@ -2649,11 +2455,11 @@ ServerA:1000 to ClientA:2000 and the packet from ClientA:2000 to ServerA:1000.
 
 2.2.1 Conversation Routines
 
-There are seven routines that you will use to work with a conversation:
-conversation_new, find_conversation, find_or_create_conversation,
+There are nine routines that you will use to work with a conversation:
+conversation_new, conversation_new_full, find_conversation,
+find_conversation_full, find_or_create_conversation,
 conversation_add_proto_data, conversation_get_proto_data,
 conversation_delete_proto_data, and conversation_set_dissector.
-
 
 2.2.1.1 The conversation_init function.
 
@@ -2678,7 +2484,7 @@ function. The ptype variable is used to differentiate between
 conversations over different protocols, i.e. TCP and UDP. The options
 variable is used to define a conversation that will accept any destination
 address and/or port. Set options = 0 if the destination port and address
-are know when conversation_new is called. See section 2.4 for more
+are known when conversation_new is called. See section 2.4 for more
 information on usage of the options parameter.
 
 The conversation_new prototype:
@@ -2690,7 +2496,7 @@ Where:
     guint32 setup_frame = The lowest numbered frame for this conversation
     address* addr1      = first data packet address
     address* addr2      = second data packet address
-    port_type ptype     = port type, this is defined in packet.h
+    endpoint_type etype = endpoint type, defined in conversation.h
     guint32 port1       = first data packet port
     guint32 port2       = second data packet port
     guint options       = conversation options, NO_ADDR2 and/or NO_PORT2
@@ -2715,7 +2521,25 @@ packet indicates that, later in the capture, a conversation will be
 created using certain addresses and ports, in the case where the packet
 doesn't specify the addresses and ports of both sides.
 
-2.2.1.3 The find_conversation function.
+2.2.1.3 The conversation_new_full function.
+
+This routine will create a new conversation based upon an arbitrary
+lists of elements. Elements can be addresses, strings, unsigned
+integers, or unsigned 64-bit integers. Unlike conversation_new, element
+lists are matched strictly; wildcards aren't (yet) supported.
+
+The conversation_new_full prototype:
+    conversation_t *conversation_new_full(const guint32 setup_frame,
+        conversation_element_t *elements);
+
+Where:
+    guint32 setup_frame              = The lowest numbered frame for
+        this conversation
+    conversation_element_t *elements = An array of data types and
+        values which identify this conversation. The array MUST be
+        terminated with a CE_ENDPOINT element.
+
+2.2.1.4 The find_conversation function.
 
 Call this routine to look up a conversation. If no conversation is found,
 the routine will return a NULL value.
@@ -2764,7 +2588,24 @@ NO_ADDR_B|NO_PORT_B, the "addr_b" address will be treated as matching
 any "wildcarded" address and the "port_b" port will be treated as
 matching any "wildcarded" port.
 
-2.2.1.4 The find_conversation_pinfo function.
+2.2.1.5 The find_conversation_full function.
+
+Call this routine to look up a conversation based on an element list. If
+no conversation is found, the routine will return a NULL value.
+
+The find_conversation_full prototype:
+
+    conversation_t *find_conversation_full(guint32 frame_num,
+        conversation_element_t *elements);
+
+Where:
+    guint32 setup_frame              = The lowest numbered frame for
+        this conversation
+    conversation_element_t *elements = An array of data types and
+        values which identify this conversation. The array MUST be
+        terminated with a CE_ENDPOINT element.
+
+2.2.1.6 The find_conversation_pinfo function.
 
 This convenience function will find an existing conversation (by calling
 find_conversation())
@@ -2778,9 +2619,11 @@ Where:
     const guint options = conversation options, NO_ADDR_B and/or NO_PORT_B
 
 The frame number and the addresses necessary for find_conversation() are
-taken from the pinfo structure (as is commonly done).
+taken from the addresses and ports in the pinfo structure,
+pinfo->conv_addr_port_endpoints if pinfo->use_conv_addr_port_endpoints is set, or
+pinfo->conv_elements if it is set.
 
-2.2.1.5 The find_or_create_conversation function.
+2.2.1.7 The find_or_create_conversation function.
 
 This convenience function will find an existing conversation (by calling
 find_conversation()) and, if a conversation does not already exist, create a
@@ -2797,8 +2640,7 @@ The frame number and the addresses necessary for find_conversation() and
 conversation_new() are taken from the pinfo structure (as is commonly done)
 and no 'options' are used.
 
-
-2.2.1.6 The conversation_add_proto_data function.
+2.2.1.8 The conversation_add_proto_data function.
 
 Once you have created a conversation with conversation_new, you can
 associate data with it using this function.
@@ -2824,7 +2666,7 @@ Using the protocol number allows several dissectors to
 associate data with a given conversation.
 
 
-2.2.1.7 The conversation_get_proto_data function.
+2.2.1.9 The conversation_get_proto_data function.
 
 After you have located a conversation with find_conversation, you can use
 this function to retrieve any data associated with it.
@@ -2843,7 +2685,7 @@ typically in the proto_register_XXXX portion of a dissector. The function
 returns a pointer to the data requested, or NULL if no data was found.
 
 
-2.2.1.8 The conversation_delete_proto_data function.
+2.2.1.10 The conversation_delete_proto_data function.
 
 After you are finished with a conversation, you can remove your association
 with this function. Please note that ONLY the conversation entry is
@@ -2862,7 +2704,7 @@ Where:
 is a unique protocol number created with proto_register_protocol,
 typically in the proto_register_XXXX portion of a dissector.
 
-2.2.1.9 The conversation_set_dissector function
+2.2.1.11 The conversation_set_dissector function
 
 This function sets the protocol dissector to be invoked whenever
 conversation parameters (addresses, port_types, ports, etc) are matched
@@ -3072,13 +2914,23 @@ an application cycle. By keeping track of the frame number a conversation
 was started in Wireshark can still tell these different protocols apart.
 
 The second argument to conversation_set_dissector is a dissector handle,
-which is created with a call to create_dissector_handle or
-register_dissector.
+which is created with a call to create_dissector_handle,
+register_dissector, or register_dissector_with_description.
+
+register_dissector_with_description takes as arguments a string giving a name
+for the dissector, a string with a human-readable summary of the dissector, a
+pointer to the dissector function, and a protocol ID as returned by
+proto_register_protocol.
+
+register_dissector takes as arguments a string giving a name for the
+dissector, a pointer to the dissector function, and a protocol ID
+as returned by proto_register_protocol.
 
 create_dissector_handle takes as arguments a pointer to the dissector
-function and a protocol ID as returned by proto_register_protocol;
-register_dissector takes as arguments a string giving a name for the
-dissector, a pointer to the dissector function, and a protocol ID.
+function and a protocol ID as returned by proto_register_protocol.
+It is recommended to use one of the above two functions instead of this one,
+since they allow the dissector to be referenced by name from the command line,
+by other dissectors via calls to find_dissector, etc.
 
 The protocol ID is the ID for the protocol dissected by the function.
 The function will not be called if the protocol has been disabled by the
@@ -3128,7 +2980,7 @@ proto_register_PROTOABBREV(void)
 {
     ...
 
-    sub_dissector_handle = create_dissector_handle(sub_dissector,
+    sub_dissector_handle = register_dissector("PROTOABBREV", sub_dissector,
         proto);
 
     ...
@@ -3223,7 +3075,7 @@ persistent data about the packet for the lifetime of the capture (file scope)
 and to exchange data between dissectors across a single packet (packet scope).
 It is also used to provide packet data for Decode As dialog (packet scope).
 
-These functions are delcared in <epan/proto_data.h>.
+These functions are declared in <epan/proto_data.h>.
 
 void
 p_add_proto_data(wmem_allocator_t *scope, packet_info *pinfo, int proto, guint32 key, void *proto_data)
@@ -3279,6 +3131,11 @@ routines -
 
     /* Register a preference with a character-string value. */
     void prefs_register_string_preference(module_t *module, const char *name,
+        const char *title, const char *description, char **var)
+
+    /* Register a preference with a password (a character-string) value. */
+    /* The value is hold during runtime, only in memory. It is never written to disk */
+    void prefs_register_password_preference(module_t *module, const char *name,
         const char *title, const char *description, char **var)
 
     /* Register a preference with a file name (string) value.
@@ -3392,17 +3249,17 @@ dissect_PROTO_tcp when the reassembly is complete and from
 dissect_PROTO_udp (or dissect_PROTO_other).
 
 To register the distinct dissector functions, consider the following
-example, stolen from packet-dns.c:
+example, stolen from packet-hartip.c:
 
     #include "packet-tcp.h"
 
     dissector_handle_t hartip_tcp_handle;
     dissector_handle_t hartip_udp_handle;
 
-    hartip_tcp_handle = create_dissector_handle(dissect_hartip_tcp, proto_hartip);
-    hartip_udp_handle = create_dissector_handle(dissect_hartip_udp, proto_hartip);
+    hartip_udp_handle = register_dissector_with_description("hart_ip", "HART-IP over UDP", dissect_hartip_udp, proto_hartip);
+    hartip_tcp_handle = register_dissector_with_description("hart_ip.tcp", "HART-IP over TCP", dissect_hartip_tcp, proto_hartip);
 
-    dissector_add_uint("udp.port", HARTIP_PORT, hartip_udp_handle);
+    dissector_add_uint_with_preference("udp.port", HARTIP_PORT, hartip_udp_handle);
     dissector_add_uint_with_preference("tcp.port", HARTIP_PORT, hartip_tcp_handle);
 
 The dissect_hartip_udp function does very little work and calls
@@ -3517,8 +3374,7 @@ static int dissect_cstr(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, 
         len += 1; /* Add one for the '\0' */
 
         if (tree) {
-            proto_tree_add_item(tree, hf_cstring, tvb, offset, len,
-                ENC_ASCII|ENC_NA);
+            proto_tree_add_item(tree, hf_cstring, tvb, offset, len, ENC_ASCII);
         }
         offset += (guint)len;
     }
@@ -3551,11 +3407,11 @@ example using UDP and TCP dissection, stolen from packet-dnp.c:
     dissector_handle_t dnp3_tcp_handle;
     dissector_handle_t dnp3_udp_handle;
 
-    dnp3_tcp_handle = create_dissector_handle(dissect_dnp3_tcp, proto_dnp3);
-    dnp3_udp_handle = create_dissector_handle(dissect_dnp3_udp, proto_dnp3);
+    dnp3_tcp_handle = register_dissector("dnp3.tcp", dissect_dnp3_tcp, proto_dnp3);
+    dnp3_udp_handle = register_dissector("dnp3.udp", dissect_dnp3_udp, proto_dnp3);
 
-    dissector_add_uint("tcp.port", TCP_PORT_DNP, dnp3_tcp_handle);
-    dissector_add_uint("udp.port", UDP_PORT_DNP, dnp3_udp_handle);
+    dissector_add_uint_with_preference("tcp.port", TCP_PORT_DNP, dnp3_tcp_handle);
+    dissector_add_uint_with_preference("udp.port", UDP_PORT_DNP, dnp3_udp_handle);
 
 Both dissect_dnp3_tcp and dissect_dnp3_udp call tcp_dissect_pdus and
 udp_dissect_pdus respectively, with a reference to the same callbacks which
@@ -3621,7 +3477,7 @@ The arguments to udp_dissect_pdus are:
 
 2.9 PINOs (Protocols in name only)
 
-For the typical dissector there is a 1-1 relationship between it and it's
+For the typical dissector there is a 1-1 relationship between it and its
 protocol. However, there are times when a protocol needs multiple "names"
 because it has multiple dissection functions going into the same dissector
 table. The multiple names removes confusion when picking dissection through

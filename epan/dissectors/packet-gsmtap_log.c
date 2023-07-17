@@ -18,6 +18,8 @@
 void proto_register_gsmtap_log(void);
 void proto_reg_handoff_gsmtap_log(void);
 
+static dissector_handle_t gsmtap_log_handle;
+
 static int proto_gsmtap_log = -1;
 
 static int hf_log_ident = -1;
@@ -58,24 +60,24 @@ dissect_gsmtap_log(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void * d
 
 	proto_tree_add_item(log_tree, hf_log_ts, tvb, offset, 8, ENC_TIME_SECS_USECS|ENC_BIG_ENDIAN);
 	offset += 8;
-	proto_tree_add_item_ret_string(log_tree, hf_log_ident, tvb, offset, 16, ENC_NA, wmem_packet_scope(), &log_ident);
+	proto_tree_add_item_ret_string(log_tree, hf_log_ident, tvb, offset, 16, ENC_NA, pinfo->pool, &log_ident);
 	offset += 16;
 	proto_tree_add_item_ret_uint(log_tree, hf_log_pid, tvb, offset, 4, ENC_BIG_ENDIAN, &log_pid);
 	offset += 4;
 	proto_tree_add_item_ret_uint(log_tree, hf_log_level, tvb, offset++, 1, ENC_NA, &log_level);
 	offset += 3; /* pad octets */
-	proto_tree_add_item_ret_string(log_tree, hf_log_subsys, tvb, offset, 16, ENC_NA, wmem_packet_scope(), &log_subsys);
+	proto_tree_add_item_ret_string(log_tree, hf_log_subsys, tvb, offset, 16, ENC_NA, pinfo->pool, &log_subsys);
 	offset += 16;
-	proto_tree_add_item_ret_string(log_tree, hf_log_file_name, tvb, offset, 32, ENC_NA, wmem_packet_scope(), &log_src_fname);
+	proto_tree_add_item_ret_string(log_tree, hf_log_file_name, tvb, offset, 32, ENC_NA, pinfo->pool, &log_src_fname);
 	offset += 32;
 	proto_tree_add_item_ret_uint(log_tree, hf_log_file_line, tvb, offset, 4, ENC_BIG_ENDIAN, &log_src_line);
 	offset += 4;
 
 	/* actual log message */
 	log_str_len = tvb_captured_length_remaining(tvb, offset);
-	proto_tree_add_item(log_tree, hf_log_string, tvb, offset, log_str_len, ENC_ASCII|ENC_NA);
+	proto_tree_add_item(log_tree, hf_log_string, tvb, offset, log_str_len, ENC_ASCII);
 
-	log_str = tvb_format_stringzpad_wsp(wmem_packet_scope(), tvb, offset, log_str_len);
+	log_str = tvb_format_stringzpad_wsp(pinfo->pool, tvb, offset, log_str_len);
 	col_append_str(pinfo->cinfo, COL_INFO, log_str);
 
 	proto_item_append_text(ti, " %s(%u): %s/%d: %s:%u %s",
@@ -113,14 +115,13 @@ proto_register_gsmtap_log(void)
 	proto_gsmtap_log = proto_register_protocol("GSMTAP libosmocore logging", "GSMTAP-LOG", "gsmtap_log");
 	proto_register_field_array(proto_gsmtap_log, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
+
+	gsmtap_log_handle = register_dissector("gsmtap_log", dissect_gsmtap_log, proto_gsmtap_log);
 }
 
 void
 proto_reg_handoff_gsmtap_log(void)
 {
-	dissector_handle_t gsmtap_log_handle;
-
-	gsmtap_log_handle = create_dissector_handle(dissect_gsmtap_log, proto_gsmtap_log);
 	dissector_add_uint("gsmtap.type", GSMTAP_TYPE_OSMOCORE_LOG, gsmtap_log_handle);
 }
 

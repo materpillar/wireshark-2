@@ -108,6 +108,8 @@
 void proto_register_igmp(void);
 void proto_reg_handoff_igmp(void);
 
+static dissector_handle_t igmp_handle, igmpv0_handle, igmpv1_handle, igmpv2_handle;
+
 static int proto_igmp = -1;
 static int hf_type = -1;
 static int hf_reserved = -1;
@@ -311,7 +313,7 @@ dissect_igmp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int* of
 	igmp_tree = proto_item_add_subtree(ti, ett_igmp);
 
 	*type = tvb_get_guint8(tvb, 0);
-	col_add_fstr(pinfo->cinfo, COL_INFO, "%s", val_to_str(*type, commands, "Unknown Type:0x%02x"));
+	col_add_str(pinfo->cinfo, COL_INFO, val_to_str(*type, commands, "Unknown Type:0x%02x"));
 
 	/* version of IGMP protocol */
 	ti = proto_tree_add_uint(igmp_tree, hf_version, tvb, 0, 0, version);
@@ -423,7 +425,7 @@ dissect_v3_group_record(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 
 	tree = proto_tree_add_subtree_format(parent_tree, tvb, offset, -1,
 			ett_group_record, &item, "Group Record : %s  %s",
-			tvb_ip_to_str(tvb, offset+4),
+			tvb_ip_to_str(pinfo->pool, tvb, offset+4),
 			val_to_str_const(tvb_get_guint8(tvb, offset), vs_record_type,"")
 		);
 
@@ -444,7 +446,7 @@ dissect_v3_group_record(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 
 	/* multicast address */
 	proto_tree_add_item(tree, hf_maddr, tvb, offset, 4, ENC_BIG_ENDIAN);
-	maddr_str = tvb_ip_to_str(tvb, offset);
+	maddr_str = tvb_ip_to_str(pinfo->pool, tvb, offset);
 	offset += 4;
 
 	if (num == 0) {
@@ -508,7 +510,7 @@ dissect_v3_group_record(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 	/* source addresses */
 	while(num--){
 		col_append_fstr(pinfo->cinfo, COL_INFO, "%s%s",
-				tvb_ip_to_str(tvb, offset), (num?", ":"}"));
+				tvb_ip_to_str(pinfo->pool, tvb, offset), (num?", ":"}"));
 
 		proto_tree_add_item(tree, hf_saddr, tvb, offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
@@ -584,7 +586,7 @@ dissect_igmp_v3_query(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree
 		col_append_str(pinfo->cinfo, COL_INFO, ", general");
 	} else {
 		col_append_fstr(pinfo->cinfo, COL_INFO, ", specific for group %s",
-			tvb_ip_to_str(tvb, offset));
+			tvb_ip_to_str(pinfo->pool, tvb, offset));
 	}
 	offset +=4;
 
@@ -603,7 +605,7 @@ dissect_igmp_v3_query(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree
 	offset += 2;
 
 	while(num--){
-		col_append_fstr(pinfo->cinfo, COL_INFO, "%s%s", tvb_ip_to_str(tvb, offset), (num?", ":"}"));
+		col_append_fstr(pinfo->cinfo, COL_INFO, "%s%s", tvb_ip_to_str(pinfo->pool, tvb, offset), (num?", ":"}"));
 		proto_tree_add_item(tree, hf_saddr, tvb, offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
 	}
@@ -641,13 +643,13 @@ dissect_igmp_v2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void
 		switch(type)
 		{
 		case IGMP_V2_LEAVE_GROUP:
-			col_append_fstr(pinfo->cinfo, COL_INFO, " %s", tvb_ip_to_str(tvb, offset));
+			col_append_fstr(pinfo->cinfo, COL_INFO, " %s", tvb_ip_to_str(pinfo->pool, tvb, offset));
 			break;
 		case IGMP_V1_HOST_MEMBERSHIP_QUERY:
-			col_append_fstr(pinfo->cinfo, COL_INFO, ", specific for group %s", tvb_ip_to_str(tvb, offset));
+			col_append_fstr(pinfo->cinfo, COL_INFO, ", specific for group %s", tvb_ip_to_str(pinfo->pool, tvb, offset));
 			break;
 		default: /* IGMP_V2_MEMBERSHIP_REPORT is the only case left */
-			col_append_fstr(pinfo->cinfo, COL_INFO, " group %s", tvb_ip_to_str(tvb, offset));
+			col_append_fstr(pinfo->cinfo, COL_INFO, " group %s", tvb_ip_to_str(pinfo->pool, tvb, offset));
 			break;
 		}
 	}
@@ -768,7 +770,7 @@ dissect_igmp_mtrace(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
 	type = tvb_get_guint8(tvb, offset);
 	if (type == IGMP_TRACEROUTE_RESPONSE) {
 		int i = (tvb_reported_length_remaining(tvb, offset) - IGMP_TRACEROUTE_HDR_LEN) / IGMP_TRACEROUTE_RSP_LEN;
-		g_snprintf(buf, sizeof buf, ", %d block%s", i, plurality(i, "", "s"));
+		snprintf(buf, sizeof buf, ", %d block%s", i, plurality(i, "", "s"));
 		typestr = "Traceroute Response";
 		blocks = buf;
 	} else if (tvb_reported_length_remaining(tvb, offset) == IGMP_TRACEROUTE_HDR_LEN)
@@ -826,8 +828,8 @@ dissect_igmp_mtrace(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
 
 		block_tree = proto_tree_add_subtree_format(tree, tvb, offset, IGMP_TRACEROUTE_RSP_LEN,
 			ett_mtrace_block, NULL, "Response data block: %s -> %s,  Proto: %s,  Forwarding Code: %s",
-			tvb_ip_to_str(tvb, offset + 4),
-			tvb_ip_to_str(tvb, offset + 8),
+			tvb_ip_to_str(pinfo->pool, tvb, offset + 4),
+			tvb_ip_to_str(pinfo->pool, tvb, offset + 8),
 			val_to_str_const(tvb_get_guint8(tvb, offset + 28), mtrace_rtg_vals, "Unknown"),
 			val_to_str_const(tvb_get_guint8(tvb, offset + 31), mtrace_fwd_code_vals, "Unknown"));
 
@@ -1094,30 +1096,29 @@ proto_register_igmp(void)
 
 	subdissector_table = register_dissector_table("igmp.type", "IGMP commands", proto_igmp, FT_UINT32, BASE_HEX);
 
+	igmp_handle = register_dissector("igmp", dissect_igmp, proto_igmp);
+	igmpv0_handle = register_dissector("igmp_v0", dissect_igmp_v0, proto_igmp);
+	igmpv1_handle = register_dissector("igmp_v1", dissect_igmp_v1, proto_igmp);
+	igmpv2_handle = register_dissector("igmp_v2", dissect_igmp_v2, proto_igmp);
 }
 
 void
 proto_reg_handoff_igmp(void)
 {
-	dissector_handle_t igmp_handle, igmpv0_handle, igmpv1_handle, igmpv2_handle,
-						igmp_mquery_handle, igmp_mtrace_handle, igmp_report_handle;
+	dissector_handle_t igmp_mquery_handle, igmp_mtrace_handle, igmp_report_handle;
 	range_t *igmpv0_range = NULL;
 
-	igmp_handle = create_dissector_handle(dissect_igmp, proto_igmp);
 	dissector_add_uint("ip.proto", IP_PROTO_IGMP, igmp_handle);
 
 	/* IGMP v0 */
 	range_convert_str(NULL, &igmpv0_range, "0-15", 15);
-	igmpv0_handle = create_dissector_handle(dissect_igmp_v0, proto_igmp);
 	dissector_add_uint_range("igmp.type", igmpv0_range, igmpv0_handle);
 	wmem_free(NULL, igmpv0_range);
 
 	/* IGMP v1 */
-	igmpv1_handle = create_dissector_handle(dissect_igmp_v1, proto_igmp);
 	dissector_add_uint("igmp.type", IGMP_V1_HOST_MEMBERSHIP_REPORT, igmpv1_handle);
 
 	/* IGMP v2 */
-	igmpv2_handle = create_dissector_handle(dissect_igmp_v2, proto_igmp);
 	dissector_add_uint("igmp.type", IGMP_V2_MEMBERSHIP_REPORT, igmpv2_handle);
 	dissector_add_uint("igmp.type", IGMP_V2_LEAVE_GROUP, igmpv2_handle);
 

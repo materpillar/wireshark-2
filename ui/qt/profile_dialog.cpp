@@ -25,7 +25,7 @@
 
 #include "profile_dialog.h"
 #include <ui_profile_dialog.h>
-#include "wireshark_application.h"
+#include "main_application.h"
 #include <ui/qt/utils/color_utils.h>
 #include <ui/qt/simple_dialog.h>
 
@@ -58,7 +58,7 @@ ProfileDialog::ProfileDialog(QWidget *parent) :
 {
     pd_ui_->setupUi(this);
     loadGeometry();
-    setWindowTitle(wsApp->windowTitleString(tr("Configuration Profiles")));
+    setWindowTitle(mainApp->windowTitleString(tr("Configuration Profiles")));
 
     ok_button_ = pd_ui_->buttonBox->button(QDialogButtonBox::Ok);
 
@@ -81,19 +81,19 @@ ProfileDialog::ProfileDialog(QWidget *parent) :
     export_button_ = pd_ui_->buttonBox->addButton(tr("Export", "noun"), QDialogButtonBox::ActionRole);
 
     QMenu * importMenu = new QMenu(import_button_);
-    QAction * entry = importMenu->addAction(tr("from zip file"));
-    connect(entry, &QAction::triggered, this, &ProfileDialog::importFromZip);
-    entry = importMenu->addAction(tr("from directory"));
-    connect(entry, &QAction::triggered, this, &ProfileDialog::importFromDirectory);
+    QAction * entry = importMenu->addAction(tr("From Zip File..."));
+    connect(entry, &QAction::triggered, this, &ProfileDialog::importFromZip, Qt::QueuedConnection);
+    entry = importMenu->addAction(tr("From Directory..."));
+    connect(entry, &QAction::triggered, this, &ProfileDialog::importFromDirectory, Qt::QueuedConnection);
     import_button_->setMenu(importMenu);
 
     QMenu * exportMenu = new QMenu(export_button_);
-    export_selected_entry_ = exportMenu->addAction(tr("%Ln selected personal profile(s)", "", 0));
+    export_selected_entry_ = exportMenu->addAction(tr("%Ln Selected Personal Profile(s)...", "", 0));
     export_selected_entry_->setProperty(PROFILE_EXPORT_PROPERTY, PROFILE_EXPORT_SELECTED);
-    connect(export_selected_entry_, &QAction::triggered, this, &ProfileDialog::exportProfiles);
-    entry = exportMenu->addAction(tr("all personal profiles"));
+    connect(export_selected_entry_, &QAction::triggered, this, &ProfileDialog::exportProfiles, Qt::QueuedConnection);
+    entry = exportMenu->addAction(tr("All Personal Profiles..."));
     entry->setProperty(PROFILE_EXPORT_PROPERTY, PROFILE_EXPORT_ALL);
-    connect(entry, &QAction::triggered, this, &ProfileDialog::exportProfiles);
+    connect(entry, &QAction::triggered, this, &ProfileDialog::exportProfiles, Qt::QueuedConnection);
     export_button_->setMenu(exportMenu);
 #else
     connect(import_button_, &QPushButton::clicked, this, &ProfileDialog::importFromDirectory);
@@ -106,10 +106,10 @@ ProfileDialog::ProfileDialog(QWidget *parent) :
 
     pd_ui_->cmbProfileTypes->addItems(ProfileSortModel::filterTypes());
 
-    connect (pd_ui_->cmbProfileTypes, SIGNAL(currentTextChanged(const QString &)),
-              this, SLOT(filterChanged(const QString &)));
-    connect (pd_ui_->lineProfileFilter, SIGNAL(textChanged(const QString &)),
-              this, SLOT(filterChanged(const QString &)));
+    connect (pd_ui_->cmbProfileTypes, &QComboBox::currentTextChanged,
+              this, &ProfileDialog::filterChanged);
+    connect (pd_ui_->lineProfileFilter, &QLineEdit::textChanged,
+              this, &ProfileDialog::filterChanged);
 
     currentItemChanged();
 
@@ -180,7 +180,7 @@ int ProfileDialog::execAction(ProfileDialog::ProfileAction profile_action)
         break;
     case DeleteCurrentProfile:
         if (delete_current_profile()) {
-            wsApp->setConfigurationProfile (Q_NULLPTR);
+            mainApp->setConfigurationProfile (Q_NULLPTR);
         }
         break;
     }
@@ -293,7 +293,7 @@ void ProfileDialog::updateWidgets()
         /* multiple profiles are being selected, copy is no longer allowed */
         pd_ui_->copyToolButton->setEnabled(false);
 
-        msg = tr("%Ln selected personal profile(s)", "", user_profiles);
+        msg = tr("%Ln Selected Personal Profile(s)...", "", user_profiles);
         pd_ui_->hintLabel->setText(msg);
 #ifdef HAVE_MINIZIP
         export_selected_entry_->setText(msg);
@@ -311,7 +311,7 @@ void ProfileDialog::updateWidgets()
             pd_ui_->hintLabel->setToolTip(index.data(Qt::ToolTipRole).toString());
 
             if (! index.data(ProfileModel::DATA_IS_GLOBAL).toBool() && ! index.data(ProfileModel::DATA_IS_DEFAULT).toBool())
-                msg = tr("%Ln selected personal profile(s)", "", 1);
+                msg = tr("%Ln Selected Personal Profile(s)...", "", 1);
         }
 
         pd_ui_->copyToolButton->setEnabled(true);
@@ -477,7 +477,7 @@ void ProfileDialog::on_buttonBox_accepted()
 
     if (write_recent) {
         /* Get the current geometry, before writing it to disk */
-        wsApp->emitAppSignal(WiresharkApplication::ProfileChanging);
+        mainApp->emitAppSignal(MainApplication::ProfileChanging);
 
         /* Write recent file for current profile now because
          * the profile may be renamed in apply_profile_changes() */
@@ -513,11 +513,11 @@ void ProfileDialog::on_buttonBox_accepted()
 
     if (profileName.length() > 0 && model_->findByName(profileName) >= 0) {
         // The new profile exists, change.
-        wsApp->setConfigurationProfile (profileName.toUtf8().constData(), FALSE);
+        mainApp->setConfigurationProfile (profileName.toUtf8().constData(), FALSE);
     } else if (!model_->activeProfile().isValid()) {
         // The new profile does not exist, and the previous profile has
         // been deleted.  Change to the default profile.
-        wsApp->setConfigurationProfile (Q_NULLPTR, FALSE);
+        mainApp->setConfigurationProfile (Q_NULLPTR, FALSE);
     }
 }
 
@@ -530,7 +530,7 @@ void ProfileDialog::on_buttonBox_rejected()
 
 void ProfileDialog::on_buttonBox_helpRequested()
 {
-    wsApp->helpTopicAction(HELP_CONFIG_PROFILES_DIALOG);
+    mainApp->helpTopicAction(HELP_CONFIG_PROFILES_DIALOG);
 }
 
 void ProfileDialog::dataChanged(const QModelIndex &)
@@ -580,8 +580,9 @@ void ProfileDialog::exportProfiles(bool exportAllPersonalProfiles)
     {
         foreach (QModelIndex idx, selectedProfiles())
         {
-            if (! idx.data(ProfileModel::DATA_IS_GLOBAL).toBool() && ! idx.data(ProfileModel::DATA_IS_DEFAULT).toBool())
-                items << idx;
+            QModelIndex baseIdx = sort_model_->index(idx.row(), ProfileModel::COL_NAME);
+            if (! baseIdx.data(ProfileModel::DATA_IS_GLOBAL).toBool() && ! baseIdx.data(ProfileModel::DATA_IS_DEFAULT).toBool())
+                items << sort_model_->mapToSource(baseIdx);
             else
                 skipped++;
         }
@@ -615,7 +616,7 @@ void ProfileDialog::exportProfiles(bool exportAllPersonalProfiles)
         QString err;
         if (model_->exportProfiles(zipFile, items, &err))
         {
-            QString msg = tr("%Ln profile(s) exported", "", items.count());
+            QString msg = tr("%Ln profile(s) exported", "", static_cast<int>(items.count()));
             if (skipped > 0)
                 msg.append(tr(", %Ln profile(s) skipped", "", skipped));
             QMessageBox::information(this, tr("Exporting profiles"), msg);
@@ -681,6 +682,8 @@ void ProfileDialog::finishImport(QFileInfo fi, int count, int skipped, QStringLi
         if (skipped > 0)
             msg.append(tr(", %Ln profile(s) skipped", "", skipped));
     }
+    QMessageBox msgBox(icon, tr("Importing profiles"), msg, QMessageBox::Ok, this);
+    msgBox.exec();
 
     storeLastDir(fi.absolutePath());
 
@@ -694,48 +697,7 @@ void ProfileDialog::finishImport(QFileInfo fi, int count, int skipped, QStringLi
         pd_ui_->profileTreeView->selectRow(idx.isValid() ? idx.row() : 0);
     }
 
-    QMessageBox msgBox(icon, tr("Importing profiles"), msg, QMessageBox::Ok, this);
-    msgBox.exec();
-
     updateWidgets();
-}
-
-QString ProfileDialog::lastOpenDir()
-{
-    QString result;
-
-    switch (prefs.gui_fileopen_style) {
-
-    case FO_STYLE_LAST_OPENED:
-        /* The user has specified that we should start out in the last directory
-           we looked in.  If we've already opened a file, use its containing
-           directory, if we could determine it, as the directory, otherwise
-           use the "last opened" directory saved in the preferences file if
-           there was one. */
-        /* This is now the default behaviour in file_selection_new() */
-        result = QString(get_last_open_dir());
-        break;
-
-    case FO_STYLE_SPECIFIED:
-        /* The user has specified that we should always start out in a
-           specified directory; if they've specified that directory,
-           start out by showing the files in that dir. */
-        if (prefs.gui_fileopen_dir[0] != '\0')
-            result = QString(prefs.gui_fileopen_dir);
-        break;
-    }
-
-    QDir ld(result);
-    if (ld.exists())
-        return result;
-
-    return QString();
-}
-
-void ProfileDialog::storeLastDir(QString dir)
-{
-    if (wsApp && dir.length() > 0)
-        wsApp->setLastOpenDir(dir.toUtf8().constData());
 }
 
 void ProfileDialog::resetTreeView()
@@ -760,8 +722,8 @@ void ProfileDialog::resetTreeView()
     QItemSelectionModel *selModel = pd_ui_->profileTreeView->selectionModel();
     connect(selModel, &QItemSelectionModel::currentChanged,
             this, &ProfileDialog::currentItemChanged, Qt::QueuedConnection);
-    connect(selModel, SIGNAL(selectionChanged(const QItemSelection &, const QItemSelection &)),
-            this, SLOT(selectionChanged()));
+    connect(selModel, &QItemSelectionModel::selectionChanged,
+            this, &ProfileDialog::selectionChanged);
 
     selectionChanged();
 
@@ -773,16 +735,3 @@ void ProfileDialog::resetTreeView()
         pd_ui_->profileTreeView->header()->setSectionResizeMode(ProfileModel::COL_NAME, QHeaderView::Stretch);
     }
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

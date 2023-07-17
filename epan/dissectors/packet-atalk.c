@@ -26,8 +26,7 @@
 #include <epan/address_types.h>
 #include <epan/to_str.h>
 #include <epan/expert.h>
-#include <epan/dissectors/packet-llc.h>
-#include <wiretap/wtap.h>
+#include "packet-llc.h"
 #include <epan/capture_dissectors.h>
 #include "packet-atalk.h"
 #include "packet-afp.h"
@@ -43,6 +42,14 @@ static gboolean atp_defragment = TRUE;
 
 static dissector_handle_t afp_handle;
 static dissector_handle_t afp_server_status_handle;
+static dissector_handle_t nbp_handle;
+static dissector_handle_t rtmp_request_handle;
+static dissector_handle_t atp_handle;
+static dissector_handle_t zip_ddp_handle;
+static dissector_handle_t rtmp_data_handle;
+static dissector_handle_t llap_handle;
+static capture_dissector_handle_t llap_cap_handle;
+
 
 static int proto_llap = -1;
 static int hf_llap_dst = -1;
@@ -228,7 +235,7 @@ static int hf_asp_size          = -1;
 typedef struct {
   guint32 conversation;
   guint8  src[4];
-  guint16 seq;
+  guint16 tid;
 } asp_request_key;
 
 typedef struct {
@@ -244,7 +251,7 @@ static gint  asp_equal (gconstpointer v, gconstpointer v2)
   const asp_request_key *val2 = (const asp_request_key*)v2;
 
   if (val1->conversation == val2->conversation &&
-      val1->seq == val2->seq &&
+      val1->tid == val2->tid &&
       !memcmp(val1->src, val2->src, 4)) {
     return 1;
   }
@@ -254,7 +261,7 @@ static gint  asp_equal (gconstpointer v, gconstpointer v2)
 static guint asp_hash  (gconstpointer v)
 {
   const asp_request_key *asp_key = (const asp_request_key*)v;
-  return asp_key->seq;
+  return asp_key->tid;
 }
 
 /* ------------------------------------ */
@@ -726,7 +733,7 @@ dissect_atp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
   guint            op;
   guint16          tid;
   guint8           query;
-  struct aspinfo   aspinfo;
+  struct atp_asp_dsi_info   atp_asp_dsi_info;
   tvbuff_t        *new_tvb       = NULL;
   gboolean         save_fragmented;
   gboolean         more_fragment = FALSE;
@@ -751,11 +758,11 @@ dissect_atp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 
   op = ctrlinfo >> 6;
 
-  aspinfo.reply   = (0x80 == (ctrlinfo & ATP_FUNCMASK))?1:0;
-  aspinfo.release = (0xC0 == (ctrlinfo & ATP_FUNCMASK))?1:0;
-  aspinfo.seq = tid;
-  aspinfo.code = 0;
-  query = (!aspinfo.reply && !aspinfo.release);
+  atp_asp_dsi_info.reply   = (0x80 == (ctrlinfo & ATP_FUNCMASK))?1:0;
+  atp_asp_dsi_info.release = (0xC0 == (ctrlinfo & ATP_FUNCMASK))?1:0;
+  atp_asp_dsi_info.tid = tid;
+  atp_asp_dsi_info.code = 0;
+  query = (!atp_asp_dsi_info.reply && !atp_asp_dsi_info.release);
 
   conversation = find_or_create_conversation(pinfo);
 
@@ -763,8 +770,8 @@ dissect_atp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
     asp_request_key request_key;
 
     request_key.conversation = conversation->conv_index;
-    memcpy(request_key.src, (!aspinfo.reply)?pinfo->src.data:pinfo->dst.data, 4);
-    request_key.seq = aspinfo.seq;
+    memcpy(request_key.src, (!atp_asp_dsi_info.reply)?pinfo->src.data:pinfo->dst.data, 4);
+    request_key.tid = atp_asp_dsi_info.tid;
 
     request_val = (asp_request_val *) wmem_map_lookup(atp_request_hash, &request_key);
 
@@ -793,7 +800,7 @@ dissect_atp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
     So it needs to keep the number of packets asked in request.
   */
 
-  if (aspinfo.reply) {
+  if (atp_asp_dsi_info.reply) {
     more_fragment = !(ATP_EOM & ctrlinfo) && request_val;
     frag_number = bitmap;
   }
@@ -807,7 +814,7 @@ dissect_atp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
   if (tree) {
     ti = proto_tree_add_item(tree, proto_atp, tvb, offset, -1, ENC_NA);
     atp_tree = proto_item_add_subtree(ti, ett_atp);
-    proto_item_set_len(atp_tree, aspinfo.release?8:ATP_HDRSIZE -1);
+    proto_item_set_len(atp_tree, atp_asp_dsi_info.release?8:ATP_HDRSIZE -1);
 
     info_item = proto_tree_add_item(atp_tree, hf_atp_ctrlinfo, tvb, offset, 1, ENC_BIG_ENDIAN);
     atp_info_tree = proto_item_add_subtree(info_item, ett_atp_info);
@@ -829,12 +836,12 @@ dissect_atp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
     }
     proto_tree_add_item(atp_tree, hf_atp_tid, tvb, offset +2, 2, ENC_BIG_ENDIAN);
 
-    if (aspinfo.release)
+    if (atp_asp_dsi_info.release)
       proto_tree_add_item(atp_tree, hf_atp_user_bytes, tvb, offset +4, 4, ENC_BIG_ENDIAN);
 
   }
 
-  if (aspinfo.release)
+  if (atp_asp_dsi_info.release)
     return tvb_captured_length(tvb);
 
   save_fragmented = pinfo->fragmented;
@@ -843,7 +850,7 @@ dissect_atp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
      asp doesn't fit very well here
      move asp back in atp?
   */
-  if (atp_defragment && aspinfo.reply && (more_fragment || frag_number != 0)) {
+  if (atp_defragment && atp_asp_dsi_info.reply && (more_fragment || frag_number != 0)) {
     fragment_head *fd_head;
     int hdr;
 
@@ -868,10 +875,10 @@ dissect_atp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
   if (new_tvb) {
     /* if port == 6 it's not an ASP packet but a ZIP packet */
     if (pinfo->srcport == 6 || pinfo->destport == 6 )
-      call_dissector_with_data(zip_atp_handle, new_tvb, pinfo, tree, &aspinfo);
+      call_dissector_with_data(zip_atp_handle, new_tvb, pinfo, tree, &atp_asp_dsi_info);
     else {
       /* XXX need a conversation_get_dissector function ? */
-      if (!aspinfo.reply && !conversation_get_dissector(conversation, pinfo->num)) {
+      if (!atp_asp_dsi_info.reply && !conversation_get_dissector(conversation, pinfo->num)) {
         dissector_handle_t sub;
 
         /* if it's a known ASP function call ASP dissector
@@ -888,11 +895,11 @@ dissect_atp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         else {
           sub = asp_handle;
         }
-        call_dissector_with_data(sub, new_tvb, pinfo, tree, &aspinfo);
+        call_dissector_with_data(sub, new_tvb, pinfo, tree, &atp_asp_dsi_info);
         conversation_set_dissector(conversation, sub);
       }
-      else if (!try_conversation_dissector(&pinfo->src, &pinfo->dst, conversation_pt_to_endpoint_type(pinfo->ptype),
-                                           pinfo->srcport, pinfo->destport, new_tvb,pinfo, tree, &aspinfo, 0)) {
+      else if (!try_conversation_dissector(&pinfo->src, &pinfo->dst, conversation_pt_to_conversation_type(pinfo->ptype),
+                                           pinfo->srcport, pinfo->destport, new_tvb,pinfo, tree, &atp_asp_dsi_info, 0)) {
         call_data_dissector(new_tvb, pinfo, tree);
 
       }
@@ -1000,8 +1007,8 @@ dissect_pap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 /* -----------------------------
    ASP protocol cf. inside appletalk chap. 11
 */
-static struct aspinfo *
-get_transaction(tvbuff_t *tvb, packet_info *pinfo, struct aspinfo *aspinfo)
+static asp_request_val *
+get_transaction(tvbuff_t *tvb, packet_info *pinfo, struct atp_asp_dsi_info *atp_asp_dsi_info)
 {
   conversation_t  *conversation;
   asp_request_key  request_key, *new_request_key;
@@ -1011,11 +1018,11 @@ get_transaction(tvbuff_t *tvb, packet_info *pinfo, struct aspinfo *aspinfo)
   conversation = find_or_create_conversation(pinfo);
 
   request_key.conversation = conversation->conv_index;
-  memcpy(request_key.src, (!aspinfo->reply)?pinfo->src.data:pinfo->dst.data, 4);
-  request_key.seq = aspinfo->seq;
+  memcpy(request_key.src, (!atp_asp_dsi_info->reply)?pinfo->src.data:pinfo->dst.data, 4);
+  request_key.tid = atp_asp_dsi_info->tid;
 
   request_val = (asp_request_val *) wmem_map_lookup(asp_request_hash, &request_key);
-  if (!request_val && !aspinfo->reply )  {
+  if (!request_val && !atp_asp_dsi_info->reply )  {
     fn = tvb_get_guint8(tvb, 0);
     new_request_key = wmem_new(wmem_file_scope(), asp_request_key);
     *new_request_key = request_key;
@@ -1026,18 +1033,15 @@ get_transaction(tvbuff_t *tvb, packet_info *pinfo, struct aspinfo *aspinfo)
     wmem_map_insert(asp_request_hash, new_request_key, request_val);
   }
 
-  if (!request_val)
-    return NULL;
-
-  aspinfo->command = request_val->value;
-  return aspinfo;
+  return request_val;
 }
 
 
 static int
 dissect_asp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-  struct aspinfo *aspinfo;
+  struct atp_asp_dsi_info *atp_asp_dsi_info;
+  asp_request_val *request_val;
   int             offset   = 0;
   proto_tree     *asp_tree = NULL;
   proto_item     *ti;
@@ -1050,23 +1054,24 @@ dissect_asp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "ASP");
   col_clear(pinfo->cinfo, COL_INFO);
 
-  aspinfo = get_transaction(tvb, pinfo, (struct aspinfo *)data);
-  if (!aspinfo)
+  atp_asp_dsi_info = (struct atp_asp_dsi_info *)data;
+  request_val = get_transaction(tvb, pinfo, atp_asp_dsi_info);
+  if (!request_val)
      return 0;
 
-  fn = (guint8) aspinfo->command;
+  fn = (guint8) request_val->value;
 
-  if (aspinfo->reply)
-    col_add_fstr(pinfo->cinfo, COL_INFO, "Reply tid %u",aspinfo->seq);
+  if (atp_asp_dsi_info->reply)
+    col_add_fstr(pinfo->cinfo, COL_INFO, "Reply tid %u",atp_asp_dsi_info->tid);
   else
     col_add_fstr(pinfo->cinfo, COL_INFO, "Function: %s  tid %u",
-                 val_to_str_ext(fn, &asp_func_vals_ext, "Unknown (0x%01x)"), aspinfo->seq);
+                 val_to_str_ext(fn, &asp_func_vals_ext, "Unknown (0x%01x)"), atp_asp_dsi_info->tid);
 
   if (tree) {
     ti = proto_tree_add_item(tree, proto_asp, tvb, offset, -1, ENC_NA);
     asp_tree = proto_item_add_subtree(ti, ett_asp);
   }
-  if (!aspinfo->reply) {
+  if (!atp_asp_dsi_info->reply) {
     tvbuff_t   *new_tvb;
     /* let the called deal with asp_tree == NULL */
 
@@ -1106,7 +1111,7 @@ dissect_asp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
       proto_tree_add_item(asp_tree, hf_asp_seq, tvb, offset, 2, ENC_BIG_ENDIAN);
       offset += 2;
       new_tvb = tvb_new_subset_remaining(tvb, offset);
-      call_dissector_with_data(afp_handle, new_tvb, pinfo, tree, aspinfo);
+      call_dissector_with_data(afp_handle, new_tvb, pinfo, tree, atp_asp_dsi_info);
       break;
     case ASPFUNC_WRTCONT:
       proto_tree_add_item(asp_tree, hf_asp_session_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1154,11 +1159,11 @@ dissect_asp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     case ASPFUNC_CMD:
     case ASPFUNC_WRITE:
       proto_item_set_len(asp_tree, 4);
-      aspinfo->code = tvb_get_ntohl(tvb, offset);
+      atp_asp_dsi_info->code = tvb_get_ntohl(tvb, offset);
       proto_tree_add_item(asp_tree, hf_asp_error, tvb, offset, 4, ENC_BIG_ENDIAN);
       offset += 4;
       new_tvb = tvb_new_subset_remaining(tvb, offset);
-      call_dissector_with_data(afp_handle, new_tvb, pinfo, tree, aspinfo);
+      call_dissector_with_data(afp_handle, new_tvb, pinfo, tree, atp_asp_dsi_info);
       break;
     case ASPFUNC_TICKLE:
     case ASPFUNC_WRTCONT:
@@ -1222,7 +1227,8 @@ static int atalk_len(void)
 static int
 dissect_atp_zip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
-  struct aspinfo *aspinfo;
+  struct atp_asp_dsi_info *atp_asp_dsi_info;
+  asp_request_val *request_val;
   int             offset = 0;
   proto_tree     *zip_tree;
   proto_tree     *sub_tree;
@@ -1238,17 +1244,18 @@ dissect_atp_zip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "ZIP");
   col_clear(pinfo->cinfo, COL_INFO);
 
-  aspinfo = get_transaction(tvb, pinfo, (struct aspinfo *)data);
-  if (!aspinfo)
+  atp_asp_dsi_info = (struct atp_asp_dsi_info *)data;
+  request_val = get_transaction(tvb, pinfo, atp_asp_dsi_info);
+  if (!request_val)
      return tvb_reported_length(tvb);
 
-  fn = (guint8) aspinfo->command;
+  fn = (guint8) request_val->value;
 
-  if (aspinfo->reply)
-    col_add_fstr(pinfo->cinfo, COL_INFO, "Reply tid %u",aspinfo->seq);
+  if (atp_asp_dsi_info->reply)
+    col_add_fstr(pinfo->cinfo, COL_INFO, "Reply tid %u",atp_asp_dsi_info->tid);
   else
     col_add_fstr(pinfo->cinfo, COL_INFO, "Function: %s  tid %u",
-                 val_to_str(fn, zip_atp_function_vals, "Unknown (0x%01x)"), aspinfo->seq);
+                 val_to_str(fn, zip_atp_function_vals, "Unknown (0x%01x)"), atp_asp_dsi_info->tid);
 
   if (!tree)
     return tvb_reported_length(tvb);
@@ -1256,7 +1263,7 @@ dissect_atp_zip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
   ti = proto_tree_add_item(tree, proto_zip, tvb, offset, -1, ENC_NA);
   zip_tree = proto_item_add_subtree(ti, ett_zip);
 
-  if (!aspinfo->reply) {
+  if (!atp_asp_dsi_info->reply) {
     proto_tree_add_item(zip_tree, hf_zip_atp_function, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     switch(fn) {
@@ -1494,10 +1501,10 @@ dissect_ddp_short(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dat
 
   if (tree) {
     hidden_item = proto_tree_add_string(ddp_tree, hf_ddp_src, tvb,
-                                        4, 3, address_to_str(wmem_packet_scope(), &pinfo->src));
+                                        4, 3, address_to_str(pinfo->pool, &pinfo->src));
     proto_item_set_hidden(hidden_item);
     hidden_item = proto_tree_add_string(ddp_tree, hf_ddp_dst, tvb,
-                                        6, 3, address_to_str(wmem_packet_scope(), &pinfo->dst));
+                                        6, 3, address_to_str(pinfo->pool, &pinfo->dst));
     proto_item_set_hidden(hidden_item);
 
     proto_tree_add_uint(ddp_tree, hf_ddp_type, tvb, 4, 1, type);
@@ -1530,11 +1537,11 @@ dissect_ddp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
   ddp_tree = proto_item_add_subtree(ti, ett_ddp);
 
   hidden_item = proto_tree_add_string(ddp_tree, hf_ddp_src, tvb,
-                                        4, 3, address_to_str(wmem_packet_scope(), &pinfo->src));
+                                        4, 3, address_to_str(pinfo->pool, &pinfo->src));
   proto_item_set_hidden(hidden_item);
 
   hidden_item = proto_tree_add_string(ddp_tree, hf_ddp_dst, tvb,
-                                        6, 3, address_to_str(wmem_packet_scope(), &pinfo->dst));
+                                        6, 3, address_to_str(pinfo->pool, &pinfo->dst));
   proto_item_set_hidden(hidden_item);
 
   proto_tree_add_item(ddp_tree, hf_ddp_hopcount,   tvb, 0, 2, ENC_BIG_ENDIAN);
@@ -1758,13 +1765,13 @@ proto_register_atalk(void)
       { "Enumerator",           "nbp.enum",     FT_UINT8,  BASE_DEC,
                 NULL, 0x0, NULL, HFILL }},
     { &hf_nbp_node_object,
-      { "Object",               "nbp.object",   FT_UINT_STRING,  STR_UNICODE,
+      { "Object",               "nbp.object",   FT_UINT_STRING,  BASE_NONE,
                 NULL, 0x0, NULL, HFILL }},
     { &hf_nbp_node_type,
-      { "Type",         "nbp.type",     FT_UINT_STRING,  STR_UNICODE,
+      { "Type",         "nbp.type",     FT_UINT_STRING,  BASE_NONE,
                 NULL, 0x0, NULL, HFILL }},
     { &hf_nbp_node_zone,
-      { "Zone",         "nbp.zone",     FT_UINT_STRING,  STR_UNICODE,
+      { "Zone",         "nbp.zone",     FT_UINT_STRING,  BASE_NONE,
                 NULL, 0x0, NULL, HFILL }},
     { &hf_nbp_tid,
       { "Transaction ID",               "nbp.tid",      FT_UINT8,  BASE_DEC,
@@ -1978,11 +1985,11 @@ proto_register_atalk(void)
         NULL, HFILL }},
 
     { &hf_zip_zone_name,
-      { "Zone",         "zip.zone_name", FT_UINT_STRING, STR_UNICODE, NULL, 0x0,
+      { "Zone",         "zip.zone_name", FT_UINT_STRING, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
 
     { &hf_zip_default_zone,
-      { "Default zone", "zip.default_zone",FT_UINT_STRING, STR_UNICODE, NULL, 0x0,
+      { "Default zone", "zip.default_zone",FT_UINT_STRING, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
 
     { &hf_zip_multicast_length,
@@ -2025,7 +2032,7 @@ proto_register_atalk(void)
         "Sequence number", HFILL }},
 
     { &hf_pap_status,
-      { "Status",       "prap.status",   FT_UINT_STRING,  STR_UNICODE, NULL, 0x0,
+      { "Status",       "prap.status",   FT_UINT_STRING,  BASE_NONE, NULL, 0x0,
                 "Printer status", HFILL }},
 
     { &hf_pap_eof,
@@ -2075,26 +2082,37 @@ proto_register_atalk(void)
 
   proto_llap = proto_register_protocol("LocalTalk Link Access Protocol", "LLAP", "llap");
   proto_register_field_array(proto_llap, hf_llap, array_length(hf_llap));
+  llap_handle = register_dissector("llap", dissect_llap, proto_llap);
+
+  llap_cap_handle = register_capture_dissector("llap", capture_llap, proto_llap);
 
   proto_ddp = proto_register_protocol("Datagram Delivery Protocol", "DDP", "ddp");
   proto_register_field_array(proto_ddp, hf_ddp, array_length(hf_ddp));
   expert_ddp = expert_register_protocol(proto_ddp);
   expert_register_field_array(expert_ddp, ei_ddp, array_length(ei_ddp));
+  ddp_handle = register_dissector("ddp", dissect_ddp, proto_ddp);
+  ddp_short_handle = register_dissector("ddp_short", dissect_ddp_short, proto_ddp);
 
   proto_nbp = proto_register_protocol("Name Binding Protocol", "NBP", "nbp");
   proto_register_field_array(proto_nbp, hf_nbp, array_length(hf_nbp));
+  nbp_handle = register_dissector("nbp", dissect_nbp, proto_nbp);
 
   proto_atp = proto_register_protocol("AppleTalk Transaction Protocol packet", "ATP", "atp");
   proto_register_field_array(proto_atp, hf_atp, array_length(hf_atp));
+  atp_handle = register_dissector("atp", dissect_atp, proto_atp);
 
   proto_asp = proto_register_protocol("AppleTalk Session Protocol", "ASP", "asp");
   proto_register_field_array(proto_asp, hf_asp, array_length(hf_asp));
+  asp_handle = register_dissector("asp", dissect_asp, proto_asp);
 
   proto_pap = proto_register_protocol("Printer Access Protocol", "PrAP", "prap");
   proto_register_field_array(proto_pap, hf_pap, array_length(hf_pap));
+  pap_handle = register_dissector("prap", dissect_pap, proto_pap);
 
   proto_zip = proto_register_protocol("Zone Information Protocol", "ZIP", "zip");
   proto_register_field_array(proto_zip, hf_zip, array_length(hf_zip));
+  zip_ddp_handle = register_dissector("zip.ddp", dissect_ddp_zip, proto_zip);
+  zip_atp_handle = register_dissector("zip.atp", dissect_atp_zip, proto_zip);
 
   atp_module = prefs_register_protocol(proto_atp, NULL);
   prefs_register_bool_preference(atp_module, "desegment",
@@ -2105,6 +2123,8 @@ proto_register_atalk(void)
   proto_rtmp = proto_register_protocol("Routing Table Maintenance Protocol",
                                        "RTMP", "rtmp");
   proto_register_field_array(proto_rtmp, hf_rtmp, array_length(hf_rtmp));
+  rtmp_request_handle = register_dissector("rtmp.request", dissect_rtmp_request, proto_rtmp);
+  rtmp_data_handle    = register_dissector("rtmp.data", dissect_rtmp_data, proto_rtmp);
 
   proto_register_subtree_array(ett, array_length(ett));
 
@@ -2118,41 +2138,20 @@ proto_register_atalk(void)
 void
 proto_reg_handoff_atalk(void)
 {
-  dissector_handle_t nbp_handle, rtmp_request_handle;
-  dissector_handle_t atp_handle;
-  dissector_handle_t zip_ddp_handle;
-  dissector_handle_t rtmp_data_handle, llap_handle;
-  capture_dissector_handle_t llap_cap_handle;
-
-  ddp_short_handle = create_dissector_handle(dissect_ddp_short, proto_ddp);
-  ddp_handle = create_dissector_handle(dissect_ddp, proto_ddp);
   dissector_add_uint("llc.apple_atalk_pid", APPLE_PID_ATALK, ddp_handle);
   dissector_add_uint("chdlc.protocol", ETHERTYPE_ATALK, ddp_handle);
   dissector_add_uint("ppp.protocol", PPP_AT, ddp_handle);
   dissector_add_uint("null.type", BSD_AF_APPLETALK, ddp_handle);
   dissector_add_uint("arcnet.protocol_id", ARCNET_PROTO_APPLETALK, ddp_handle);
 
-  nbp_handle = create_dissector_handle(dissect_nbp, proto_nbp);
   dissector_add_uint("ddp.type", DDP_NBP, nbp_handle);
   dissector_add_for_decode_as_with_preference("udp.port", nbp_handle);
 
-  atp_handle = create_dissector_handle(dissect_atp, proto_atp);
   dissector_add_uint("ddp.type", DDP_ATP, atp_handle);
-
-  asp_handle = create_dissector_handle(dissect_asp, proto_asp);
-  pap_handle = create_dissector_handle(dissect_pap, proto_pap);
-
-  rtmp_request_handle = create_dissector_handle(dissect_rtmp_request, proto_rtmp);
-  rtmp_data_handle    = create_dissector_handle(dissect_rtmp_data, proto_rtmp);
   dissector_add_uint("ddp.type", DDP_RTMPREQ, rtmp_request_handle);
   dissector_add_uint("ddp.type", DDP_RTMPDATA, rtmp_data_handle);
-
-  zip_ddp_handle = create_dissector_handle(dissect_ddp_zip, proto_zip);
   dissector_add_uint("ddp.type", DDP_ZIP, zip_ddp_handle);
 
-  zip_atp_handle = create_dissector_handle(dissect_atp_zip, proto_zip);
-
-  llap_handle = create_dissector_handle(dissect_llap, proto_llap);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_LOCALTALK, llap_handle);
   /*
    * This is for Ethernet packets with an Ethertype of ETHERTYPE_ATALK
@@ -2161,7 +2160,6 @@ proto_reg_handoff_atalk(void)
    * complete with an LLAP header.
    */
   dissector_add_uint("ethertype", ETHERTYPE_ATALK, llap_handle);
-  llap_cap_handle = create_capture_dissector_handle(capture_llap, proto_llap);
   capture_dissector_add_uint("wtap_encap", WTAP_ENCAP_LOCALTALK, llap_cap_handle);
 
   reassembly_table_register(&atp_reassembly_table,

@@ -1,6 +1,6 @@
 /* packet-isobus-vt.c
  * Routines for ISObus VT dissection (Based on CANOpen Dissector)
- * Copyright 2016, Jeroen Sack <jsack@lely.com>
+ * Copyright 2016, Jeroen Sack <jeroen@jeroensack.nl>
  * ISO 11783-6
  *
  * Wireshark - Network traffic analyzer
@@ -881,7 +881,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
 
         col_append_fstr(pinfo->cinfo, COL_INFO, "Key %s of parent %s %s",
             get_object_id_string(object_id), get_object_id_string(parent_object_id),
-            val_to_str(key_activation_code, key_activation_codes_info_postfix, "unknown action"));
+            val_to_str_const(key_activation_code, key_activation_codes_info_postfix, "unknown action"));
     }
         break;
     case VT_BUTTON_ACTIVATION:
@@ -911,7 +911,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
 
         col_append_fstr(pinfo->cinfo, COL_INFO, "Button %s of parent %s %s",
             get_object_id_string(object_id), get_object_id_string(parent_object_id),
-            val_to_str(key_activation_code, key_activation_codes_info_postfix, "unknown action"));
+            val_to_str_const(key_activation_code, key_activation_codes_info_postfix, "unknown action"));
     }
         break;
     case VT_POINTING_EVENT:
@@ -937,7 +937,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
 
         if(current_vt_version >= 4)
         {
-            col_append_fstr(pinfo->cinfo, COL_INFO, " %s", val_to_str(touch_state, pointing_touch_state_info_postfix, "unknown action"));
+            col_append_fstr(pinfo->cinfo, COL_INFO, " %s", val_to_str_const(touch_state, pointing_touch_state_info_postfix, "unknown action"));
         }
     }
         break;
@@ -1114,7 +1114,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
 
             proto_tree_add_item_ret_string(tree,
                 hf_isobus_vt_vtchgstrval_value, tvb, offset + bomOffset, str_length - bomOffset, encoding,
-                wmem_packet_scope(), &value);
+                pinfo->pool, &value);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "VT String value of %s should change to %s",
                 get_object_id_string(object_id), value);
@@ -1162,8 +1162,8 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             hf_isobus_vt_vtonuserlayouthideshow_status_2, tvb, offset, 1, ENC_LITTLE_ENDIAN, &status[1]);
 
         col_append_fstr(pinfo->cinfo, COL_INFO, "VT On User-Layout Hide/Show. %s is %s, %s is %s",
-            get_object_id_string(object_id[0]), val_to_str(status[0], vt_hide_show_action_info, "unknown"),
-            get_object_id_string(object_id[1]), val_to_str(status[1], vt_hide_show_action_info, "unknown"));
+            get_object_id_string(object_id[0]), val_to_str_const(status[0], vt_hide_show_action_info, "unknown"),
+            get_object_id_string(object_id[1]), val_to_str_const(status[1], vt_hide_show_action_info, "unknown"));
     }
         break;
     case VT_VT_CONTROL_AUDIO_SIGNAL_TERMINATION:
@@ -1293,7 +1293,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             hf_isobus_vt_auxiliaryinputtype1status_booleanvalue, tvb, offset, 1, ENC_LITTLE_ENDIAN, &boolean_value);
 
         col_append_fstr(pinfo->cinfo, COL_INFO, "State of input %u is analog %u or digital %s",
-            input_number, analyze_value, val_to_str(boolean_value, auxiliary_boolean_value, "unknown"));
+            input_number, analyze_value, val_to_str_const(boolean_value, auxiliary_boolean_value, "unknown"));
 
     }
         break;
@@ -1328,7 +1328,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
                     hf_isobus_vt_preferredassignment_auxinputunit_numberofpreferredfunctions, tvb, offset, 1, ENC_LITTLE_ENDIAN, &number_of_preferred_functions);
                 offset += 1;
 
-                proto_item_set_text(input_unit_item, "Input Unit name 0x%" G_GINT64_MODIFIER "X model identification code %u", name, model_identification_code);
+                proto_item_set_text(input_unit_item, "Input Unit name 0x%" PRIX64 " model identification code %u", name, model_identification_code);
                 proto_item_set_len(input_unit_item, 8 + 2 + 1 + ((2 + 2) * number_of_preferred_functions));
 
                 for(j = 0; j < number_of_preferred_functions; j++)
@@ -1474,7 +1474,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
 
         if(direction == ecu_to_vt)
         {
-            col_append_fstr(pinfo->cinfo, COL_INFO, "Assign %s of name 0x%" G_GINT64_MODIFIER "X to function %s",
+            col_append_fstr(pinfo->cinfo, COL_INFO, "Assign %s of name 0x%" PRIX64 " to function %s",
                 get_object_id_string(auxiliary_input_object_id), name, get_object_id_string(auxiliary_function_object_id));
         }
         else if(direction == vt_to_ecu)
@@ -1545,8 +1545,16 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             }
             else
             {
-                col_append_fstr(pinfo->cinfo, COL_INFO, "Status of Auxiliary Input %s was successfully changed to enabled",
-                    get_object_id_string(auxiliary_input_object_id));
+                if (status == 0)
+                {
+                    col_append_fstr(pinfo->cinfo, COL_INFO, "Status of Auxiliary Input %s was successfully changed to disabled",
+                        get_object_id_string(auxiliary_input_object_id));
+                }
+                else if (status == 1)
+                {
+                    col_append_fstr(pinfo->cinfo, COL_INFO, "Status of Auxiliary Input %s was successfully changed to enabled",
+                        get_object_id_string(auxiliary_input_object_id));
+                }
             }
         }
     }
@@ -1595,7 +1603,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
                 hf_isobus_vt_auxiliarycapabilities_requesttype, tvb, offset, 1, ENC_LITTLE_ENDIAN, &request_type);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "%s ",
-                val_to_str(request_type, auxiliary_capabilities_request_type, "Request capabilities of Unknown"));
+                val_to_str_const(request_type, auxiliary_capabilities_request_type, "Request capabilities of Unknown"));
         }
         else
         {
@@ -1622,7 +1630,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
                     hf_isobus_vt_auxiliarycapabilities_auxiliaryunit_numberofdifferentsets, tvb, offset, 1, ENC_LITTLE_ENDIAN, &number_of_different_sets);
                 offset += 1;
 
-                proto_item_set_text(input_unit_item, "Auxiliary unit name 0x%" G_GINT64_MODIFIER "X", name);
+                proto_item_set_text(input_unit_item, "Auxiliary unit name 0x%" PRIX64, name);
                 proto_item_set_len(input_unit_item, 8 + 1 + (3 * number_of_different_sets));
 
                 for(j = 0; j < number_of_different_sets; j++)
@@ -1646,7 +1654,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
                     offset += 1;
 
                     proto_item_set_text(input_unit_item, "Auxiliary set containing %u instances with function attribute %u assigned to %s",
-                        number_of_instances, function_attribute, val_to_str(assigned_attribute, auxiliary_assigned_attributes, "unknown"));
+                        number_of_instances, function_attribute, val_to_str_const(assigned_attribute, auxiliary_assigned_attributes, "unknown"));
                 }
             }
             col_append_fstr(pinfo->cinfo, COL_INFO, "Received Auxiliary Capabilities");
@@ -2116,13 +2124,13 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             else
             {
                 col_append_fstr(pinfo->cinfo, COL_INFO, "Background colour of %s has changed to %s",
-                    get_object_id_string(object_id), rval_to_str(colour, vt_colours, "Unknown"));
+                    get_object_id_string(object_id), rval_to_str_const(colour, vt_colours, "Unknown"));
             }
         }
         else
         {
             col_append_fstr(pinfo->cinfo, COL_INFO, "Background colour of %s should change to %s",
-                get_object_id_string(object_id), rval_to_str(colour, vt_colours, "Unknown"));
+                get_object_id_string(object_id), rval_to_str_const(colour, vt_colours, "Unknown"));
         }
     }
         break;
@@ -2705,7 +2713,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             }
 
             proto_tree_add_item_ret_string(tree,
-                hf_isobus_vt_chgstrval_value, tvb, offset + bomOffset, str_length - bomOffset, encoding, wmem_packet_scope(), &value);
+                hf_isobus_vt_chgstrval_value, tvb, offset + bomOffset, str_length - bomOffset, encoding, pinfo->pool, &value);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "String value of %s should change to %s",
                 get_object_id_string(object_id), value);
@@ -3218,10 +3226,10 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
                 }
 
                 proto_tree_add_item_ret_string(tree,
-                    hf_isobus_vt_graphicscontext_drawtext_textstring, tvb, offset + bomOffset, number_of_bytes - bomOffset, encoding, wmem_packet_scope(), &value);
+                    hf_isobus_vt_graphicscontext_drawtext_textstring, tvb, offset + bomOffset, number_of_bytes - bomOffset, encoding, pinfo->pool, &value);
 
                 col_append_fstr(pinfo->cinfo, COL_INFO, "Draw string \"%s\" at cursor with a %s background",
-                    value, val_to_str(background, draw_text_background, "unknown"));
+                    value, val_to_str_const(background, draw_text_background, "unknown"));
             }
                 break;
             case PAN_VIEWPORT:
@@ -3854,8 +3862,8 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
                 hf_isobus_vt_getwindowmaskdata_backgroundcoloursoftkeymask, tvb, offset, 1, ENC_LITTLE_ENDIAN, &background_colour_soft_key_mask);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "Background colour of data mask is %s, soft key mask is %s",
-                rval_to_str(background_colour_data_mask, vt_colours, "Unknown"),
-                rval_to_str(background_colour_soft_key_mask, vt_colours, "Unknown"));
+                rval_to_str_const(background_colour_data_mask, vt_colours, "Unknown"),
+                rval_to_str_const(background_colour_soft_key_mask, vt_colours, "Unknown"));
         }
     }
         break;
@@ -3934,7 +3942,8 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
                 hf_isobus_vt_gethardware_ypixels, tvb, offset, 2, ENC_LITTLE_ENDIAN, &y_pixels);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "Hardware info received. Graphic type is %s, screen is %u by %u pixels",
-                val_to_str(graphic_type, graphic_types, "unknown"), x_pixels, y_pixels);
+                val_to_str_const(graphic_type, graphic_types, "unknown"),
+                x_pixels, y_pixels);
         }
     }
         break;
@@ -3945,7 +3954,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             const guint8 *version_label;
 
             proto_tree_add_item_ret_string(tree,
-                hf_isobus_vt_storeversion_versionlabel, tvb, offset, 7, ENC_ASCII|ENC_NA, wmem_packet_scope(), &version_label);
+                hf_isobus_vt_storeversion_versionlabel, tvb, offset, 7, ENC_ASCII|ENC_NA, pinfo->pool, &version_label);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "Store version under label %s", version_label);
         }
@@ -3982,7 +3991,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             const guint8* version_label;
 
             proto_tree_add_item_ret_string(tree,
-                hf_isobus_vt_loadversion_versionlabel, tvb, offset, 7, ENC_ASCII|ENC_NA, wmem_packet_scope(), &version_label);
+                hf_isobus_vt_loadversion_versionlabel, tvb, offset, 7, ENC_ASCII|ENC_NA, pinfo->pool, &version_label);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "Load version stored under label \"%s\"", version_label);
         }
@@ -4021,7 +4030,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             const guint8* version_label;
 
             proto_tree_add_item_ret_string(tree,
-                hf_isobus_vt_deleteversion_versionlabel, tvb, offset, 7, ENC_ASCII|ENC_NA, wmem_packet_scope(), &version_label);
+                hf_isobus_vt_deleteversion_versionlabel, tvb, offset, 7, ENC_ASCII|ENC_NA, pinfo->pool, &version_label);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "Delete version stored under label \"%s\"", version_label);
         }
@@ -4066,7 +4075,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             for(i = 0; i < number_of_versions; i++)
             {
                 proto_tree_add_item(tree,
-                    hf_isobus_vt_extendedgetversions_versionlabel, tvb, offset, 32, ENC_ASCII|ENC_NA);
+                    hf_isobus_vt_extendedgetversions_versionlabel, tvb, offset, 32, ENC_ASCII);
                 offset += 32;
             }
 
@@ -4081,7 +4090,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             const guint8* version_label;
 
             proto_tree_add_item_ret_string(tree,
-                hf_isobus_vt_extendedstoreversion_versionlabel, tvb, offset, 32, ENC_ASCII|ENC_NA, wmem_packet_scope(), &version_label);
+                hf_isobus_vt_extendedstoreversion_versionlabel, tvb, offset, 32, ENC_ASCII|ENC_NA, pinfo->pool, &version_label);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "Store extended version under label \"%s\"", version_label);
         }
@@ -4118,7 +4127,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             const guint8* version_label;
 
             proto_tree_add_item_ret_string(tree,
-                hf_isobus_vt_extendedloadversion_versionlabel, tvb, offset, 32, ENC_ASCII|ENC_NA, wmem_packet_scope(), &version_label);
+                hf_isobus_vt_extendedloadversion_versionlabel, tvb, offset, 32, ENC_ASCII|ENC_NA, pinfo->pool, &version_label);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "Store extended version under label \"%s\"", version_label);
         }
@@ -4157,7 +4166,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             const guint8* version_label;
 
             proto_tree_add_item_ret_string(tree,
-                hf_isobus_vt_extendeddeleteversion_versionlabel, tvb, offset, 32, ENC_ASCII|ENC_NA, wmem_packet_scope(), &version_label);
+                hf_isobus_vt_extendeddeleteversion_versionlabel, tvb, offset, 32, ENC_ASCII|ENC_NA, pinfo->pool, &version_label);
 
             col_append_fstr(pinfo->cinfo, COL_INFO, "Delete version stored under label %s", version_label);
         }
@@ -4207,7 +4216,7 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
             for(i = 0; i < number_of_versions; i++)
             {
                 proto_tree_add_item(tree,
-                    hf_isobus_vt_getversions_versionlabel, tvb, offset, 7, ENC_ASCII|ENC_NA);
+                    hf_isobus_vt_getversions_versionlabel, tvb, offset, 7, ENC_ASCII);
                 offset += 7;
             }
 
@@ -4226,12 +4235,12 @@ dissect_vt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, enum vt_directio
         if(direction == ecu_to_vt)
         {
             col_append_fstr(pinfo->cinfo, COL_INFO, "VT function %s (%u) is not supported by ECU",
-                val_to_str_ext(unsupported_vt_function, &vt_function_code_ext, "unknown"), unsupported_vt_function);
+                val_to_str_ext_const(unsupported_vt_function, &vt_function_code_ext, "unknown"), unsupported_vt_function);
         }
         else
         {
             col_append_fstr(pinfo->cinfo, COL_INFO, "VT function %s (%u) is not supported by VT",
-                val_to_str_ext(unsupported_vt_function, &vt_function_code_ext, "unknown"), unsupported_vt_function);
+                val_to_str_ext_const(unsupported_vt_function, &vt_function_code_ext, "unknown"), unsupported_vt_function);
         }
     }
         break;
@@ -4466,7 +4475,7 @@ proto_register_isobus_vt(void)
             NULL, HFILL }
         },
         { &hf_isobus_vt_vtselectinputobject_openforinput,
-          { "Bitmask",                  "isobus.vt.vt_select_input_object.open_for_input",
+          { "Open For Input",           "isobus.vt.vt_select_input_object.open_for_input",
             FT_UINT8, BASE_DEC, NULL, 0x80,
             NULL, HFILL }
         },
@@ -4522,7 +4531,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_vtchgstrval_value,
           { "Value",                    "isobus.vt.vt_chg_str_val.val",
-            FT_STRING, STR_UNICODE, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_vtonuserlayouthideshow_objectid_1,
@@ -5022,7 +5031,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_changelineattributes_lineart,
           { "Line Art", "isobus.vt.change_line_attributes.line_art",
-            FT_UINT8, BASE_DEC, NULL, 0x0,
+            FT_UINT16, BASE_DEC, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_changelineattributes_errorcodes,
@@ -5167,7 +5176,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_chgstrval_value,
           { "Value", "isobus.vt.change_string_value.value",
-            FT_STRING, STR_UNICODE, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_changebackgroundcolour_objectid,
@@ -5387,7 +5396,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_graphicscontext_drawtext_textstring,
           { "Text string", "isobus.vt.graphics_context.draw_text.point.text_string",
-            FT_STRING, STR_UNICODE, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_graphicscontext_panviewport_viewportx,
@@ -5436,12 +5445,12 @@ proto_register_isobus_vt(void)
             NULL, HFILL }
         },
         { &hf_isobus_vt_graphicscontext_copycanvastopicturegraphic_objectidpicturegraphic,
-          { "Object ID of Picture Grahpic", "isobus.vt.graphics_context.copy_canvas_to_picture_graphic.object_id_picture_graphic",
+          { "Object ID of Picture Graphic", "isobus.vt.graphics_context.copy_canvas_to_picture_graphic.object_id_picture_graphic",
             FT_UINT16, BASE_DEC_HEX, VALS(object_id_strings), 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_graphicscontext_copyviewporttopicturegraphic_objectidpicturegraphic,
-          { "Object ID of Picture Grahpic", "isobus.vt.graphics_context.copy_viewport_to_picture_graphic.object_id_picture_graphic",
+          { "Object ID of Picture Graphic", "isobus.vt.graphics_context.copy_viewport_to_picture_graphic.object_id_picture_graphic",
             FT_UINT16, BASE_DEC_HEX, VALS(object_id_strings), 0x0,
             NULL, HFILL }
         },
@@ -5802,7 +5811,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_storeversion_versionlabel,
           { "Version Label",       "isobus.vt.store_version.version_label",
-            FT_STRING, STR_ASCII, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_storeversion_errorcodes,
@@ -5812,7 +5821,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_loadversion_versionlabel,
           { "Version Label",       "isobus.vt.load_version.version_label",
-            FT_STRING, STR_ASCII, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_loadversion_errorcodes,
@@ -5822,7 +5831,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_deleteversion_versionlabel,
           { "Version Label",       "isobus.vt.delete_version.version_label",
-            FT_STRING, STR_ASCII, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_deleteversion_errorcodes,
@@ -5837,12 +5846,12 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_extendedgetversions_versionlabel,
           { "Version label",  "isobus.vt.extended_get_versions.version_label",
-            FT_STRING, STR_ASCII, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_extendedstoreversion_versionlabel,
           { "Version Label",       "isobus.vt.extended_store_version.version_label",
-            FT_STRING, STR_ASCII, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_extendedstoreversion_errorcodes,
@@ -5852,7 +5861,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_extendedloadversion_versionlabel,
           { "Version Label",       "isobus.vt.extended_load_version.version_label",
-            FT_STRING, STR_ASCII, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_extendedloadversion_errorcodes,
@@ -5862,7 +5871,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_extendeddeleteversion_versionlabel,
           { "Version Label",       "isobus.vt.extended_delete_version.version_label",
-            FT_STRING, STR_ASCII, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_extendeddeleteversion_errorcodes,
@@ -5877,7 +5886,7 @@ proto_register_isobus_vt(void)
         },
         { &hf_isobus_vt_getversions_versionlabel,
           { "Version label",  "isobus.vt.get_versions.version_label",
-            FT_STRING, STR_ASCII, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL }
         },
         { &hf_isobus_vt_unsupportedvtfunction_unsupportedvtfunction,

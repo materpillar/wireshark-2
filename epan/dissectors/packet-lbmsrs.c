@@ -17,15 +17,13 @@
 #include "config.h"
 #include <epan/packet.h>
 #include <epan/expert.h>
-#include <epan/column-info.h>
 #include <epan/to_str.h>
-#include <packet-lbm.h>
+#include "packet-lbm.h"
 #include <epan/proto.h>
-#include <epan/column-utils.h>
 #include <epan/prefs.h>
 #include <epan/uat.h>
 #include <wsutil/pint.h>
-#include <dissectors/packet-tcp.h>
+#include "packet-tcp.h"
 
 
 
@@ -2279,7 +2277,7 @@ static guint dissect_lbmsrs_batch(tvbuff_t * tvb, packet_info * pinfo, proto_tre
         }
 
         /*if nothing is dissected then return the current offset*/
-        if (FALSE == can_dissect_further)
+        if (FALSE == can_dissect_further || len_dissected < 1)
         {
             col_append_fstr(pinfo->cinfo, COL_INFO, "SIR:%u SER:%u SDR:%u RIR:%u RER:%u RDR:%u WIR:%u WER:%u WDR:%u SLI:%u]",
                 cnt_sir, cnt_ser, cnt_sdr, cnt_rir, cnt_rer, cnt_rdr, cnt_wir, cnt_wer, cnt_wdr, cnt_sli);
@@ -2442,7 +2440,7 @@ static guint dissect_lbmsrs_data(tvbuff_t * tvb, packet_info * pinfo, proto_tree
         default:
         {
             expert_add_info_format(pinfo, tree, &ei_lbmsrs_analysis_invalid_msg_id,
-                "Invalid LBMSRS Message Id :%" G_GUINT16_FORMAT, message_id);
+                "Invalid LBMSRS Message Id :%" PRIu16, message_id);
 
         }
 
@@ -2672,7 +2670,7 @@ void proto_register_lbmsrs(void)
         { &hf_lbmsrs_rsocket_mdata_len,
         { "Metadata Length", "lbmsrs.rsocket.metadata_len", FT_UINT24, BASE_DEC, NULL,0x0, NULL, HFILL } },
         { &hf_lbmsrs_rsocket_mdata,
-        { "Metadata", "lbmsrs.rsocket.metadata", FT_STRING, STR_ASCII, NULL, 0x0, NULL,HFILL } },
+        { "Metadata", "lbmsrs.rsocket.metadata", FT_STRING, BASE_NONE, NULL, 0x0, NULL,HFILL } },
         { &hf_lbmsrs_rsocket_ignore_flag,
         { "Ignore", "lbmsrs.rsocket.flags.ignore", FT_BOOLEAN, 16, NULL, 0x0200, NULL,HFILL } },
         { &hf_lbmsrs_rsocket_metadata_flag,
@@ -2700,11 +2698,11 @@ void proto_register_lbmsrs(void)
         { &hf_lbmsrs_rsocket_mdata_mime_length,
         { "Metadata MIME Length", "lbmsrs.rsocket.mdata_mime_length", FT_UINT8, BASE_DEC,NULL, 0x0, NULL, HFILL } },
         { &hf_lbmsrs_rsocket_mdata_mime_type,
-        { "Metadata MIME Type", "lbmsrs.rsocket.mdata_mime_type", FT_STRING, STR_ASCII,NULL, 0x0, NULL, HFILL } },
+        { "Metadata MIME Type", "lbmsrs.rsocket.mdata_mime_type", FT_STRING, BASE_NONE,NULL, 0x0, NULL, HFILL } },
         { &hf_lbmsrs_rsocket_data_mime_length,
         { "Data MIME Length", "lbmsrs.rsocket.data_mime_length", FT_UINT8, BASE_DEC,NULL, 0x0, NULL, HFILL } },
         { &hf_lbmsrs_rsocket_data_mime_type,
-        { "Data MIME Type", "lbmsrs.rsocket.data_mime_type", FT_STRING, STR_ASCII, NULL,0x0, NULL, HFILL } },
+        { "Data MIME Type", "lbmsrs.rsocket.data_mime_type", FT_STRING, BASE_NONE, NULL,0x0, NULL, HFILL } },
         { &hf_lbmsrs_rsocket_req_n,
         { "Request N", "lbmsrs.rsocket.request_n", FT_UINT32, BASE_DEC, NULL, 0x0, NULL,HFILL } },
         { &hf_lbmsrs_rsocket_error_code,
@@ -2714,7 +2712,7 @@ void proto_register_lbmsrs(void)
         { &hf_lbmsrs_rsocket_resume_token_len,
         { "Resume Token Length", "lbmsrs.rsocket.resume.token.len", FT_UINT16, BASE_DEC,NULL, 0x0, NULL, HFILL } },
         { &hf_lbmsrs_rsocket_resume_token,
-        { "Resume Token", "lbmsrs.rsocket.resume.token", FT_STRING, STR_ASCII, NULL, 0x0,NULL, HFILL } },
+        { "Resume Token", "lbmsrs.rsocket.resume.token", FT_STRING, BASE_NONE, NULL, 0x0,NULL, HFILL } },
         /*rsocket related items end*/
 
         /*SRS Registration Request items start*/
@@ -2742,7 +2740,7 @@ void proto_register_lbmsrs(void)
         { &hf_lbmsrs_resp_local_domain_id,
         { "Local Domain ID", "lbmsrs.registration_response.local_domain_id", FT_UINT32, BASE_DEC,NULL, 0x0, NULL, HFILL } },
         { &hf_lbmsrs_reg_resp_protocol_version,
-        { "Protocol Version", "lbmsrs.registration_response.protocol_version", FT_UINT8, BASE_DEC,NULL, 0x0, NULL, HFILL } },
+        { "Protocol Version", "lbmsrs.registration_response.protocol_version", FT_UINT32, BASE_DEC,NULL, 0x0, NULL, HFILL } },
         /*SRS Registration Response items end*/
 
         /*SRS Stream Request items start*/
@@ -2992,6 +2990,8 @@ void proto_register_lbmsrs(void)
     expert_module_t *expert_lbmsrs = expert_register_protocol(proto_lbmsrs);
     expert_register_field_array(expert_lbmsrs, ei, array_length(ei));
 
+    lbmsrs_dissector_handle = register_dissector("lbmsrs", dissect_lbmsrs, proto_lbmsrs);
+
     /*Set the preference menu items*/
     module_t* lbmsrs_module = prefs_register_protocol_subtree("29West", proto_lbmsrs, proto_reg_handoff_lbmsrs);
 
@@ -3047,7 +3047,6 @@ void proto_reg_handoff_lbmsrs(void)
 
     if (!already_registered)
     {
-        lbmsrs_dissector_handle = create_dissector_handle(dissect_lbmsrs, proto_lbmsrs);
         dissector_add_for_decode_as_with_preference("tcp.port", lbmsrs_dissector_handle);
         heur_dissector_add("tcp", test_lbmsrs_packet, "LBM Stateful Resolution Service over RSocket", "lbmsrs_tcp", proto_lbmsrs, HEURISTIC_ENABLE);
     }

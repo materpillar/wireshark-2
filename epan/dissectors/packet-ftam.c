@@ -1,11 +1,8 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-ftam.c                                                              */
-/* asn2wrs.py -b -p ftam -c ./ftam.cnf -s ./packet-ftam-template -D . -O ../.. ISO8571-FTAM.asn */
+/* asn2wrs.py -b -L -p ftam -c ./ftam.cnf -s ./packet-ftam-template -D . -O ../.. ISO8571-FTAM.asn */
 
-/* Input file: packet-ftam-template.c */
-
-#line 1 "./asn1/ftam/packet-ftam-template.c"
 /* packet-ftam_asn1.c
  * Routine to dissect OSI ISO 8571 FTAM Protocol packets
  * based on the ASN.1 specification from http://www.itu.int/ITU-T/asn1/database/iso/8571-4/1988/
@@ -48,9 +45,6 @@ static int dissect_ftam_OR_Set(gboolean implicit_tag _U_, tvbuff_t *tvb, int off
 
 static int hf_ftam_unstructured_text = -1;              /* ISO FTAM unstructured text */
 static int hf_ftam_unstructured_binary = -1;            /* ISO FTAM unstructured binary */
-
-/*--- Included file: packet-ftam-hf.c ---*/
-#line 1 "./asn1/ftam/packet-ftam-hf.c"
 static int hf_ftam_fTAM_Regime_PDU = -1;          /* FTAM_Regime_PDU */
 static int hf_ftam_file_PDU = -1;                 /* File_PDU */
 static int hf_ftam_bulk_Data_PDU = -1;            /* Bulk_Data_PDU */
@@ -470,14 +464,8 @@ static int hf_ftam_Attribute_Names_read_path_access_control = -1;
 static int hf_ftam_Attribute_Names_spare_bit22 = -1;
 static int hf_ftam_Attribute_Names_read_Child_objects = -1;
 
-/*--- End of included file: packet-ftam-hf.c ---*/
-#line 44 "./asn1/ftam/packet-ftam-template.c"
-
 /* Initialize the subtree pointers */
 static gint ett_ftam = -1;
-
-/*--- Included file: packet-ftam-ett.c ---*/
-#line 1 "./asn1/ftam/packet-ftam-ett.c"
 static gint ett_ftam_PDU = -1;
 static gint ett_ftam_FTAM_Regime_PDU = -1;
 static gint ett_ftam_F_INITIALIZE_request = -1;
@@ -641,14 +629,8 @@ static gint ett_ftam_Path_Access_Passwords_item = -1;
 static gint ett_ftam_Attribute_Names = -1;
 static gint ett_ftam_AE_title = -1;
 
-/*--- End of included file: packet-ftam-ett.c ---*/
-#line 48 "./asn1/ftam/packet-ftam-template.c"
-
 static expert_field ei_ftam_zero_pdu = EI_INIT;
 
-
-/*--- Included file: packet-ftam-fn.c ---*/
-#line 1 "./asn1/ftam/packet-ftam-fn.c"
 
 static int * const Protocol_Version_U_bits[] = {
   &hf_ftam_Protocol_Version_U_version_1,
@@ -1301,7 +1283,6 @@ static const ber_choice_t FTAM_Regime_PDU_choice[] = {
 
 static int
 dissect_ftam_FTAM_Regime_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 98 "./asn1/ftam/ftam.cnf"
   gint branch_taken;
 
     offset = dissect_ber_choice(actx, tree, tvb, offset,
@@ -1310,9 +1291,8 @@ dissect_ftam_FTAM_Regime_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int o
 
 
   if( (branch_taken!=-1) && ftam_FTAM_Regime_PDU_vals[branch_taken].strptr ){
-	col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s:", ftam_FTAM_Regime_PDU_vals[branch_taken].strptr);
+    col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s:", ftam_FTAM_Regime_PDU_vals[branch_taken].strptr);
   }
-
 
 
   return offset;
@@ -1696,11 +1676,9 @@ dissect_ftam_Permitted_Actions_Attribute(gboolean implicit_tag _U_, tvbuff_t *tv
 
 static int
 dissect_ftam_T_parameter(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 75 "./asn1/ftam/ftam.cnf"
   if (actx->external.direct_reference) {
     offset=call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, NULL);
   }
-
 
 
   return offset;
@@ -1902,9 +1880,7 @@ dissect_ftam_Concurrency_Access(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_ftam_AP_title(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 93 "./asn1/ftam/ftam.cnf"
-	/* XXX have no idea about this one */
-
+  /* XXX have no idea about this one */
 
   return offset;
 }
@@ -1913,9 +1889,7 @@ dissect_ftam_AP_title(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _
 
 static int
 dissect_ftam_AE_qualifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 95 "./asn1/ftam/ftam.cnf"
-	/* XXX have no idea about this one */
-
+  /* XXX have no idea about this one */
 
 
   return offset;
@@ -2067,11 +2041,9 @@ dissect_ftam_T_extension_attribute_identifier(gboolean implicit_tag _U_, tvbuff_
 
 static int
 dissect_ftam_T_extension_attribute(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 80 "./asn1/ftam/ftam.cnf"
   if (actx->external.direct_reference) {
     offset=call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, NULL);
   }
-
 
 
   return offset;
@@ -3133,7 +3105,6 @@ static const ber_choice_t File_PDU_choice[] = {
 
 static int
 dissect_ftam_File_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 107 "./asn1/ftam/ftam.cnf"
   gint branch_taken;
 
     offset = dissect_ber_choice(actx, tree, tvb, offset,
@@ -3142,9 +3113,8 @@ dissect_ftam_File_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _
 
 
   if( (branch_taken!=-1) && ftam_File_PDU_vals[branch_taken].strptr ){
-	col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s:", ftam_File_PDU_vals[branch_taken].strptr);
+    col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s:", ftam_File_PDU_vals[branch_taken].strptr);
   }
-
 
 
   return offset;
@@ -3437,7 +3407,6 @@ static const ber_choice_t Bulk_Data_PDU_choice[] = {
 
 static int
 dissect_ftam_Bulk_Data_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 116 "./asn1/ftam/ftam.cnf"
   gint branch_taken;
 
     offset = dissect_ber_choice(actx, tree, tvb, offset,
@@ -3446,9 +3415,8 @@ dissect_ftam_Bulk_Data_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
 
 
   if( (branch_taken!=-1) && ftam_Bulk_Data_PDU_vals[branch_taken].strptr ){
-	col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s:", ftam_Bulk_Data_PDU_vals[branch_taken].strptr);
+    col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s:", ftam_Bulk_Data_PDU_vals[branch_taken].strptr);
   }
-
 
 
   return offset;
@@ -3779,11 +3747,9 @@ dissect_ftam_T_attribute_extension_attribute_identifier(gboolean implicit_tag _U
 
 static int
 dissect_ftam_T_extension_attribute_Pattern(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 88 "./asn1/ftam/ftam.cnf"
   if (actx->external.direct_reference) {
     offset=call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, NULL);
   }
-
 
 
   return offset;
@@ -4701,7 +4667,6 @@ static const ber_choice_t FSM_PDU_choice[] = {
 
 static int
 dissect_ftam_FSM_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 125 "./asn1/ftam/ftam.cnf"
   gint branch_taken;
 
     offset = dissect_ber_choice(actx, tree, tvb, offset,
@@ -4710,8 +4675,9 @@ dissect_ftam_FSM_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U
 
 
   if( (branch_taken!=-1) && ftam_FSM_PDU_vals[branch_taken].strptr ){
-	col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s:", ftam_FSM_PDU_vals[branch_taken].strptr);
+    col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s:", ftam_FSM_PDU_vals[branch_taken].strptr);
   }
+
 
 
   return offset;
@@ -4736,16 +4702,13 @@ dissect_ftam_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, a
 }
 
 
-/*--- End of included file: packet-ftam-fn.c ---*/
-#line 52 "./asn1/ftam/packet-ftam-template.c"
-
 /*
 * Dissect FTAM unstructured text
 */
 static int
 dissect_ftam_unstructured_text(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *parent_tree, void* data _U_)
 {
-	proto_tree_add_item (parent_tree, hf_ftam_unstructured_text, tvb, 0, tvb_reported_length_remaining(tvb, 0), ENC_ASCII|ENC_NA);
+	proto_tree_add_item (parent_tree, hf_ftam_unstructured_text, tvb, 0, tvb_reported_length_remaining(tvb, 0), ENC_ASCII);
 	return tvb_captured_length(tvb);
 }
 
@@ -4804,9 +4767,6 @@ void proto_register_ftam(void) {
      { &hf_ftam_unstructured_binary,
        { "ISO FTAM unstructured binary", "ftam.unstructured_binary", FT_BYTES,
           BASE_NONE, NULL, 0x0, NULL, HFILL } },
-
-/*--- Included file: packet-ftam-hfarr.c ---*/
-#line 1 "./asn1/ftam/packet-ftam-hfarr.c"
     { &hf_ftam_fTAM_Regime_PDU,
       { "fTAM-Regime-PDU", "ftam.fTAM_Regime_PDU",
         FT_UINT32, BASE_DEC, VALS(ftam_FTAM_Regime_PDU_vals), 0,
@@ -5516,7 +5476,7 @@ void proto_register_ftam(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_ftam_actual_values3,
-      { "actual-values", "ftam.actual_values",
+      { "actual-values", "ftam.actual_values3",
         FT_UINT32, BASE_DEC, NULL, 0,
         "SET_OF_Access_Control_Element", HFILL }},
     { &hf_ftam_actual_values3_item,
@@ -5524,7 +5484,7 @@ void proto_register_ftam(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_ftam_actual_values1,
-      { "actual-values", "ftam.actual_values_element",
+      { "actual-values", "ftam.actual_values1_element",
         FT_NONE, BASE_NONE, NULL, 0,
         "T_actual_values1", HFILL }},
     { &hf_ftam_insert_values,
@@ -5564,39 +5524,39 @@ void proto_register_ftam(void) {
         FT_UINT32, BASE_DEC, VALS(acse_AE_title_vals), 0,
         "Application_Entity_Title", HFILL }},
     { &hf_ftam_read_key,
-      { "read", "ftam.read",
+      { "read", "ftam.read_key",
         FT_BYTES, BASE_NONE, NULL, 0,
         "Concurrency_Key", HFILL }},
     { &hf_ftam_insert_key,
-      { "insert", "ftam.insert",
+      { "insert", "ftam.insert_key",
         FT_BYTES, BASE_NONE, NULL, 0,
         "Concurrency_Key", HFILL }},
     { &hf_ftam_replace_key,
-      { "replace", "ftam.replace",
+      { "replace", "ftam.replace_key",
         FT_BYTES, BASE_NONE, NULL, 0,
         "Concurrency_Key", HFILL }},
     { &hf_ftam_extend_key,
-      { "extend", "ftam.extend",
+      { "extend", "ftam.extend_key",
         FT_BYTES, BASE_NONE, NULL, 0,
         "Concurrency_Key", HFILL }},
     { &hf_ftam_erase_key,
-      { "erase", "ftam.erase",
+      { "erase", "ftam.erase_key",
         FT_BYTES, BASE_NONE, NULL, 0,
         "Concurrency_Key", HFILL }},
     { &hf_ftam_read_attribute_key,
-      { "read-attribute", "ftam.read_attribute",
+      { "read-attribute", "ftam.read_attribute_key",
         FT_BYTES, BASE_NONE, NULL, 0,
         "Concurrency_Key", HFILL }},
     { &hf_ftam_change_attribute_key,
-      { "change-attribute", "ftam.change_attribute",
+      { "change-attribute", "ftam.change_attribute_key",
         FT_BYTES, BASE_NONE, NULL, 0,
         "Concurrency_Key", HFILL }},
     { &hf_ftam_delete_Object_key,
-      { "delete-Object", "ftam.delete_Object",
+      { "delete-Object", "ftam.delete_Object_key",
         FT_BYTES, BASE_NONE, NULL, 0,
         "Concurrency_Key", HFILL }},
     { &hf_ftam_actual_values2,
-      { "actual-values", "ftam.actual_values",
+      { "actual-values", "ftam.actual_values2",
         FT_STRING, BASE_NONE, NULL, 0,
         "Account", HFILL }},
     { &hf_ftam_document_type,
@@ -5616,11 +5576,11 @@ void proto_register_ftam(void) {
         FT_OID, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_ftam_actual_values5,
-      { "actual-values", "ftam.actual_values",
-        FT_STRING, BASE_NONE, NULL, 0,
+      { "actual-values", "ftam.actual_values5",
+        FT_ABSOLUTE_TIME, ABSOLUTE_TIME_LOCAL, NULL, 0,
         "GeneralizedTime", HFILL }},
     { &hf_ftam_actual_values8,
-      { "actual-values", "ftam.actual_values",
+      { "actual-values", "ftam.actual_values8",
         FT_INT32, BASE_DEC, VALS(ftam_T_actual_values8_vals), 0,
         "T_actual_values8", HFILL }},
     { &hf_ftam_incomplete_pathname,
@@ -5632,11 +5592,11 @@ void proto_register_ftam(void) {
         FT_UINT32, BASE_DEC, NULL, 0,
         "Pathname", HFILL }},
     { &hf_ftam_actual_values7,
-      { "actual-values", "ftam.actual_values",
+      { "actual-values", "ftam.actual_values7",
         FT_INT32, BASE_DEC, NULL, 0,
         "INTEGER", HFILL }},
     { &hf_ftam_actual_values9,
-      { "actual-values", "ftam.actual_values",
+      { "actual-values", "ftam.actual_values9",
         FT_STRING, BASE_NONE, NULL, 0,
         "GraphicString", HFILL }},
     { &hf_ftam_abstract_Syntax_not_supported,
@@ -5644,11 +5604,11 @@ void proto_register_ftam(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_ftam_actual_values4,
-      { "actual-values", "ftam.actual_values_element",
+      { "actual-values", "ftam.actual_values4_element",
         FT_NONE, BASE_NONE, NULL, 0,
         "EXTERNAL", HFILL }},
     { &hf_ftam_actual_values6,
-      { "actual-values", "ftam.actual_values",
+      { "actual-values", "ftam.actual_values6",
         FT_STRING, BASE_NONE, NULL, 0,
         "User_Identity", HFILL }},
     { &hf_ftam_Child_Objects_Attribute_item,
@@ -6033,7 +5993,7 @@ void proto_register_ftam(void) {
         "Equality_Comparision", HFILL }},
     { &hf_ftam_time_and_date_value,
       { "time-and-date-value", "ftam.time_and_date_value",
-        FT_STRING, BASE_NONE, NULL, 0,
+        FT_ABSOLUTE_TIME, ABSOLUTE_TIME_LOCAL, NULL, 0,
         "GeneralizedTime", HFILL }},
     { &hf_ftam_relational_comparision,
       { "relational-comparision", "ftam.relational_comparision",
@@ -6475,17 +6435,11 @@ void proto_register_ftam(void) {
       { "read-Child-objects", "ftam.Attribute.Names.read.Child.objects",
         FT_BOOLEAN, 8, NULL, 0x01,
         NULL, HFILL }},
-
-/*--- End of included file: packet-ftam-hfarr.c ---*/
-#line 119 "./asn1/ftam/packet-ftam-template.c"
   };
 
   /* List of subtrees */
   static gint *ett[] = {
     &ett_ftam,
-
-/*--- Included file: packet-ftam-ettarr.c ---*/
-#line 1 "./asn1/ftam/packet-ftam-ettarr.c"
     &ett_ftam_PDU,
     &ett_ftam_FTAM_Regime_PDU,
     &ett_ftam_F_INITIALIZE_request,
@@ -6648,9 +6602,6 @@ void proto_register_ftam(void) {
     &ett_ftam_Path_Access_Passwords_item,
     &ett_ftam_Attribute_Names,
     &ett_ftam_AE_title,
-
-/*--- End of included file: packet-ftam-ettarr.c ---*/
-#line 125 "./asn1/ftam/packet-ftam-template.c"
   };
   static ei_register_info ei[] = {
     { &ei_ftam_zero_pdu, { "ftam.zero_pdu", PI_PROTOCOL, PI_ERROR, "Internal error, zero-byte FTAM PDU", EXPFILL }},

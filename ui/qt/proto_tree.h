@@ -1,4 +1,4 @@
-/* proto_tree.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -71,6 +71,7 @@ private:
 
     void saveSelectedField(QModelIndex &index);
     static void foreachTreeNode(proto_node *node, gpointer proto_tree_ptr);
+    void foreachExpand(const QModelIndex &index);
 
 signals:
     void fieldSelected(FieldInformation *);
@@ -113,16 +114,3 @@ private slots:
 };
 
 #endif // PROTO_TREE_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

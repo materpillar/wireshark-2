@@ -1,11 +1,8 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-ieee1609dot2.c                                                      */
-/* asn2wrs.py -p ieee1609dot2 -c ./ieee1609dot2.cnf -s ./packet-ieee1609dot2-template -D . -O ../.. IEEE1609dot2BaseTypes.asn IEEE1609dot2DataTypes.asn IEEE1609dot12.asn */
+/* asn2wrs.py -L -p ieee1609dot2 -c ./ieee1609dot2.cnf -s ./packet-ieee1609dot2-template -D . -O ../.. IEEE1609dot2BaseTypes.asn IEEE1609dot2DataTypes.asn IEEE1609dot12.asn */
 
-/* Input file: packet-ieee1609dot2-template.c */
-
-#line 1 "./asn1/ieee1609dot2/packet-ieee1609dot2-template.c"
 /* packet-IEEE1609dot2.c
  * Routines for IEEE 1609.2
  * Copyright 2018, Anders Broman <anders.broman@ericsson.com>
@@ -22,6 +19,9 @@
  */
 
 #include "config.h"
+
+#include <stdlib.h>
+#include <time.h>
 
 #include <epan/packet.h>
 #include <epan/conversation.h>
@@ -42,9 +42,6 @@ void proto_reg_handoff_ieee1609dot2(void);
 /* Initialize the protocol and registered fields */
 int proto_ieee1609dot2 = -1;
 dissector_handle_t proto_ieee1609dot2_handle = NULL;
-
-/*--- Included file: packet-ieee1609dot2-hf.c ---*/
-#line 1 "./asn1/ieee1609dot2/packet-ieee1609dot2-hf.c"
 static int hf_ieee1609dot2_Ieee1609Dot2Data_PDU = -1;  /* Ieee1609Dot2Data */
 static int hf_ieee1609dot2_SequenceOfUint8_item = -1;  /* Uint8 */
 static int hf_ieee1609dot2_SequenceOfUint16_item = -1;  /* Uint16 */
@@ -212,14 +209,8 @@ static int hf_ieee1609dot2_reconstructionValue = -1;  /* EccP256CurvePoint */
 static int hf_ieee1609dot2_EndEntityType_app = -1;
 static int hf_ieee1609dot2_EndEntityType_enrol = -1;
 
-/*--- End of included file: packet-ieee1609dot2-hf.c ---*/
-#line 38 "./asn1/ieee1609dot2/packet-ieee1609dot2-template.c"
-
 /* Initialize the subtree pointers */
 static int ett_ieee1609dot2_ssp = -1;
-
-/*--- Included file: packet-ieee1609dot2-ett.c ---*/
-#line 1 "./asn1/ieee1609dot2/packet-ieee1609dot2-ett.c"
 static gint ett_ieee1609dot2_SequenceOfUint8 = -1;
 static gint ett_ieee1609dot2_SequenceOfUint16 = -1;
 static gint ett_ieee1609dot2_SequenceOfHashedId3 = -1;
@@ -289,9 +280,6 @@ static gint ett_ieee1609dot2_SequenceOfPsidGroupPermissions = -1;
 static gint ett_ieee1609dot2_SubjectPermissions = -1;
 static gint ett_ieee1609dot2_VerificationKeyIndicator = -1;
 
-/*--- End of included file: packet-ieee1609dot2-ett.c ---*/
-#line 42 "./asn1/ieee1609dot2/packet-ieee1609dot2-template.c"
-
 static dissector_table_t unsecured_data_subdissector_table;
 static dissector_table_t ssp_subdissector_table;
 
@@ -306,9 +294,6 @@ ieee1609dot2_set_next_default_psid(packet_info *pinfo, guint32 psid)
   p_add_proto_data(wmem_file_scope(), pinfo, proto_ieee1609dot2, 0, GUINT_TO_POINTER(psid));
 }
 
-
-/*--- Included file: packet-ieee1609dot2-fn.c ---*/
-#line 1 "./asn1/ieee1609dot2/packet-ieee1609dot2-fn.c"
 /*--- Cyclic dependencies ---*/
 
 /* SignedDataPayload -> Ieee1609Dot2Data -> Ieee1609Dot2Content -> SignedData -> ToBeSignedData -> SignedDataPayload */
@@ -490,13 +475,6 @@ dissect_ieee1609dot2_ValidityPeriod(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_
 }
 
 
-static const value_string ieee1609dot2_NinetyDegreeInt_vals[] = {
-  { -900000000, "min" },
-  { 900000000, "max" },
-  { 900000001, "unknown" },
-  { 0, NULL }
-};
-
 
 static int
 dissect_ieee1609dot2_NinetyDegreeInt(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
@@ -515,13 +493,6 @@ dissect_ieee1609dot2_Latitude(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
   return offset;
 }
 
-
-static const value_string ieee1609dot2_OneEightyDegreeInt_vals[] = {
-  { -1799999999, "min" },
-  { 1800000000, "max" },
-  { 1800000001, "unknown" },
-  { 0, NULL }
-};
 
 
 static int
@@ -1164,6 +1135,7 @@ const val64_string ieee1609dot2_Psid_vals[] = {
   { psid_traffic_light_control_requests_service, "psid-traffic-light-control-requests-service" },
   { psid_geonetworking_management_communications, "psid-geonetworking-management-communications" },
   { psid_traffic_light_control_status_service, "psid-traffic-light-control-status-service" },
+  { psid_collective_perception_service, "psid-collective-perception-service" },
   { psid_certificate_revocation_list_application, "psid-certificate-revocation-list-application" },
   { psid_vehicle_initiated_distress_notivication, "psid-vehicle-initiated-distress-notivication" },
   { psid_fast_service_advertisement_protocol, "psid-fast-service-advertisement-protocol" },
@@ -1191,10 +1163,8 @@ dissect_ieee1609dot2_Psid(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 
 static int
 dissect_ieee1609dot2_T_psPsid(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 108 "./asn1/ieee1609dot2/ieee1609dot2.cnf"
   offset = dissect_oer_constrained_integer_64b_no_ub(tvb, offset, actx, tree, hf_index,
                                                0U, NO_BOUND, &((ieee1609_private_data_t*)actx->private_data)->psidssp, FALSE);
-
 
 
   return offset;
@@ -1204,7 +1174,6 @@ dissect_ieee1609dot2_T_psPsid(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
 
 static int
 dissect_ieee1609dot2_T_opaque(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 112 "./asn1/ieee1609dot2/ieee1609dot2.cnf"
   tvbuff_t *ssp;
   ieee1609_private_data_t *my_private_data = (ieee1609_private_data_t*)actx->private_data;
 
@@ -1216,7 +1185,6 @@ dissect_ieee1609dot2_T_opaque(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
     /* Call next dissector here */
     dissector_try_uint(ssp_subdissector_table, (guint32) my_private_data->psidssp, ssp, actx->pinfo, subtree);
   }
-
 
   return offset;
 }
@@ -1469,7 +1437,6 @@ dissect_ieee1609dot2_GroupLinkageValue(tvbuff_t *tvb _U_, int offset _U_, asn1_c
 
 static int
 dissect_ieee1609dot2_T_unsecuredData(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 74 "./asn1/ieee1609dot2/ieee1609dot2.cnf"
   ieee1609_private_data_t *my_private_data = (ieee1609_private_data_t*)actx->private_data;
 
   offset = dissect_oer_octet_string(tvb, offset, actx, tree, hf_index,
@@ -1487,7 +1454,6 @@ dissect_ieee1609dot2_T_unsecuredData(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
   }
 
 
-
   return offset;
 }
 
@@ -1495,7 +1461,6 @@ dissect_ieee1609dot2_T_unsecuredData(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
 
 static int
 dissect_ieee1609dot2_T_hiPsid(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 93 "./asn1/ieee1609dot2/ieee1609dot2.cnf"
   guint64 psid;
   ieee1609_private_data_t *my_private_data = (ieee1609_private_data_t*)actx->private_data;
 
@@ -1507,7 +1472,6 @@ dissect_ieee1609dot2_T_hiPsid(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
     dissector_try_uint(unsecured_data_subdissector_table, (guint32) psid, my_private_data->unsecured_data, actx->pinfo, tree);
     my_private_data->unsecured_data = NULL;
   }
-
 
 
   return offset;
@@ -2058,9 +2022,7 @@ static const oer_sequence_t Ieee1609Dot2Data_sequence[] = {
 
 static int
 dissect_ieee1609dot2_Ieee1609Dot2Data(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 70 "./asn1/ieee1609dot2/ieee1609dot2.cnf"
-  actx->private_data = (void*)wmem_new0(wmem_packet_scope(), ieee1609_private_data_t);
-
+  actx->private_data = (void*)wmem_new0(actx->pinfo->pool, ieee1609_private_data_t);
   offset = dissect_oer_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_ieee1609dot2_Ieee1609Dot2Data, Ieee1609Dot2Data_sequence);
 
@@ -2113,18 +2075,73 @@ static int dissect_Ieee1609Dot2Data_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U
 }
 
 
-/*--- End of included file: packet-ieee1609dot2-fn.c ---*/
-#line 58 "./asn1/ieee1609dot2/packet-ieee1609dot2-template.c"
 
+static void
+ieee1609dot2_NinetyDegreeInt_fmt(gchar *s, guint32 v)
+{
+  gint32 lat = (gint32)v;
+  if (lat == 900000001) {
+    snprintf(s, ITEM_LABEL_LENGTH, "unavailable(%d)", lat);
+  } else {
+    snprintf(s, ITEM_LABEL_LENGTH, "%u°%u'%.3f\"%c (%d)",
+               abs(lat) / 10000000,
+               abs(lat) % 10000000 * 6 / 1000000,
+               abs(lat) % 10000000 * 6 % 1000000 * 6.0 / 100000.0,
+               (lat >= 0) ? 'N' : 'S',
+               lat);
+  }
+}
+
+static void
+ieee1609dot2_OneEightyDegreeInt_fmt(gchar *s, guint32 v)
+{
+  gint32 lng = (gint32)v;
+  if (lng == 1800000001) {
+    snprintf(s, ITEM_LABEL_LENGTH, "unavailable(%d)", lng);
+  } else {
+    snprintf(s, ITEM_LABEL_LENGTH, "%u°%u'%.3f\"%c (%d)",
+               abs(lng) / 10000000,
+               abs(lng) % 10000000 * 6 / 1000000,
+               abs(lng) % 10000000 * 6 % 1000000 * 6.0 / 100000.0,
+               (lng >= 0) ? 'E' : 'W',
+               lng);
+  }
+}
+
+static void
+ieee1609dot2_ElevInt_fmt(gchar *s, guint32 v)
+{
+  // Range is from -4096 to 61439 in units of one-tenth of a meter
+  gint32 alt = (gint32)v - 4096;
+  snprintf(s, ITEM_LABEL_LENGTH, "%.2fm (%u)", alt * 0.1, v);
+}
+
+static void
+ieee1609dot2_Time32_fmt(gchar *s, guint32 v)
+{
+  time_t secs = v + 1072915200 - 5;
+  struct tm *tm = gmtime(&secs);
+  snprintf(s, ITEM_LABEL_LENGTH, "%u-%02u-%02u %02u:%02u:%02u (%u)",
+    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec, v
+  );
+}
+
+static void
+ieee1609dot2_Time64_fmt(gchar *s, guint64 v)
+{
+  time_t secs = v / 1000000 + 1072915200 - 5;
+  guint32 usecs = v % 1000000;
+  struct tm *tm = gmtime(&secs);
+  snprintf(s, ITEM_LABEL_LENGTH, "%u-%02u-%02u %02u:%02u:%02u.%06u (%" PRIu64 ")",
+    tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec, usecs, v
+  );
+}
 
 /*--- proto_register_ieee1609dot2 ----------------------------------------------*/
 void proto_register_ieee1609dot2(void) {
 
   /* List of fields */
   static hf_register_info hf[] = {
-
-/*--- Included file: packet-ieee1609dot2-hfarr.c ---*/
-#line 1 "./asn1/ieee1609dot2/packet-ieee1609dot2-hfarr.c"
     { &hf_ieee1609dot2_Ieee1609Dot2Data_PDU,
       { "Ieee1609Dot2Data", "ieee1609dot2.Ieee1609Dot2Data_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -2143,7 +2160,7 @@ void proto_register_ieee1609dot2(void) {
         NULL, HFILL }},
     { &hf_ieee1609dot2_start,
       { "start", "ieee1609dot2.start",
-        FT_UINT32, BASE_DEC, NULL, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(ieee1609dot2_Time32_fmt), 0,
         "Time32", HFILL }},
     { &hf_ieee1609dot2_duration,
       { "duration", "ieee1609dot2.duration",
@@ -2219,11 +2236,11 @@ void proto_register_ieee1609dot2(void) {
         NULL, HFILL }},
     { &hf_ieee1609dot2_latitude,
       { "latitude", "ieee1609dot2.latitude",
-        FT_INT32, BASE_DEC, VALS(ieee1609dot2_NinetyDegreeInt_vals), 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(ieee1609dot2_NinetyDegreeInt_fmt), 0,
         NULL, HFILL }},
     { &hf_ieee1609dot2_longitude,
       { "longitude", "ieee1609dot2.longitude",
-        FT_INT32, BASE_DEC, VALS(ieee1609dot2_OneEightyDegreeInt_vals), 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(ieee1609dot2_OneEightyDegreeInt_fmt), 0,
         NULL, HFILL }},
     { &hf_ieee1609dot2_countryOnly,
       { "countryOnly", "ieee1609dot2.countryOnly",
@@ -2267,7 +2284,7 @@ void proto_register_ieee1609dot2(void) {
         NULL, HFILL }},
     { &hf_ieee1609dot2_elevation,
       { "elevation", "ieee1609dot2.elevation",
-        FT_UINT32, BASE_DEC, NULL, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(ieee1609dot2_ElevInt_fmt), 0,
         NULL, HFILL }},
     { &hf_ieee1609dot2_ecdsaNistP256Signature,
       { "ecdsaNistP256Signature", "ieee1609dot2.ecdsaNistP256Signature_element",
@@ -2434,7 +2451,7 @@ void proto_register_ieee1609dot2(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_ieee1609dot2_srRange,
-      { "opaque", "ieee1609dot2.opaque",
+      { "opaque", "ieee1609dot2.srRange.opaque",
         FT_UINT32, BASE_DEC, NULL, 0,
         "SequenceOfOctetString", HFILL }},
     { &hf_ieee1609dot2_all,
@@ -2543,11 +2560,11 @@ void proto_register_ieee1609dot2(void) {
         "T_hiPsid", HFILL }},
     { &hf_ieee1609dot2_generationTime,
       { "generationTime", "ieee1609dot2.generationTime",
-        FT_UINT64, BASE_DEC, NULL, 0,
+        FT_UINT64, BASE_CUSTOM, CF_FUNC(ieee1609dot2_Time64_fmt), 0,
         "Time64", HFILL }},
     { &hf_ieee1609dot2_expiryTime,
       { "expiryTime", "ieee1609dot2.expiryTime",
-        FT_UINT64, BASE_DEC, NULL, 0,
+        FT_UINT64, BASE_CUSTOM, CF_FUNC(ieee1609dot2_Time64_fmt), 0,
         "Time64", HFILL }},
     { &hf_ieee1609dot2_generationLocation,
       { "generationLocation", "ieee1609dot2.generationLocation_element",
@@ -2785,16 +2802,10 @@ void proto_register_ieee1609dot2(void) {
       { "enrol", "ieee1609dot2.EndEntityType.enrol",
         FT_BOOLEAN, 8, NULL, 0x40,
         NULL, HFILL }},
-
-/*--- End of included file: packet-ieee1609dot2-hfarr.c ---*/
-#line 66 "./asn1/ieee1609dot2/packet-ieee1609dot2-template.c"
   };
 
   /* List of subtrees */
   static gint *ett[] = {
-
-/*--- Included file: packet-ieee1609dot2-ettarr.c ---*/
-#line 1 "./asn1/ieee1609dot2/packet-ieee1609dot2-ettarr.c"
     &ett_ieee1609dot2_SequenceOfUint8,
     &ett_ieee1609dot2_SequenceOfUint16,
     &ett_ieee1609dot2_SequenceOfHashedId3,
@@ -2863,9 +2874,6 @@ void proto_register_ieee1609dot2(void) {
     &ett_ieee1609dot2_SequenceOfPsidGroupPermissions,
     &ett_ieee1609dot2_SubjectPermissions,
     &ett_ieee1609dot2_VerificationKeyIndicator,
-
-/*--- End of included file: packet-ieee1609dot2-ettarr.c ---*/
-#line 71 "./asn1/ieee1609dot2/packet-ieee1609dot2-template.c"
         &ett_ieee1609dot2_ssp,
   };
 

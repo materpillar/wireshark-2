@@ -14,6 +14,7 @@
 #include "config.h"
 #include <assert.h>
 #include <string.h>
+#include <wireshark.h>
 #include <wiretap/file_wrappers.h>
 #include "busmaster_priv.h"
 
@@ -33,8 +34,11 @@ static void merge_msg_data(msg_data_t *dst, const msg_data_t *a, const msg_data_
     memcpy(&dst->data[a->length], &b->data[0], b->length);
 }
 
-DIAG_OFF(unreachable-code)
+DIAG_OFF_LEMON()
+} /* end of %include */
 
+%code {
+DIAG_ON_LEMON()
 }
 
 %name BusmasterParser
@@ -70,7 +74,7 @@ DIAG_OFF(unreachable-code)
 
     g_free(state->parse_error);
     state->entry_type  = LOG_ENTRY_ERROR;
-    state->parse_error = g_strdup_printf("Syntax Error");
+    state->parse_error = ws_strdup_printf("Syntax Error");
     busmaster_debug_printf("%s: Syntax Error\n", G_STRFUNC);
 }
 
@@ -157,7 +161,7 @@ header ::= version ENDL maybe_lines
     state->entry_type        = LOG_ENTRY_HEADER;
     state->header.start_date = S.date;
     state->header.start_time = S.time;
-    state->header.protocol   = (protocol_t)P.v0;
+    state->header.protocol   = (protocol_type_t)P.v0;
     state->header.data_mode  = (data_mode_t)D.v0;
     state->header.time_mode  = (time_mode_t)T.v0;
 }
@@ -367,8 +371,6 @@ data48(R) ::= data32(A) data16(B) . { merge_msg_data(&R, &A, &B); }
 data64(R) ::= data32(A) data32(B) . { merge_msg_data(&R, &A, &B); }
 
 %code {
-
-DIAG_ON(unreachable-code)
 
 #include "busmaster_scanner_lex.h"
 #include "busmaster_parser.h"

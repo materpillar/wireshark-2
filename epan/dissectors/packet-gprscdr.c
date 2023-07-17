@@ -1,20 +1,20 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-gprscdr.c                                                           */
-/* asn2wrs.py -b -p gprscdr -c ./gprscdr.cnf -s ./packet-gprscdr-template -D . -O ../.. GenericChargingDataTypes.asn GPRSChargingDataTypesV641.asn GPRSChargingDataTypes.asn */
+/* asn2wrs.py -b -L -p gprscdr -c ./gprscdr.cnf -s ./packet-gprscdr-template -D . -O ../.. GenericChargingDataTypes.asn GPRSChargingDataTypesV641.asn GPRSChargingDataTypes.asn */
 
-/* Input file: packet-gprscdr-template.c */
-
-#line 1 "./asn1/gprscdr/packet-gprscdr-template.c"
 /* packet-gprscdr-template.c
  * Copyright 2011 , Anders Broman <anders.broman [AT] ericsson.com>
+ *
+ * Updates and corrections:
+ * Copyright 2018-2022, Joakim Karlsson <oakimk@gmail.com>
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
  * Copyright 1998 Gerald Combs
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
- * References: 3GPP TS 32.298 V14.0.0
+ * References: 3GPP TS 32.298 V17.4.0
  */
 
 #include "config.h"
@@ -40,11 +40,9 @@ void proto_register_gprscdr(void);
 /* Define the GPRS CDR proto */
 static int proto_gprscdr = -1;
 
-
-/*--- Included file: packet-gprscdr-hf.c ---*/
-#line 1 "./asn1/gprscdr/packet-gprscdr-hf.c"
 static int hf_gprscdr_gprscdr_GPRSCallEventRecord_PDU = -1;  /* GPRSCallEventRecord */
 static int hf_gprscdr_gprscdr_GPRSRecord_PDU = -1;  /* GPRSRecord */
+static int hf_gprscdr_gprscdr_CAMELInformationPDP_PDU = -1;  /* CAMELInformationPDP */
 static int hf_gprscdr_gsm0408Cause = -1;          /* INTEGER */
 static int hf_gprscdr_gsm0902MapErrorValue = -1;  /* INTEGER */
 static int hf_gprscdr_itu_tQ767Cause = -1;        /* INTEGER */
@@ -53,17 +51,21 @@ static int hf_gprscdr_manufacturerSpecificCause = -1;  /* ManagementExtension */
 static int hf_gprscdr_positionMethodFailureCause = -1;  /* PositionMethodFailure_Diagnostic */
 static int hf_gprscdr_unauthorizedLCSClientCause = -1;  /* UnauthorizedLCSClient_Diagnostic */
 static int hf_gprscdr_diameterResultCodeAndExperimentalResult = -1;  /* INTEGER */
+static int hf_gprscdr_plmnId = -1;                /* PLMN_Id */
+static int hf_gprscdr_eutraCellId = -1;           /* EutraCellId */
+static int hf_gprscdr_nid = -1;                   /* Nid */
 static int hf_gprscdr_rANNASCause = -1;           /* SEQUENCE_OF_RANNASCause */
 static int hf_gprscdr_rANNASCause_item = -1;      /* RANNASCause */
 static int hf_gprscdr_sIP_URI = -1;               /* GraphicString */
 static int hf_gprscdr_tEL_URI = -1;               /* GraphicString */
 static int hf_gprscdr_uRN = -1;                   /* GraphicString */
 static int hf_gprscdr_iSDN_E164 = -1;             /* GraphicString */
+static int hf_gprscdr_externalId = -1;            /* UTF8String */
 static int hf_gprscdr_iPBinaryAddress = -1;       /* IPBinaryAddress */
 static int hf_gprscdr_iPTextRepresentedAddress = -1;  /* IPTextRepresentedAddress */
 static int hf_gprscdr_iPBinV4Address = -1;        /* IPBinV4Address */
-static int hf_gprscdr_iPBinV6Address = -1;        /* IPBinV6AddressWithOrWithoutPrefixLength */
-static int hf_gprscdr_iPBinV6Address_01 = -1;     /* IPBinV6Address */
+static int hf_gprscdr_iPBinV6Address_choice = -1;  /* IPBinV6AddressWithOrWithoutPrefixLength */
+static int hf_gprscdr_iPBinV6Address = -1;        /* IPBinV6Address */
 static int hf_gprscdr_iPBinV6AddressWithPrefix = -1;  /* IPBinV6AddressWithPrefixLength */
 static int hf_gprscdr_pDPAddressPrefixLength = -1;  /* PDPAddressPrefixLength */
 static int hf_gprscdr_iPTextV4Address = -1;       /* IA5String_SIZE_7_15 */
@@ -88,7 +90,10 @@ static int hf_gprscdr_mBMSGWAddress = -1;         /* GSNAddress */
 static int hf_gprscdr_cNIPMulticastDistribution = -1;  /* CNIPMulticastDistribution */
 static int hf_gprscdr_mBMSDataTransferStart = -1;  /* MBMSTime */
 static int hf_gprscdr_mBMSDataTransferStop = -1;  /* MBMSTime */
+static int hf_gprscdr_nrCellId = -1;              /* NrCellId */
 static int hf_gprscdr_iPAddress = -1;             /* IPAddress */
+static int hf_gprscdr_nRcgi = -1;                 /* Ncgi */
+static int hf_gprscdr_ecgi = -1;                  /* Ecgi */
 static int hf_gprscdr_sCSAddress = -1;            /* IPAddress */
 static int hf_gprscdr_sCSRealm = -1;              /* DiameterIdentity */
 static int hf_gprscdr_serviceSpecificData = -1;   /* GraphicString */
@@ -250,6 +255,7 @@ static int hf_gprscdr_pDPPDNTypeExtension = -1;   /* PDPPDNTypeExtension */
 static int hf_gprscdr_mOExceptionDataCounter = -1;  /* MOExceptionDataCounter */
 static int hf_gprscdr_listOfRANSecondaryRATUsageReports = -1;  /* SEQUENCE_OF_RANSecondaryRATUsageReport */
 static int hf_gprscdr_listOfRANSecondaryRATUsageReports_item = -1;  /* RANSecondaryRATUsageReport */
+static int hf_gprscdr_pSCellInformation = -1;     /* PSCellInformation */
 static int hf_gprscdr_p_GWAddress = -1;           /* GSNAddress */
 static int hf_gprscdr_userLocationInformation_07 = -1;  /* T_userLocationInformation_07 */
 static int hf_gprscdr_listOfServiceData_02 = -1;  /* SEQUENCE_OF_ChangeOfServiceCondition */
@@ -520,9 +526,6 @@ static int hf_gprscdr_ServiceConditionChange_indirectServiceConditionChange = -1
 static int hf_gprscdr_ServiceConditionChange_servingPLMNRateControlChange = -1;
 static int hf_gprscdr_ServiceConditionChange_aPNRateControlChange = -1;
 
-/*--- End of included file: packet-gprscdr-hf.c ---*/
-#line 36 "./asn1/gprscdr/packet-gprscdr-template.c"
-
 static int ett_gprscdr = -1;
 static int ett_gprscdr_timestamp = -1;
 static int ett_gprscdr_plmn_id = -1;
@@ -530,10 +533,8 @@ static int ett_gprscdr_pdp_pdn_type = -1;
 static int ett_gprscdr_eps_qos_arp = -1;
 static int ett_gprscdr_managementextension_information = -1;
 static int ett_gprscdr_userlocationinformation = -1;
-
-/*--- Included file: packet-gprscdr-ett.c ---*/
-#line 1 "./asn1/gprscdr/packet-gprscdr-ett.c"
 static gint ett_gprscdr_Diagnostics = -1;
+static gint ett_gprscdr_Ecgi = -1;
 static gint ett_gprscdr_EnhancedDiagnostics = -1;
 static gint ett_gprscdr_SEQUENCE_OF_RANNASCause = -1;
 static gint ett_gprscdr_InvolvedParty = -1;
@@ -547,7 +548,9 @@ static gint ett_gprscdr_LevelOfCAMELService = -1;
 static gint ett_gprscdr_LocationAreaAndCell = -1;
 static gint ett_gprscdr_ManagementExtensions = -1;
 static gint ett_gprscdr_MBMSInformation = -1;
+static gint ett_gprscdr_Ncgi = -1;
 static gint ett_gprscdr_PDPAddress = -1;
+static gint ett_gprscdr_PSCellInformation = -1;
 static gint ett_gprscdr_SCSASAddress = -1;
 static gint ett_gprscdr_ServiceSpecificInfo = -1;
 static gint ett_gprscdr_SubscriptionID = -1;
@@ -631,9 +634,6 @@ static gint ett_gprscdr_UWANUserLocationInfo = -1;
 static gint ett_gprscdr_VoLTEInformation = -1;
 static gint ett_gprscdr_WLANOperatorId = -1;
 
-/*--- End of included file: packet-gprscdr-ett.c ---*/
-#line 45 "./asn1/gprscdr/packet-gprscdr-template.c"
-
 static expert_field ei_gprscdr_not_dissected = EI_INIT;
 static expert_field ei_gprscdr_choice_not_found = EI_INIT;
 
@@ -702,9 +702,6 @@ dissect_gprscdr_uli(tvbuff_t *tvb _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U
   return length;
 }
 
-
-/*--- Included file: packet-gprscdr-fn.c ---*/
-#line 1 "./asn1/gprscdr/packet-gprscdr-fn.c"
 
 
 static int
@@ -842,6 +839,7 @@ dissect_gprscdr_CellId(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
 
 static const value_string gprscdr_CauseForRecClosing_vals[] = {
   {   0, "normalRelease" },
+  {   1, "partialRecord" },
   {   4, "abnormalRelease" },
   {   5, "cAMELInitCallRelease" },
   {  16, "volumeLimit" },
@@ -950,7 +948,6 @@ dissect_gprscdr_BOOLEAN(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 static int
 dissect_gprscdr_T_information(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 49 "./asn1/gprscdr/gprscdr.cnf"
 
   proto_tree *ext_tree;
   ext_tree = proto_tree_add_subtree(tree, tvb, offset, -1, ett_gprscdr_managementextension_information, NULL, "Information");
@@ -959,7 +956,6 @@ dissect_gprscdr_T_information(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
   }else{
     proto_tree_add_expert(ext_tree, actx->pinfo, &ei_gprscdr_not_dissected, tvb, offset, -1);
   }
-
 
 
   return offset;
@@ -1021,6 +1017,65 @@ static int
 dissect_gprscdr_DiameterIdentity(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_ber_octet_string(implicit_tag, actx, tree, tvb, offset, hf_index,
                                        NULL);
+
+  return offset;
+}
+
+
+
+static int
+dissect_gprscdr_PLMN_Id(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  tvbuff_t *parameter_tvb;
+  proto_tree *subtree;
+
+  offset = dissect_ber_octet_string(implicit_tag, actx, tree, tvb, offset, hf_index,
+                                       &parameter_tvb);
+
+
+  if (!parameter_tvb)
+    return offset;
+
+  subtree = proto_item_add_subtree(actx->created_item, ett_gprscdr_plmn_id);
+  dissect_e212_mcc_mnc(parameter_tvb, actx->pinfo, subtree, 0, E212_NONE, TRUE);
+
+
+  return offset;
+}
+
+
+
+static int
+dissect_gprscdr_EutraCellId(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_ber_restricted_string(implicit_tag, BER_UNI_TAG_UTF8String,
+                                            actx, tree, tvb, offset, hf_index,
+                                            NULL);
+
+  return offset;
+}
+
+
+
+static int
+dissect_gprscdr_Nid(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_ber_restricted_string(implicit_tag, BER_UNI_TAG_UTF8String,
+                                            actx, tree, tvb, offset, hf_index,
+                                            NULL);
+
+  return offset;
+}
+
+
+static const ber_sequence_t Ecgi_sequence[] = {
+  { &hf_gprscdr_plmnId      , BER_CLASS_CON, 0, BER_FLAGS_IMPLTAG, dissect_gprscdr_PLMN_Id },
+  { &hf_gprscdr_eutraCellId , BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_gprscdr_EutraCellId },
+  { &hf_gprscdr_nid         , BER_CLASS_CON, 2, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_gprscdr_Nid },
+  { NULL, 0, 0, 0, NULL }
+};
+
+static int
+dissect_gprscdr_Ecgi(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
+                                   Ecgi_sequence, hf_index, ett_gprscdr_Ecgi);
 
   return offset;
 }
@@ -1094,7 +1149,7 @@ dissect_gprscdr_PDPAddressPrefixLength(gboolean implicit_tag _U_, tvbuff_t *tvb 
 
 
 static const ber_sequence_t IPBinV6AddressWithPrefixLength_sequence[] = {
-  { &hf_gprscdr_iPBinV6Address_01, BER_CLASS_UNI, BER_UNI_TAG_OCTETSTRING, BER_FLAGS_NOOWNTAG, dissect_gprscdr_IPBinV6Address },
+  { &hf_gprscdr_iPBinV6Address, BER_CLASS_UNI, BER_UNI_TAG_OCTETSTRING, BER_FLAGS_NOOWNTAG, dissect_gprscdr_IPBinV6Address },
   { &hf_gprscdr_pDPAddressPrefixLength, BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_gprscdr_PDPAddressPrefixLength },
   { NULL, 0, 0, 0, NULL }
 };
@@ -1115,7 +1170,7 @@ static const value_string gprscdr_IPBinV6AddressWithOrWithoutPrefixLength_vals[]
 };
 
 static const ber_choice_t IPBinV6AddressWithOrWithoutPrefixLength_choice[] = {
-  {   1, &hf_gprscdr_iPBinV6Address_01, BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_gprscdr_IPBinV6Address },
+  {   1, &hf_gprscdr_iPBinV6Address, BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_gprscdr_IPBinV6Address },
   {   4, &hf_gprscdr_iPBinV6AddressWithPrefix, BER_CLASS_CON, 4, BER_FLAGS_IMPLTAG, dissect_gprscdr_IPBinV6AddressWithPrefixLength },
   { 0, NULL, 0, 0, 0, NULL }
 };
@@ -1138,7 +1193,7 @@ static const value_string gprscdr_IPBinaryAddress_vals[] = {
 
 static const ber_choice_t IPBinaryAddress_choice[] = {
   {   0, &hf_gprscdr_iPBinV4Address, BER_CLASS_CON, 0, BER_FLAGS_IMPLTAG, dissect_gprscdr_IPBinV4Address },
-  {   1, &hf_gprscdr_iPBinV6Address, BER_CLASS_ANY/*choice*/, -1/*choice*/, BER_FLAGS_NOOWNTAG, dissect_gprscdr_IPBinV6AddressWithOrWithoutPrefixLength },
+  {   1, &hf_gprscdr_iPBinV6Address_choice, BER_CLASS_ANY/*choice*/, -1/*choice*/, BER_FLAGS_NOOWNTAG, dissect_gprscdr_IPBinV6AddressWithOrWithoutPrefixLength },
   { 0, NULL, 0, 0, 0, NULL }
 };
 
@@ -1238,11 +1293,23 @@ dissect_gprscdr_GraphicString(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
 }
 
 
+
+static int
+dissect_gprscdr_UTF8String(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_ber_restricted_string(implicit_tag, BER_UNI_TAG_UTF8String,
+                                            actx, tree, tvb, offset, hf_index,
+                                            NULL);
+
+  return offset;
+}
+
+
 static const value_string gprscdr_InvolvedParty_vals[] = {
   {   0, "sIP-URI" },
   {   1, "tEL-URI" },
   {   2, "uRN" },
   {   3, "iSDN-E164" },
+  {   4, "externalId" },
   { 0, NULL }
 };
 
@@ -1251,6 +1318,7 @@ static const ber_choice_t InvolvedParty_choice[] = {
   {   1, &hf_gprscdr_tEL_URI     , BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_gprscdr_GraphicString },
   {   2, &hf_gprscdr_uRN         , BER_CLASS_CON, 2, BER_FLAGS_IMPLTAG, dissect_gprscdr_GraphicString },
   {   3, &hf_gprscdr_iSDN_E164   , BER_CLASS_CON, 3, BER_FLAGS_IMPLTAG, dissect_gprscdr_GraphicString },
+  {   4, &hf_gprscdr_externalId  , BER_CLASS_CON, 4, BER_FLAGS_IMPLTAG, dissect_gprscdr_UTF8String },
   { 0, NULL, 0, 0, 0, NULL }
 };
 
@@ -1533,7 +1601,6 @@ dissect_gprscdr_MSISDN(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
 
 static int
 dissect_gprscdr_MSTimeZone(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 98 "./asn1/gprscdr/gprscdr.cnf"
 /*
  *
  * 1.Octet: Time Zone and 2. Octet: Daylight saving time, see TS 29.060 [75]
@@ -1563,6 +1630,32 @@ dissect_gprscdr_MSTimeZone(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
                         );
 
 
+  return offset;
+}
+
+
+
+static int
+dissect_gprscdr_NrCellId(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_ber_restricted_string(implicit_tag, BER_UNI_TAG_UTF8String,
+                                            actx, tree, tvb, offset, hf_index,
+                                            NULL);
+
+  return offset;
+}
+
+
+static const ber_sequence_t Ncgi_sequence[] = {
+  { &hf_gprscdr_plmnId      , BER_CLASS_CON, 0, BER_FLAGS_IMPLTAG, dissect_gprscdr_PLMN_Id },
+  { &hf_gprscdr_nrCellId    , BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_gprscdr_NrCellId },
+  { &hf_gprscdr_nid         , BER_CLASS_CON, 2, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_gprscdr_Nid },
+  { NULL, 0, 0, 0, NULL }
+};
+
+static int
+dissect_gprscdr_Ncgi(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
+                                   Ncgi_sequence, hf_index, ett_gprscdr_Ncgi);
 
   return offset;
 }
@@ -1601,32 +1694,24 @@ dissect_gprscdr_PDPAddress(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
 
 
 static int
-dissect_gprscdr_PLMN_Id(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 125 "./asn1/gprscdr/gprscdr.cnf"
-  tvbuff_t *parameter_tvb;
-  proto_tree *subtree;
-
+dissect_gprscdr_PositioningData(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_ber_octet_string(implicit_tag, actx, tree, tvb, offset, hf_index,
-                                       &parameter_tvb);
-
-
-  if (!parameter_tvb)
-    return offset;
-
-  subtree = proto_item_add_subtree(actx->created_item, ett_gprscdr_plmn_id);
-  dissect_e212_mcc_mnc(parameter_tvb, actx->pinfo, subtree, 0, E212_NONE, TRUE);
-
-
+                                       NULL);
 
   return offset;
 }
 
 
+static const ber_sequence_t PSCellInformation_sequence[] = {
+  { &hf_gprscdr_nRcgi       , BER_CLASS_CON, 0, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_gprscdr_Ncgi },
+  { &hf_gprscdr_ecgi        , BER_CLASS_CON, 1, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_gprscdr_Ecgi },
+  { NULL, 0, 0, 0, NULL }
+};
 
 static int
-dissect_gprscdr_PositioningData(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_ber_octet_string(implicit_tag, actx, tree, tvb, offset, hf_index,
-                                       NULL);
+dissect_gprscdr_PSCellInformation(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
+                                   PSCellInformation_sequence, hf_index, ett_gprscdr_PSCellInformation);
 
   return offset;
 }
@@ -1843,17 +1928,6 @@ dissect_gprscdr_SubscriptionIDType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_,
 }
 
 
-
-static int
-dissect_gprscdr_UTF8String(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_ber_restricted_string(implicit_tag, BER_UNI_TAG_UTF8String,
-                                            actx, tree, tvb, offset, hf_index,
-                                            NULL);
-
-  return offset;
-}
-
-
 static const ber_sequence_t SubscriptionID_set[] = {
   { &hf_gprscdr_subscriptionIDType, BER_CLASS_CON, 0, BER_FLAGS_IMPLTAG, dissect_gprscdr_SubscriptionIDType },
   { &hf_gprscdr_subscriptionIDData, BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_gprscdr_UTF8String },
@@ -1888,7 +1962,6 @@ dissect_gprscdr_ThreeGPPPSDataOffStatus(gboolean implicit_tag _U_, tvbuff_t *tvb
 
 static int
 dissect_gprscdr_TimeStamp(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 59 "./asn1/gprscdr/gprscdr.cnf"
 /*
  *
  * The contents of this field are a compact form of the UTCTime format
@@ -1924,11 +1997,10 @@ dissect_gprscdr_TimeStamp(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offs
                          tvb_get_guint8(parameter_tvb,3),                        /* Hour */
                          tvb_get_guint8(parameter_tvb,4),                        /* Minute */
                          tvb_get_guint8(parameter_tvb,5),                        /* Second */
-                         tvb_get_string_enc(wmem_packet_scope(), parameter_tvb,6,1,ENC_ASCII|ENC_NA), /* Sign */
+                         tvb_get_string_enc(actx->pinfo->pool, parameter_tvb,6,1,ENC_ASCII|ENC_NA), /* Sign */
                          tvb_get_guint8(parameter_tvb,7),                        /* Hour */
                          tvb_get_guint8(parameter_tvb,8)                         /* Minute */
                         );
-
 
 
   return offset;
@@ -1968,7 +2040,6 @@ dissect_gprscdr_AccessPointNameNI(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 
 static int
 dissect_gprscdr_PDPType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 222 "./asn1/gprscdr/gprscdr.cnf"
   proto_tree *ext_tree_pdp_pdn_type;
   guint length;
 
@@ -1996,7 +2067,6 @@ dissect_gprscdr_PDPType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 
 
-
   return offset;
 }
 
@@ -2004,7 +2074,6 @@ dissect_gprscdr_PDPType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 static int
 dissect_gprscdr_QoSInformation(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 137 "./asn1/gprscdr/gprscdr.cnf"
 
   /* This octet string is a 1:1 copy of the contents (i.e. starting with octet 4) of the
    * Quality of Service (QoS) Profile information element specified in 29.060, ch7.7.34.
@@ -2015,7 +2084,6 @@ dissect_gprscdr_QoSInformation(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
   hfi = proto_registrar_get_nth(hf_index);
 
   offset = decode_qos_umts(tvb, 0, actx->pinfo, tree, hfi->name, 0);
-
 
 
   return offset;
@@ -2068,10 +2136,8 @@ dissect_gprscdr_FailureHandlingContinue(gboolean implicit_tag _U_, tvbuff_t *tvb
 
 static int
 dissect_gprscdr_T_userLocationInformation_04(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 182 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 1);
-
 
 
   return offset;
@@ -2259,7 +2325,7 @@ static const ber_sequence_t CAMELInformationPDP_set[] = {
   { NULL, 0, 0, 0, NULL }
 };
 
-static int
+int
 dissect_gprscdr_CAMELInformationPDP(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_ber_set(implicit_tag, actx, tree, tvb, offset,
                               CAMELInformationPDP_set, hf_index, ett_gprscdr_CAMELInformationPDP);
@@ -2370,10 +2436,8 @@ dissect_gprscdr_OCTET_STRING(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int o
 
 static int
 dissect_gprscdr_T_userLocationInformation(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 166 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 1);
-
 
 
   return offset;
@@ -2635,10 +2699,8 @@ dissect_gprscdr_PSFurnishChargingInformation(gboolean implicit_tag _U_, tvbuff_t
 
 static int
 dissect_gprscdr_T_userLocationInformation_02(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 174 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 1);
-
 
 
   return offset;
@@ -2844,10 +2906,8 @@ dissect_gprscdr_GPRSCallEventRecord(gboolean implicit_tag _U_, tvbuff_t *tvb _U_
 
 static int
 dissect_gprscdr_T_userLocationInformation_01(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 170 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 1);
-
 
 
   return offset;
@@ -2901,10 +2961,8 @@ dissect_gprscdr_GGSNPDPRecordV750(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 
 static int
 dissect_gprscdr_T_userLocationInformation_03(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 178 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 1);
-
 
 
   return offset;
@@ -3023,10 +3081,8 @@ dissect_gprscdr_SEQUENCE_OF_AFRecordInformation(gboolean implicit_tag _U_, tvbuf
 
 static int
 dissect_gprscdr_T_userLocationInformation_05(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 186 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 1);
-
 
 
   return offset;
@@ -3225,10 +3281,8 @@ dissect_gprscdr_ChangeCondition(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_gprscdr_T_userLocationInformation_08(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 206 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 2);
-
 
 
   return offset;
@@ -3238,7 +3292,6 @@ dissect_gprscdr_T_userLocationInformation_08(gboolean implicit_tag _U_, tvbuff_t
 
 static int
 dissect_gprscdr_T_aRP(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 149 "./asn1/gprscdr/gprscdr.cnf"
   proto_tree *ext_tree_arp;
   guint length;
 
@@ -3253,7 +3306,6 @@ dissect_gprscdr_T_aRP(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _
   dissect_gtpv2_arp(tvb, actx->pinfo, ext_tree_arp, NULL, length, 0, 0, NULL);
 
   offset = length;
-
 
 
 
@@ -3407,10 +3459,8 @@ dissect_gprscdr_UWANUserLocationInfo(gboolean implicit_tag _U_, tvbuff_t *tvb _U
 
 static int
 dissect_gprscdr_T_userLocationInformation_10(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 214 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 2);
-
 
 
   return offset;
@@ -4036,10 +4086,8 @@ dissect_gprscdr_GGSNMBMSRecord(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 static int
 dissect_gprscdr_T_userLocationInformation_06(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 190 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 2);
-
 
 
   return offset;
@@ -4071,10 +4119,8 @@ dissect_gprscdr_SEQUENCE_OF_ServingNodeType(gboolean implicit_tag _U_, tvbuff_t 
 
 static int
 dissect_gprscdr_T_lastUserLocationInformation(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 194 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 2);
-
 
 
   return offset;
@@ -4219,6 +4265,7 @@ static const ber_sequence_t SGWRecord_set[] = {
   { &hf_gprscdr_pDPPDNTypeExtension, BER_CLASS_CON, 62, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_gprscdr_PDPPDNTypeExtension },
   { &hf_gprscdr_mOExceptionDataCounter, BER_CLASS_CON, 63, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_gprscdr_MOExceptionDataCounter },
   { &hf_gprscdr_listOfRANSecondaryRATUsageReports, BER_CLASS_CON, 64, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_gprscdr_SEQUENCE_OF_RANSecondaryRATUsageReport },
+  { &hf_gprscdr_pSCellInformation, BER_CLASS_CON, 65, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_gprscdr_PSCellInformation },
   { NULL, 0, 0, 0, NULL }
 };
 
@@ -4234,10 +4281,8 @@ dissect_gprscdr_SGWRecord(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offs
 
 static int
 dissect_gprscdr_T_userLocationInformation_07(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 198 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 2);
-
 
 
   return offset;
@@ -4299,10 +4344,8 @@ dissect_gprscdr_ServiceConditionChange(gboolean implicit_tag _U_, tvbuff_t *tvb 
 
 static int
 dissect_gprscdr_T_userLocationInformation_09(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 210 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 2);
-
 
 
   return offset;
@@ -4336,10 +4379,8 @@ dissect_gprscdr_ADCRuleBaseName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_gprscdr_T_userLocationInformation_11(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 218 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 2);
-
 
 
   return offset;
@@ -4515,10 +4556,8 @@ dissect_gprscdr_SEQUENCE_OF_ChangeOfServiceCondition(gboolean implicit_tag _U_, 
 
 static int
 dissect_gprscdr_T_lastUserLocationInformation_01(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 202 "./asn1/gprscdr/gprscdr.cnf"
 
   offset = dissect_gprscdr_uli(tvb, actx, tree, 2);
-
 
 
   return offset;
@@ -5009,7 +5048,6 @@ static const ber_choice_t GPRSRecord_choice[] = {
 
 int
 dissect_gprscdr_GPRSRecord(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 249 "./asn1/gprscdr/gprscdr.cnf"
 proto_item *item;
 gint branch_taken, t_offset = offset;
 gint32   tag;
@@ -5026,7 +5064,6 @@ gint32   tag;
     expert_add_info_format(actx->pinfo, item, &ei_gprscdr_choice_not_found,
               "Record type(BER choice) not found: %u", tag);
  }
-
 
   return offset;
 }
@@ -5047,10 +5084,14 @@ int dissect_gprscdr_GPRSRecord_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, pr
   offset = dissect_gprscdr_GPRSRecord(FALSE, tvb, offset, &asn1_ctx, tree, hf_gprscdr_gprscdr_GPRSRecord_PDU);
   return offset;
 }
+int dissect_gprscdr_CAMELInformationPDP_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
+  asn1_ctx_t asn1_ctx;
+  asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
+  offset = dissect_gprscdr_CAMELInformationPDP(FALSE, tvb, offset, &asn1_ctx, tree, hf_gprscdr_gprscdr_CAMELInformationPDP_PDU);
+  return offset;
+}
 
-
-/*--- End of included file: packet-gprscdr-fn.c ---*/
-#line 115 "./asn1/gprscdr/packet-gprscdr-template.c"
 
 
 
@@ -5060,9 +5101,6 @@ proto_register_gprscdr(void)
 {
   /* List of fields */
   static hf_register_info hf[] = {
-
-/*--- Included file: packet-gprscdr-hfarr.c ---*/
-#line 1 "./asn1/gprscdr/packet-gprscdr-hfarr.c"
     { &hf_gprscdr_gprscdr_GPRSCallEventRecord_PDU,
       { "GPRSCallEventRecord", "gprscdr.GPRSCallEventRecord",
         FT_UINT32, BASE_DEC, VALS(gprscdr_GPRSCallEventRecord_vals), 0,
@@ -5070,6 +5108,10 @@ proto_register_gprscdr(void)
     { &hf_gprscdr_gprscdr_GPRSRecord_PDU,
       { "GPRSRecord", "gprscdr.GPRSRecord",
         FT_UINT32, BASE_DEC, VALS(gprscdr_GPRSRecord_vals), 0,
+        NULL, HFILL }},
+    { &hf_gprscdr_gprscdr_CAMELInformationPDP_PDU,
+      { "CAMELInformationPDP", "gprscdr.CAMELInformationPDP_element",
+        FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_gprscdr_gsm0408Cause,
       { "gsm0408Cause", "gprscdr.gsm0408Cause",
@@ -5103,6 +5145,18 @@ proto_register_gprscdr(void)
       { "diameterResultCodeAndExperimentalResult", "gprscdr.diameterResultCodeAndExperimentalResult",
         FT_INT32, BASE_DEC, NULL, 0,
         "INTEGER", HFILL }},
+    { &hf_gprscdr_plmnId,
+      { "plmnId", "gprscdr.plmnId",
+        FT_BYTES, BASE_NONE, NULL, 0,
+        "PLMN_Id", HFILL }},
+    { &hf_gprscdr_eutraCellId,
+      { "eutraCellId", "gprscdr.eutraCellId",
+        FT_STRING, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_gprscdr_nid,
+      { "nid", "gprscdr.nid",
+        FT_STRING, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
     { &hf_gprscdr_rANNASCause,
       { "rANNASCause", "gprscdr.rANNASCause",
         FT_UINT32, BASE_DEC, NULL, 0,
@@ -5127,6 +5181,10 @@ proto_register_gprscdr(void)
       { "iSDN-E164", "gprscdr.iSDN_E164",
         FT_STRING, BASE_NONE, NULL, 0,
         "GraphicString", HFILL }},
+    { &hf_gprscdr_externalId,
+      { "externalId", "gprscdr.externalId",
+        FT_STRING, BASE_NONE, NULL, 0,
+        "UTF8String", HFILL }},
     { &hf_gprscdr_iPBinaryAddress,
       { "iPBinaryAddress", "gprscdr.iPBinaryAddress",
         FT_UINT32, BASE_DEC, VALS(gprscdr_IPBinaryAddress_vals), 0,
@@ -5139,11 +5197,11 @@ proto_register_gprscdr(void)
       { "iPBinV4Address", "gprscdr.iPBinV4Address",
         FT_IPv4, BASE_NONE, NULL, 0,
         NULL, HFILL }},
-    { &hf_gprscdr_iPBinV6Address,
-      { "iPBinV6Address", "gprscdr.iPBinV6Address",
+    { &hf_gprscdr_iPBinV6Address_choice,
+      { "iPBinV6Address", "gprscdr.iPBinV6Address_choice",
         FT_UINT32, BASE_DEC, VALS(gprscdr_IPBinV6AddressWithOrWithoutPrefixLength_vals), 0,
         "IPBinV6AddressWithOrWithoutPrefixLength", HFILL }},
-    { &hf_gprscdr_iPBinV6Address_01,
+    { &hf_gprscdr_iPBinV6Address,
       { "iPBinV6Address", "gprscdr.iPBinV6Address",
         FT_IPv6, BASE_NONE, NULL, 0,
         NULL, HFILL }},
@@ -5243,9 +5301,21 @@ proto_register_gprscdr(void)
       { "mBMSDataTransferStop", "gprscdr.mBMSDataTransferStop",
         FT_BYTES, BASE_NONE, NULL, 0,
         "MBMSTime", HFILL }},
+    { &hf_gprscdr_nrCellId,
+      { "nrCellId", "gprscdr.nrCellId",
+        FT_STRING, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
     { &hf_gprscdr_iPAddress,
       { "iPAddress", "gprscdr.iPAddress",
         FT_UINT32, BASE_DEC, VALS(gprscdr_IPAddress_vals), 0,
+        NULL, HFILL }},
+    { &hf_gprscdr_nRcgi,
+      { "nRcgi", "gprscdr.nRcgi_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        "Ncgi", HFILL }},
+    { &hf_gprscdr_ecgi,
+      { "ecgi", "gprscdr.ecgi_element",
+        FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_gprscdr_sCSAddress,
       { "sCSAddress", "gprscdr.sCSAddress",
@@ -5889,6 +5959,10 @@ proto_register_gprscdr(void)
         "SEQUENCE_OF_RANSecondaryRATUsageReport", HFILL }},
     { &hf_gprscdr_listOfRANSecondaryRATUsageReports_item,
       { "RANSecondaryRATUsageReport", "gprscdr.RANSecondaryRATUsageReport_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_gprscdr_pSCellInformation,
+      { "pSCellInformation", "gprscdr.pSCellInformation_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_gprscdr_p_GWAddress,
@@ -6963,9 +7037,6 @@ proto_register_gprscdr(void)
       { "aPNRateControlChange", "gprscdr.ServiceConditionChange.aPNRateControlChange",
         FT_BOOLEAN, 8, NULL, 0x04,
         NULL, HFILL }},
-
-/*--- End of included file: packet-gprscdr-hfarr.c ---*/
-#line 125 "./asn1/gprscdr/packet-gprscdr-template.c"
   };
 
   /* List of subtrees */
@@ -6977,10 +7048,8 @@ proto_register_gprscdr(void)
     &ett_gprscdr_eps_qos_arp,
     &ett_gprscdr_managementextension_information,
     &ett_gprscdr_userlocationinformation,
-
-/*--- Included file: packet-gprscdr-ettarr.c ---*/
-#line 1 "./asn1/gprscdr/packet-gprscdr-ettarr.c"
     &ett_gprscdr_Diagnostics,
+    &ett_gprscdr_Ecgi,
     &ett_gprscdr_EnhancedDiagnostics,
     &ett_gprscdr_SEQUENCE_OF_RANNASCause,
     &ett_gprscdr_InvolvedParty,
@@ -6994,7 +7063,9 @@ proto_register_gprscdr(void)
     &ett_gprscdr_LocationAreaAndCell,
     &ett_gprscdr_ManagementExtensions,
     &ett_gprscdr_MBMSInformation,
+    &ett_gprscdr_Ncgi,
     &ett_gprscdr_PDPAddress,
+    &ett_gprscdr_PSCellInformation,
     &ett_gprscdr_SCSASAddress,
     &ett_gprscdr_ServiceSpecificInfo,
     &ett_gprscdr_SubscriptionID,
@@ -7077,9 +7148,6 @@ proto_register_gprscdr(void)
     &ett_gprscdr_UWANUserLocationInfo,
     &ett_gprscdr_VoLTEInformation,
     &ett_gprscdr_WLANOperatorId,
-
-/*--- End of included file: packet-gprscdr-ettarr.c ---*/
-#line 137 "./asn1/gprscdr/packet-gprscdr-template.c"
         };
 
   static ei_register_info ei[] = {

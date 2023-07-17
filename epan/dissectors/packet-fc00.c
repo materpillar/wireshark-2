@@ -24,6 +24,8 @@
 void proto_reg_handoff_fc00(void);
 void proto_register_fc00(void);
 
+static dissector_handle_t fc00_handle;
+
 /* Initialize the protocol and registered fields */
 static int proto_fc00 = -1;
 static int hf_fc00_session_state    = -1;
@@ -40,8 +42,6 @@ static int hf_fc00_ip_address       = -1;
 static int hf_fc00_authenticator    = -1;
 static int hf_fc00_temp_publicy_key = -1;
 static int hf_fc00_payload          = -1;
-
-static expert_field ei_fc00_chksum_unsupported = EI_INIT;
 
 /* Cjdns constants */
 #define SESSION_STATE_OFF 0
@@ -121,16 +121,15 @@ dissect_cryptoauth(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *da
     proto_tree_add_item(fc00_tree, hf_fc00_random_nonce, tvb,
             NONCE_OFF, NONCE_LEN, ENC_NA);
 
-#if GLIB_CHECK_VERSION(2, 36, 0)  /* sha512 support was added in glib 2.36 */
     if (fc00_tree)
     {
         GChecksum *hash  = g_checksum_new(G_CHECKSUM_SHA512);
         gsize digest_len = g_checksum_type_get_length(G_CHECKSUM_SHA512);
         proto_tree *key_tree;
 
-        guint8 *raw_key    = (guint8*)wmem_alloc(wmem_packet_scope(), PUBLIC_KEY_LEN);
-        char *encoded_key = (char*)wmem_alloc(wmem_packet_scope(), 53);
-        guint8 *ip_buf    = (guint8*)wmem_alloc(wmem_packet_scope(), digest_len);
+        guint8 *raw_key    = (guint8*)wmem_alloc(pinfo->pool, PUBLIC_KEY_LEN);
+        char *encoded_key = (char*)wmem_alloc(pinfo->pool, 53);
+        guint8 *ip_buf    = (guint8*)wmem_alloc(pinfo->pool, digest_len);
 
         tvb_memcpy(tvb, raw_key, PUBLIC_KEY_OFF, PUBLIC_KEY_LEN);
 
@@ -151,9 +150,6 @@ dissect_cryptoauth(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *da
 
         proto_tree_add_ipv6(key_tree, hf_fc00_ip_address, tvb, PUBLIC_KEY_OFF, PUBLIC_KEY_LEN, (ws_in6_addr*)ip_buf);
     }
-#else
-    proto_tree_add_expert(fc00_tree, pinfo, &ei_fc00_chksum_unsupported, tvb, PUBLIC_KEY_OFF, PUBLIC_KEY_LEN);
-#endif
 
     proto_tree_add_item(fc00_tree, hf_fc00_authenticator, tvb,
             POLY_AUTH_OFF, POLY_AUTH_LEN, ENC_NA);
@@ -261,35 +257,23 @@ proto_register_fc00(void)
         }
     };
 
-    static ei_register_info ei[] = {
-        { &ei_fc00_chksum_unsupported,
-            { "fc00.chksum_unsupported", PI_DECRYPTION, PI_NOTE,
-                "checksum calculation is not supported",
-                EXPFILL }}
-    };
-
     static gint *ett[] = {
         &ett_fc00,
         &ett_fc00_auth,
         &ett_fc00_key
     };
 
-    expert_module_t *expert_fc00;
-
     proto_fc00 = proto_register_protocol("Fc00 CryptoAuth", "Fc00", "fc00");
 
     proto_register_field_array(proto_fc00, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
-    expert_fc00 = expert_register_protocol(proto_fc00);
-    expert_register_field_array(expert_fc00, ei, array_length(ei));
+
+    fc00_handle = register_dissector("fc00", dissect_cryptoauth, proto_fc00);
 }
 
 void
 proto_reg_handoff_fc00(void)
 {
-    dissector_handle_t fc00_handle;
-
-    fc00_handle = create_dissector_handle(dissect_cryptoauth, proto_fc00);
     dissector_add_for_decode_as_with_preference("udp.port", fc00_handle);
 }
 

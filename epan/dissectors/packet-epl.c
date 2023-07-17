@@ -67,10 +67,12 @@
 #include <epan/expert.h>
 #include <epan/reassemble.h>
 #include <epan/proto_data.h>
+#include <epan/strutil.h>
 #include <epan/uat.h>
 #include <wsutil/strtoi.h>
 #include <wsutil/file_util.h>
 #include <wsutil/report_message.h>
+#include <wsutil/wslog.h>
 #include <string.h>
 
 #ifdef HAVE_LIBXML2
@@ -1816,6 +1818,7 @@ static expert_field ei_sendseq_value          = EI_INIT;
 static expert_field ei_real_length_differs    = EI_INIT;
 
 static dissector_handle_t epl_handle;
+static dissector_handle_t epl_udp_handle;
 
 static gboolean show_cmd_layer_for_duplicated = FALSE;
 static gboolean show_pdo_meta_info = FALSE;
@@ -1917,7 +1920,7 @@ static wmem_map_t *epl_profiles_by_device, *epl_profiles_by_nodeid, *epl_profile
 static struct profile *epl_default_profile;
 static const char *epl_default_profile_path = NULL, *epl_default_profile_path_last = NULL;
 
-static gboolean
+static bool
 profile_del_cb(wmem_allocator_t *pool _U_, wmem_cb_event_t event _U_, void *_profile)
 {
 	struct profile *profile = (struct profile*)_profile;
@@ -2218,7 +2221,7 @@ epl_get_convo(packet_info *pinfo, int opts)
 	node_addr = &epl_placeholder_mac;
 
 	if ((epan_convo = find_conversation(pinfo->num, node_addr, node_addr,
-				conversation_pt_to_endpoint_type(pinfo->ptype), node_port, node_port, NO_ADDR_B|NO_PORT_B)))
+				conversation_pt_to_conversation_type(pinfo->ptype), node_port, node_port, NO_ADDR_B|NO_PORT_B)))
 	{
 		/* XXX Do I need to check setup_frame != pinfo->num in order to not
 		 * create unnecessary new conversations?
@@ -2235,7 +2238,7 @@ epl_get_convo(packet_info *pinfo, int opts)
 	{
 new_convo_creation:
 		epan_convo = conversation_new(pinfo->num, node_addr, node_addr,
-				conversation_pt_to_endpoint_type(pinfo->ptype), node_port, node_port, NO_ADDR2|NO_PORT2);
+				conversation_pt_to_conversation_type(pinfo->ptype), node_port, node_port, NO_ADDR2|NO_PORT2);
 	}
 
 	convo = (struct epl_convo*)conversation_get_proto_data(epan_convo, proto_epl);
@@ -2500,7 +2503,7 @@ epl_set_sequence_nr(packet_info *pinfo, guint16 seqnum)
 static void
 elp_version( gchar *result, guint32 version )
 {
-	g_snprintf( result, ITEM_LABEL_LENGTH, "%d.%d", hi_nibble(version), lo_nibble(version));
+	snprintf( result, ITEM_LABEL_LENGTH, "%d.%d", hi_nibble(version), lo_nibble(version));
 }
 /* Code to actually dissect the packets */
 static int
@@ -2520,11 +2523,8 @@ dissect_eplpdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean udp
 	if (tvb_reported_length(tvb) < 3)
 	{
 		/* Not enough data for an EPL header; don't try to interpret it */
-		return FALSE;
+		return 0;
 	}
-
-	/* Make entries in Protocol column and Info column on summary display */
-	col_set_str(pinfo->cinfo, COL_PROTOCOL, udpencap ? "POWERLINK/UDP" : "POWERLINK");
 
 	/* Get message type */
 	epl_mtyp = tvb_get_guint8(tvb, EPL_MTYP_OFFSET) & 0x7F;
@@ -2535,7 +2535,15 @@ dissect_eplpdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean udp
 	* to dissect it as a normal EPL packet.
 	*/
 	if (dissector_try_heuristic(heur_epl_subdissector_list, tvb, pinfo, tree, &hdtbl_entry, &epl_mtyp))
-		return TRUE;
+		return tvb_reported_length(tvb);
+
+	if (!try_val_to_str(epl_mtyp, mtyp_vals)) {
+		/* Not an EPL packet */
+		return 0;
+	}
+
+	/* Make entries in Protocol column and Info column on summary display */
+	col_set_str(pinfo->cinfo, COL_PROTOCOL, udpencap ? "POWERLINK/UDP" : "POWERLINK");
 
 	/* tap */
 	/*  mi.epl_mtyp = epl_mtyp;
@@ -2606,7 +2614,7 @@ dissect_eplpdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean udp
 			break;
 
 		default:    /* no valid EPL packet */
-			return FALSE;
+			return 0;
 	}
 
 	if (tree)
@@ -2800,7 +2808,7 @@ dissect_epl_payload(proto_tree *epl_tree, tvbuff_t *tvb, packet_info *pinfo, gin
 			guint64 val;
 			item = proto_tree_add_item_ret_uint64(epl_tree, *type->hf,
 						tvb, offset, type->len, type->encoding, &val);
-			proto_item_append_text(item, " (0x%.*" G_GINT64_MODIFIER "x)", 2*type->len, val);
+			proto_item_append_text(item, " (0x%.*" PRIx64 ")", 2*type->len, val);
 		}
 	}
 	/* If a mapping uses a type of fixed width that's not equal to
@@ -2814,7 +2822,7 @@ dissect_epl_payload(proto_tree *epl_tree, tvbuff_t *tvb, packet_info *pinfo, gin
 			guint64 val;
 			item = proto_tree_add_item_ret_uint64(epl_tree, hf_epl_od_uint,
 						payload_tvb, 0, payload_len, ENC_LITTLE_ENDIAN, &val);
-			proto_item_append_text(item, " (0x%.*" G_GINT64_MODIFIER "x)", 2*payload_len, val);
+			proto_item_append_text(item, " (0x%.*" PRIx64 ")", 2*payload_len, val);
 		}
 		else
 		{
@@ -2893,7 +2901,7 @@ dissect_epl_preq(struct epl_convo *convo, proto_tree *epl_tree, tvbuff_t *tvb, p
 	proto_tree_add_uint(epl_tree, hf_epl_preq_size, tvb, offset, 2, len);
 
 	col_append_fstr(pinfo->cinfo, COL_INFO, "[%4d]  F:RD=%d,EA=%d  V:%d.%d", len,
-			(EPL_PDO_RD_MASK & flags), (EPL_PDO_EA_MASK & flags), hi_nibble(pdoversion), lo_nibble(pdoversion));
+			((EPL_PDO_RD_MASK & flags) >> 0), ((EPL_PDO_EA_MASK & flags) >> 2), hi_nibble(pdoversion), lo_nibble(pdoversion));
 
 	offset += 2;
 	offset = dissect_epl_pdo(convo, epl_tree, tvb, pinfo, offset, len, EPL_PREQ );
@@ -2950,7 +2958,7 @@ dissect_epl_pres(struct epl_convo *convo, proto_tree *epl_tree, tvbuff_t *tvb, p
 	col_append_fstr(pinfo->cinfo, COL_INFO, "[%4d]", len);
 
 	col_append_fstr(pinfo->cinfo, COL_INFO, "  F:RD=%d,EN=%d,RS=%d,PR=%d  V=%d.%d",
-			(EPL_PDO_RD_MASK & flags), (EPL_PDO_EN_MASK & flags), (EPL_PDO_RS_MASK & flags2), (EPL_PDO_PR_MASK & flags2) >> 3,
+			((EPL_PDO_RD_MASK & flags) >> 0), ((EPL_PDO_EN_MASK & flags) >> 4), (EPL_PDO_RS_MASK & flags2), (EPL_PDO_PR_MASK & flags2) >> 3,
 			hi_nibble(pdoversion), lo_nibble(pdoversion));
 
 	if (pinfo->srcport != EPL_MN_NODEID)   /* check if the sender is CN or MN */
@@ -3011,11 +3019,11 @@ dissect_epl_soa(proto_tree *epl_tree, tvbuff_t *tvb, packet_info *pinfo, gint of
 	offset += 1;
 
 	col_append_fstr(pinfo->cinfo, COL_INFO, "(%s)->%3d",
-					rval_to_str(svid, soa_svid_id_vals, "Unknown"), target);
+					rval_to_str_const(svid, soa_svid_id_vals, "Unknown"), target);
 
 	/* append info entry with flag information */
 	col_append_fstr(pinfo->cinfo, COL_INFO, "  F:EA=%d,ER=%d  ",
-		(EPL_SOA_EA_MASK & flags), (EPL_SOA_ER_MASK & flags));
+			((EPL_SOA_EA_MASK & flags) >> 2), ((EPL_SOA_ER_MASK & flags) >> 1));
 
 	if (pinfo->srcport != EPL_MN_NODEID)   /* check if CN or MN */
 	{
@@ -3119,13 +3127,13 @@ dissect_epl_asnd(proto_tree *epl_tree, tvbuff_t *tvb, packet_info *pinfo, gint o
 	flags2 = tvb_get_guint8(tvb, offset + 1);
 
 	col_append_fstr(pinfo->cinfo, COL_INFO, "(%s) ",
-			rval_to_str(svid, asnd_svid_id_vals, "Unknown"));
+			rval_to_str_const(svid, asnd_svid_id_vals, "Unknown"));
 
 	/* append info entry with flag information for sres/ires frames */
 	if ((svid == EPL_ASND_IDENTRESPONSE) || (svid == EPL_ASND_STATUSRESPONSE))
 	{
 		col_append_fstr(pinfo->cinfo, COL_INFO, "  F:EC=%d,EN=%d,RS=%d,PR=%d  ",
-			(EPL_ASND_EC_MASK & flags), (EPL_ASND_EN_MASK & flags), (EPL_ASND_RS_MASK & flags2), (EPL_ASND_PR_MASK & flags2) >> 3);
+				((EPL_ASND_EC_MASK & flags) >> 3), ((EPL_ASND_EN_MASK & flags) >> 4), (EPL_ASND_RS_MASK & flags2), (EPL_ASND_PR_MASK & flags2) >> 3);
 
 	}
 
@@ -3505,7 +3513,7 @@ dissect_epl_asnd_ires(struct epl_convo *convo, proto_tree *epl_tree, tvbuff_t *t
 	proto_tree_add_ipv4(epl_tree , hf_epl_asnd_identresponse_gtw, tvb, offset, 4, epl_asnd_identresponse_gtw);
 	offset += 4;
 
-	proto_tree_add_item(epl_tree, hf_epl_asnd_identresponse_hn, tvb, offset, 32, ENC_ASCII|ENC_NA);
+	proto_tree_add_item(epl_tree, hf_epl_asnd_identresponse_hn, tvb, offset, 32, ENC_ASCII);
 	offset += 32;
 
 	proto_tree_add_item(epl_tree, hf_epl_asnd_identresponse_vex2, tvb, offset, 48, ENC_NA);
@@ -3806,13 +3814,13 @@ dissect_epl_sdo_sequence(proto_tree *epl_tree, tvbuff_t *tvb, packet_info *pinfo
 	offset += 3;
 
 	col_append_fstr(pinfo->cinfo, COL_INFO, "Seq:%02d%s,%02d%s",
-					seq_recv >> EPL_ASND_SDO_SEQ_MASK, val_to_str(seq_recv & EPL_ASND_SDO_SEQ_CON_MASK, epl_sdo_init_abbr_vals, "x"),
-					seq_send >> EPL_ASND_SDO_SEQ_MASK, val_to_str(seq_send & EPL_ASND_SDO_SEQ_CON_MASK, epl_sdo_init_abbr_vals, "x"));
+					seq_recv >> EPL_ASND_SDO_SEQ_MASK, val_to_str_const(seq_recv & EPL_ASND_SDO_SEQ_CON_MASK, epl_sdo_init_abbr_vals, "x"),
+					seq_send >> EPL_ASND_SDO_SEQ_MASK, val_to_str_const(seq_send & EPL_ASND_SDO_SEQ_CON_MASK, epl_sdo_init_abbr_vals, "x"));
 
 	seq_recv &= EPL_ASND_SDO_SEQ_CON_MASK;
 	seq_send &= EPL_ASND_SDO_SEQ_CON_MASK;
 
-	col_append_fstr(pinfo->cinfo, COL_INFO, "(%s) ", val_to_str((seq_recv << 8) | seq_send, epl_sdo_init_con_vals, "Invalid"));
+	col_append_fstr(pinfo->cinfo, COL_INFO, "(%s) ", val_to_str_const((seq_recv << 8) | seq_send, epl_sdo_init_con_vals, "Invalid"));
 
 	return offset;
 }
@@ -4205,7 +4213,6 @@ dissect_epl_sdo_command_write_by_index(struct epl_convo *convo, proto_tree *epl_
 					/* add reassemble field => Reassembled in: */
 					process_reassembled_data(tvb, 0, pinfo, "Reassembled Message", frag_msg, &epl_frag_items, NULL, payload_tree );
 				}
-				first_write = TRUE;
 				ct = 0;
 			}
 		}
@@ -4324,9 +4331,9 @@ dissect_object_mapping(struct profile *profile, wmem_array_t *mappings, proto_tr
 	{
 		/* TODO One could think of a better string here? */
 		if (nosub)
-			g_snprintf(map.title, sizeof(map.title), "PDO - %04X", map.pdo.idx);
+			snprintf(map.title, sizeof(map.title), "PDO - %04X", map.pdo.idx);
 		else
-			g_snprintf(map.title, sizeof(map.title), "PDO - %04X:%02X", map.pdo.idx, map.pdo.subindex);
+			snprintf(map.title, sizeof(map.title), "PDO - %04X:%02X", map.pdo.idx, map.pdo.subindex);
 
 		add_object_mapping(mappings, &map);
 	}
@@ -4348,6 +4355,7 @@ dissect_epl_sdo_command_write_multiple_by_index(struct epl_convo *convo, proto_t
 	proto_tree *psf_od_tree;
 	struct object *obj = NULL;
 	const struct subobject *subobj = NULL;
+	guint16 segment_restsize = segment_size;
 
 
 	/* Offset is calculated simply by only applying EPL payload offset, not packet offset.
@@ -4378,45 +4386,38 @@ dissect_epl_sdo_command_write_multiple_by_index(struct epl_convo *convo, proto_t
 			/* the data is aligned in 4-byte increments, therfore maximum padding is 3 */
 			padding = tvb_get_guint8 ( tvb, offset + 7 ) & 0x03;
 
-			datalength = offsetincrement - ( offset - EPL_SOA_EPLV_OFFSET );
 			/* An offset increment of zero usually indicates, that we are at the end
 			 * of the payload. But we cannot ignore the end, because packages are
 			 * stacked up until the last byte */
-			if ( offsetincrement == 0 )
-				datalength = remlength - EPL_SOA_EPLV_OFFSET;
-
-			/* Possible guint overflow */
-			if ( ( datalength + EPL_SOA_EPLV_OFFSET ) > remlength )
-				break;
-
-			/* Last frame detected */
-			if ( offsetincrement == 0 )
+			if (offsetincrement == 0)
 			{
-				datalength = remlength;
-
-				/* guarding size against remaining length */
-				if ( remlength < EPL_SOA_EPLV_OFFSET )
-					break;
-
-				size = remlength - EPL_SOA_EPLV_OFFSET - padding;
+				datalength = segment_restsize;
 				lastentry = TRUE;
 			}
 			else
 			{
-				/* Each entry has a header size of 8, based on the following calculation:
-				 *   - 4 byte for byte position of next data set
-				 *   - 2 byte for index
-				 *   - 1 byte for subindex
-				 *   - 1 byte for reserved and padding */
-
-				/* Guarding against readout of padding. Probability is nearly zero, as
-				 * padding was checked above, but to be sure, this remains here */
-				if ( (guint32)( padding + 8 ) >= datalength )
-					break;
-
-				/* size of data is datalength - ( entry header size and padding ) */
-				size = datalength - 8 - padding;
+				datalength = offsetincrement - (offset - EPL_SOA_EPLV_OFFSET);
 			}
+			/* decrease restsize */
+			segment_restsize -= datalength;
+
+			/* Possible guint overflow */
+			if ( datalength > remlength )
+				break;
+
+			/* Each entry has a header size of 8, based on the following calculation:
+			*   - 4 byte for byte position of next data set
+			*   - 2 byte for index
+			*   - 1 byte for subindex
+			*   - 1 byte for reserved and padding */
+
+			/* Guarding against readout of padding. Probability is nearly zero, as
+			 * padding was checked above, but to be sure, this remains here */
+			if ((guint32)(padding + 8) >= datalength)
+				break;
+
+			/* size of data is datalength - ( entry header size and padding ) */
+			size = datalength - 8 - padding;
 
 			dataoffset = offset + 4;
 
@@ -4689,6 +4690,7 @@ dissect_epl_sdo_command_read_multiple_by_index(struct epl_convo *convo, proto_tr
 	struct object *obj = NULL;
 	const struct subobject *subobj = NULL;
 	const char *name;
+	guint16 segment_restsize = segment_size;
 
 	/* Offset is calculated simply by only applying EPL payload offset, not packet offset.
 	* The packet offset is 16, as this is the number of bytes trailing the SDO payload.
@@ -4720,45 +4722,38 @@ dissect_epl_sdo_command_read_multiple_by_index(struct epl_convo *convo, proto_tr
 			if ((tvb_get_guint8 ( tvb, offset + 7 ) & 0x80) == 0x80)
 				is_abort = TRUE;
 
-			datalength = offsetincrement - ( offset - EPL_SOA_EPLV_OFFSET );
-			/* An offset increment of zero usually indicates, that we are at the end
-			 * of the payload. But we cannot ignore the end, because packages are
-			 * stacked up until the last byte */
-			if ( offsetincrement == 0 )
-				datalength = remlength - EPL_SOA_EPLV_OFFSET;
-
-			/* Possible guint overflow */
-			if ( ( datalength + EPL_SOA_EPLV_OFFSET ) > remlength )
-				break;
-
-			/* Last frame detected */
-			if ( offsetincrement == 0 )
+			 /* An offset increment of zero usually indicates, that we are at the end
+			  * of the payload. But we cannot ignore the end, because packages are
+			  * stacked up until the last byte */
+			if (offsetincrement == 0)
 			{
-				datalength = remlength;
-
-				/* guarding size against remaining length */
-				if ( remlength < EPL_SOA_EPLV_OFFSET )
-					break;
-
-				size = remlength - EPL_SOA_EPLV_OFFSET - padding;
+				datalength = segment_restsize;
 				lastentry = TRUE;
 			}
 			else
 			{
-				/* Each entry has a header size of 8, based on the following calculation:
-				 *   - 4 byte for byte position of next data set
-				 *   - 2 byte for index
-				 *   - 1 byte for subindex
-				 *   - 1 byte for reserved and padding */
-
-				/* Guarding against readout of padding. Probability is nearly zero, as
-				 * padding was checked above, but to be sure, this remains here */
-				if ( (guint32)( padding + 8 ) >= datalength )
-					break;
-
-				/* size of data is datalength - ( entry header size and padding ) */
-				size = datalength - 8 - padding;
+				datalength = offsetincrement - (offset - EPL_SOA_EPLV_OFFSET);
 			}
+			/* decrease restsize */
+			segment_restsize -= datalength;
+
+			/* Possible guint overflow */
+			if (datalength > remlength)
+				break;
+
+			/* Each entry has a header size of 8, based on the following calculation:
+			*   - 4 byte for byte position of next data set
+			*   - 2 byte for index
+			*   - 1 byte for subindex
+			*   - 1 byte for reserved and padding */
+
+			/* Guarding against readout of padding. Probability is nearly zero, as
+			 * padding was checked above, but to be sure, this remains here */
+			if ((guint32)(padding + 8) >= datalength)
+				break;
+
+			/* size of data is datalength - ( entry header size and padding ) */
+			size = datalength - 8 - padding;
 
 			dataoffset = offset + 4;
 
@@ -5059,7 +5054,7 @@ dissect_epl_sdo_command_read_multiple_by_index(struct epl_convo *convo, proto_tr
 static gint
 dissect_epl_sdo_command_read_by_index(struct epl_convo *convo, proto_tree *epl_tree, tvbuff_t *tvb, packet_info *pinfo, gint offset, guint8 segmented, gboolean response, guint16 segment_size)
 {
-	gint size, payload_length;
+	gint size, payload_length, rem_size = 0;
 	guint16 idx = 0x00;
 	guint8 subindex = 0x00;
 	guint32 fragmentId, frame;
@@ -5182,8 +5177,6 @@ dissect_epl_sdo_command_read_by_index(struct epl_convo *convo, proto_tree *epl_t
 					/* add reassemble field => Reassembled in: */
 					process_reassembled_data(tvb, 0, pinfo, "Reassembled Message", frag_msg, &epl_frag_items, NULL, payload_tree );
 				}
-
-				first_read = TRUE;
 				count = 0;
 			}
 		}
@@ -5213,7 +5206,17 @@ dissect_epl_sdo_command_read_by_index(struct epl_convo *convo, proto_tree *epl_t
 
 		}
 
-		offset = dissect_epl_payload(epl_tree, tvb, pinfo, offset, size, type, EPL_ASND);
+		/* determine remaining SDO payload size (depends on segment size of current command) */
+		if (size > segment_size)
+		{
+			rem_size = segment_size;
+		}
+		else
+		{
+			rem_size = size;
+		}
+
+		offset = dissect_epl_payload(epl_tree, tvb, pinfo, offset, rem_size, type, EPL_ASND);
 	}
 
 	return offset;
@@ -5524,23 +5527,23 @@ proto_register_epl(void)
 		},
 		{ &hf_epl_soa_pre_tm_end,
 			{ "PResFallBackTimeoutValid", "epl.soa.tm.end",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_soa_mnd_sec_end,
 			{ "SyncMNDelaySecondValid", "epl.soa.mnsc.end",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_soa_mnd_fst_end,
 			{ "SyncMNDelayFirstValid", "epl.soa.mnft.end",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_soa_pre_sec_end,
 			{ "PResTimeSecondValid", "epl.soa.prsc.end",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_soa_pre_fst_end,
 			{ "PResTimeFirstValid", "epl.soa.prft.end",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_soa_dna_an_glb,
 			{ "AN (Global)", "epl.soa.an.global",
@@ -5609,87 +5612,87 @@ proto_register_epl(void)
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit0,
 			{ "Isochronous", "epl.asnd.ires.features.bit0",
-				FT_BOOLEAN, 32, NULL, 0x0001, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000001, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit1,
 			{ "SDO by UDP/IP", "epl.asnd.ires.features.bit1",
-				FT_BOOLEAN, 32, NULL, 0x0002, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000002, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit2,
 			{ "SDO by ASnd", "epl.asnd.ires.features.bit2",
-				FT_BOOLEAN, 32, NULL, 0x0004, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000004, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit3,
 			{ "SDO by PDO", "epl.asnd.ires.features.bit3",
-				FT_BOOLEAN, 32, NULL, 0x0008, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000008, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit4,
 			{ "NMT Info Services", "epl.asnd.ires.features.bit4",
-				FT_BOOLEAN, 32, NULL, 0x0010, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000010, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit5,
 			{ "Ext. NMT State Commands", "epl.asnd.ires.features.bit5",
-				FT_BOOLEAN, 32, NULL, 0x0020, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000020, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit6,
 			{ "Dynamic PDO Mapping", "epl.asnd.ires.features.bit6",
-				FT_BOOLEAN, 32, NULL, 0x0040, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000040, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit7,
 			{ "NMT Service by UDP/IP", "epl.asnd.ires.features.bit7",
-				FT_BOOLEAN, 32, NULL, 0x0080, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000080, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit8,
 			{ "Configuration Manager", "epl.asnd.ires.features.bit8",
-				FT_BOOLEAN, 32, NULL, 0x0100, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000100, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit9,
 			{ "Multiplexed Access", "epl.asnd.ires.features.bit9",
-				FT_BOOLEAN, 32, NULL, 0x0200, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000200, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bitA,
 			{ "NodeID setup by SW", "epl.asnd.ires.features.bitA",
-				FT_BOOLEAN, 32, NULL, 0x0400, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000400, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bitB,
 			{ "MN Basic Ethernet Mode", "epl.asnd.ires.features.bitB",
-				FT_BOOLEAN, 32, NULL, 0x0800, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00000800, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bitC,
 			{ "Routing Type 1 Support", "epl.asnd.ires.features.bitC",
-				FT_BOOLEAN, 32, NULL, 0x1000, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00001000, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bitD,
 			{ "Routing Type 2 Support", "epl.asnd.ires.features.bitD",
-				FT_BOOLEAN, 32, NULL, 0x2000, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00002000, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bitE,
 			{ "SDO Read/Write All", "epl.asnd.ires.features.bitE",
-				FT_BOOLEAN, 32, NULL, 0x4000, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00004000, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bitF,
 			{ "SDO Read/Write Multiple", "epl.asnd.ires.features.bitF",
-				FT_BOOLEAN, 32, NULL, 0x8000, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00008000, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit10,
 			{ "Multiple-ASend Support", "epl.asnd.ires.features.bit10",
-				FT_BOOLEAN, 32, NULL, 0x10000, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00010000, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit11,
 			{ "Ring Redundancy", "epl.asnd.ires.features.bit11",
-				FT_BOOLEAN, 32, NULL, 0x20000, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00020000, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit12,
 			{ "PResChaining", "epl.asnd.ires.features.bit12",
-				FT_BOOLEAN, 32, NULL, 0x40000, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00040000, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit13,
 			{ "Multiple PReq/PRes", "epl.asnd.ires.features.bit13",
-				FT_BOOLEAN, 32, NULL, 0x80000, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00080000, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit14,
 			{ "Dynamic Node Allocation", "epl.asnd.ires.features.bit14",
-				FT_BOOLEAN, 32, NULL, 0x100000, NULL, HFILL }
+				FT_BOOLEAN, 32, NULL, 0x00100000, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_feat_bit21,
 			{ "Modular Device", "epl.asnd.ires.features.bit21",
@@ -5721,7 +5724,7 @@ proto_register_epl(void)
 		},
 		{ &hf_epl_asnd_identresponse_profile_path,
 			{ "Profile Path", "epl.asnd.ires.profilepath",
-				FT_STRING, STR_UNICODE, NULL, 0x00, NULL, HFILL }
+				FT_STRING, BASE_NONE, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_identresponse_vid,
 			{ "VendorId", "epl.asnd.ires.vendorid",
@@ -5832,23 +5835,23 @@ proto_register_epl(void)
 		},
 		{ &hf_epl_asnd_syncResponse_latency,
 			{ "Latency", "epl.asnd.syncresponse.latency",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_syncResponse_node,
 			{ "SyncDelayStation", "epl.asnd.syncresponse.delay.station",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_syncResponse_delay,
 			{ "SyncDelay", "epl.asnd.syncresponse.delay",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_syncResponse_pre_fst,
 			{ "PResTimeFirst", "epl.asnd.syncresponse.pres.fst",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_syncResponse_pre_sec,
 			{ "PResTimeSecond", "epl.asnd.syncresponse.pres.sec",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 #if 0
 		{ &hf_epl_asnd_statusresponse_seb,
@@ -6106,11 +6109,11 @@ proto_register_epl(void)
 		},
 		{ &hf_epl_asnd_sdo_cmd_segment_size,
 			{ "SDO Segment size", "epl.asnd.sdo.cmd.segment.size",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT16, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_sdo_cmd_data_size,
 			{ "SDO Data size", "epl.asnd.sdo.cmd.data.size",
-				FT_UINT8, BASE_DEC, NULL, 0x00, NULL, HFILL }
+				FT_UINT32, BASE_DEC, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_sdo_cmd_data_padding,
 			{ "SDO Data Padding", "epl.asnd.sdo.cmd.data.padding",
@@ -6118,7 +6121,7 @@ proto_register_epl(void)
 		},
 		{ &hf_epl_asnd_sdo_cmd_abort_code,
 			{ "SDO Transfer Abort", "epl.asnd.sdo.cmd.abort.code",
-				FT_UINT8, BASE_HEX | BASE_EXT_STRING,
+				FT_UINT32, BASE_HEX | BASE_EXT_STRING,
 				&sdo_cmd_abort_code_ext, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_asnd_sdo_cmd_data_index,
@@ -6206,7 +6209,7 @@ proto_register_epl(void)
 		/* EPL Data types */
 		{ &hf_epl_pdo,
 			{ "PDO", "epl.pdo",
-				FT_STRING, STR_ASCII, NULL, 0x00, NULL, HFILL }
+				FT_STRING, BASE_NONE, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_pdo_index,
 			{ "Index", "epl.pdo.index",
@@ -6264,7 +6267,7 @@ proto_register_epl(void)
 		},
 		{ &hf_epl_od_string,
 			{ "Data", "epl.od.data.string",
-				FT_STRING, STR_UNICODE, NULL, 0x00, NULL, HFILL }
+				FT_STRING, BASE_NONE, NULL, 0x00, NULL, HFILL }
 		},
 		{ &hf_epl_od_octet_string,
 			{ "Data", "epl.od.data.bytestring",
@@ -6354,6 +6357,7 @@ proto_register_epl(void)
 
 	/* Registering protocol to be called by another dissector */
 	epl_handle = register_dissector("epl", dissect_epl, proto_epl);
+	epl_udp_handle = register_dissector("epl.udp", dissect_epludp, proto_epl);
 
 	/* Required function calls to register the header fields and subtrees used */
 	proto_register_field_array(proto_epl, hf, array_length(hf));
@@ -6448,8 +6452,6 @@ proto_register_epl(void)
 void
 proto_reg_handoff_epl(void)
 {
-	dissector_handle_t epl_udp_handle = create_dissector_handle(dissect_epludp, proto_epl);
-
 	dissector_add_uint("ethertype", ETHERTYPE_EPL_V2, epl_handle);
 	dissector_add_uint_with_preference("udp.port", UDP_PORT_EPL, epl_udp_handle);
         apply_prefs();
@@ -6501,7 +6503,7 @@ epl_profile_uat_fld_fileopen_check_cb(void *record _U_, const char *path, guint 
 
 	if (ws_stat64(path, &st) != 0)
 	{
-		*err = g_strdup_printf("File '%s' does not exist or access was denied.", path);
+		*err = ws_strdup_printf("File '%s' does not exist or access was denied.", path);
 		return FALSE;
 	}
 
@@ -6518,7 +6520,7 @@ epl_profile_uat_fld_fileopen_check_cb(void *record _U_, const char *path, guint 
 		*err = NULL;
 		return TRUE;
 #else
-		*err = g_strdup_printf("*.xdd and *.xdc support not compiled in. %s", supported);
+		*err = ws_strdup_printf("*.xdd and *.xdc support not compiled in. %s", supported);
 		return FALSE;
 #endif
 	}
@@ -6598,7 +6600,7 @@ device_profile_parse_uat(void)
 		wmem_map_insert(epl_profiles_by_device, GUINT_TO_POINTER(profile->id), profile);
 		profile->parent_map = epl_profiles_by_device;
 
-		g_log(NULL, G_LOG_LEVEL_INFO, "Loading %s\n", profile->path);
+		ws_log(NULL, LOG_LEVEL_INFO, "Loading %s\n", profile->path);
 	}
 }
 
@@ -6681,7 +6683,7 @@ nodeid_profile_parse_uat(void)
 			wmem_map_insert(epl_profiles_by_address, &profile->node_addr, profile);
 			profile->parent_map = epl_profiles_by_address;
 		}
-		g_log(NULL, G_LOG_LEVEL_INFO, "Loading %s\n", profile->path);
+		ws_log(NULL, LOG_LEVEL_INFO, "Loading %s\n", profile->path);
 	}
 }
 
@@ -6736,15 +6738,19 @@ nodeid_profile_list_uats_nodeid_tostr_cb(void *_rec, char **out_ptr, unsigned *o
 static gboolean
 epl_uat_fld_cn_check_cb(void *record _U_, const char *str, guint len _U_, const void *u1 _U_, const void *u2 _U_, char **err)
 {
-	unsigned int c;
 	guint8 nodeid;
 
 	if (ws_strtou8(str, NULL, &nodeid) && EPL_IS_CN_NODEID(nodeid))
 		return TRUE;
 
-	if (sscanf(str, "%*02x%*c%*02x%*c%*02x%*c%*02x%*c%*02x%*c%02x", &c) > 0)
-		return TRUE;
+	GByteArray *addr = g_byte_array_new();
 
+	if (hex_str_to_bytes(str, addr, FALSE) && addr->len == FT_ETHER_LEN) {
+		g_byte_array_free(addr, TRUE);
+		return TRUE;
+	}
+
+	g_byte_array_free(addr, TRUE);
 	*err = g_strdup("Invalid argument. Expected either a CN ID [1-239] or a MAC address");
 	return FALSE;
 }
@@ -6753,27 +6759,21 @@ static void
 nodeid_profile_list_uats_nodeid_set_cb(void *_rec, const char *str, unsigned len, const void *set_data _U_, const void *fld_data _U_)
 {
 	struct nodeid_profile_uat_assoc *rec = (struct nodeid_profile_uat_assoc*)_rec;
-	guint8 addr[6];
+	GByteArray *addr = g_byte_array_new();
 
-	if (ws_strtou8(str, NULL, &addr[0]))
-	{
-		rec->is_nodeid = TRUE;
-		rec->node.id = addr[0];
-	}
-	else
-	{
-		unsigned i;
-		const char *endptr = str;
-		for (i = 0; i < 6; i++)
-		{
-			ws_hexstrtou8(endptr, &endptr, &addr[i]);
-			endptr++;
-		}
-
-		alloc_address_wmem(NULL, &rec->node.addr, AT_ETHER, 6, addr);
+	rec->is_nodeid = TRUE;
+	if (hex_str_to_bytes(str, addr, FALSE) && addr->len == FT_ETHER_LEN) {
+		alloc_address_wmem(NULL, &rec->node.addr, AT_ETHER, FT_ETHER_LEN, addr->data);
 		rec->is_nodeid = FALSE;
 	}
+	else if (!ws_strtou8(str, NULL, &rec->node.id))
+	{
+		/* Invalid input. Set this to a bad value and let
+		 * epl_uat_fld_cn_check_cb return an error message. */
+		rec->node.id = 0;
+	}
 
+	g_byte_array_free(addr, TRUE);
 	g_free(rec->id_str);
 	rec->id_str = g_strndup(str, len);
 }

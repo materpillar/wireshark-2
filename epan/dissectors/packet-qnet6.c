@@ -1577,7 +1577,7 @@ dissect_qnet6_lr(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, gint * 
            */
           if (i != 2 && i != 5)
             {
-            name[i] = tvb_get_string_enc(wmem_packet_scope(),
+            name[i] = tvb_get_string_enc(pinfo->pool,
                                          tvb,
                                          addr_data_offset,
                                          len,
@@ -1589,7 +1589,7 @@ dissect_qnet6_lr(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, gint * 
             {
               if (tvb_get_guint8(tvb, addr_data_offset + 1) == QNET_LR_SA_FAMILY_MAC && len >= 2 + 6)
                 {
-                  name[i] = tvb_ether_to_str(tvb, addr_data_offset + 2);
+                  name[i] = tvb_ether_to_str(pinfo->pool, tvb, addr_data_offset + 2);
                   ti = proto_tree_add_item(sstree, hf_index, tvb, addr_data_offset + 2, 6, ENC_NA);
                   proto_item_set_generated(ti);
                 }
@@ -1845,7 +1845,7 @@ display_channel_id(guint32 chid, proto_item * ti)
 {
   if (chid & QNX_NTO_GLOBAL_CHANNEL)
     {
-      proto_item_append_text(ti, " _NTO_GLOBAL_CHANNEL|%" G_GUINT32_FORMAT, chid & ~QNX_NTO_GLOBAL_CHANNEL);
+      proto_item_append_text(ti, " _NTO_GLOBAL_CHANNEL|%" PRIu32, chid & ~QNX_NTO_GLOBAL_CHANNEL);
     }
 }
 
@@ -1857,7 +1857,7 @@ display_coid(guint32 coid, proto_item * ti)
       if ((coid & ~QNX_NTO_SIDE_CHANNEL) == 0)
         proto_item_append_text(ti, " SYSMGR_COID)");
       else
-        proto_item_append_text(ti," (_NTO_SIDE_CHANNEL|%" G_GUINT32_FORMAT ")", coid & ~QNX_NTO_SIDE_CHANNEL);
+        proto_item_append_text(ti," (_NTO_SIDE_CHANNEL|%" PRIu32 ")", coid & ~QNX_NTO_SIDE_CHANNEL);
     }
 }
 
@@ -2487,7 +2487,6 @@ dissect_qnet6_kif_msgsend_msg_utime(tvbuff_t * tvb, packet_info * pinfo _U_, pro
 {
   int      ret = -1;
   gint     combine_len, left;
-  nstime_t nt;
 
   left = tvb_reported_length_remaining(tvb, *poffset);
 
@@ -2496,12 +2495,11 @@ dissect_qnet6_kif_msgsend_msg_utime(tvbuff_t * tvb, packet_info * pinfo _U_, pro
   *poffset += 2;
   proto_tree_add_item(tree, hf_qnet6_kif_msg_io_utime_curflag, tvb, *poffset, 4, encoding);
   *poffset += 4;
-  nt.nsecs = 0;
-  nt.secs = tvb_get_guint32(tvb, *poffset, encoding);
-  proto_tree_add_time(tree, hf_qnet6_kif_msg_io_utime_actime, tvb, *poffset, 4, &nt);
+  proto_tree_add_item(tree, hf_qnet6_kif_msg_io_utime_actime,
+      tvb, *poffset, 4, ENC_TIME_SECS|encoding);
   *poffset += 4;
-  nt.secs = tvb_get_guint32(tvb, *poffset, encoding);
-  proto_tree_add_time(tree, hf_qnet6_kif_msg_io_utime_modtime, tvb, *poffset, 4, &nt);
+  proto_tree_add_item(tree, hf_qnet6_kif_msg_io_utime_modtime,
+      tvb, *poffset, 4, ENC_TIME_SECS|encoding);
   *poffset += 4;
 
   left -= 2 + 4 + 4 + 4;
@@ -2904,11 +2902,11 @@ dissect_qnet6_kif_msgsend_msg_notify(tvbuff_t * tvb, packet_info * pinfo _U_, pr
           for (j = 1, n = 0, m = 0; j < 8; j = j << 1)
             {
               if (event & j)
-                n += g_snprintf(sevent + n, sizeof(sevent) - n, "%s", qnet6_kif_msg_io_notify_event_str[j >> 1]);
+                n += snprintf(sevent + n, sizeof(sevent) - n, "%s", qnet6_kif_msg_io_notify_event_str[j >> 1]);
               if (revent & j)
-                m += g_snprintf(srevent + m, sizeof(srevent) - m, "%s", qnet6_kif_msg_io_notify_event_str[j >> 1]);
+                m += snprintf(srevent + m, sizeof(srevent) - m, "%s", qnet6_kif_msg_io_notify_event_str[j >> 1]);
             }
-          proto_tree_add_string_format_value(stree, hf_qnet6_kif_msg_io_notify_fds, tvb, *poffset, 8, NULL, "fd:%" G_GINT32_FORMAT " " "event:0x%x %s" "revent:0x%x %s", fd, event, sevent, revent, srevent);
+          proto_tree_add_string_format_value(stree, hf_qnet6_kif_msg_io_notify_fds, tvb, *poffset, 8, NULL, "fd:%" PRId32 " " "event:0x%x %s" "revent:0x%x %s", fd, event, sevent, revent, srevent);
           *poffset += 8;
         }
       left -= nfds * 8;
@@ -3102,7 +3100,7 @@ dissect_qnet6_kif_msgsend_msg(tvbuff_t * tvb, packet_info * pinfo, proto_tree * 
        */
       if (path_len > 0)
         {
-          proto_tree_add_item(stree, hf_qnet6_kif_msg_connect_path, tvb, *poffset, path_len, ENC_ASCII|ENC_NA);
+          proto_tree_add_item(stree, hf_qnet6_kif_msg_connect_path, tvb, *poffset, path_len, ENC_ASCII);
           *poffset += path_len;
           rlen -= path_len;
         }
@@ -3157,18 +3155,18 @@ dissect_qnet6_kif_msgsend_msg(tvbuff_t * tvb, packet_info * pinfo, proto_tree * 
                   /*
                    * extra data is the symlink new path name
                    */
-                  proto_tree_add_item(stree, hf_qnet6_kif_msg_connect_extra_symlink_path, tvb, *poffset, extra_len, ENC_ASCII|ENC_NA);
+                  proto_tree_add_item(stree, hf_qnet6_kif_msg_connect_extra_symlink_path, tvb, *poffset, extra_len, ENC_ASCII);
                   break;
                 case QNX_IO_CONNECT_EXTRA_RENAME:
                   /*
                    * extra data is the mv old new ,extra is old path
                    * name path is the new name
                    */
-                  proto_tree_add_item(stree, hf_qnet6_kif_msg_connect_extra_rename_path, tvb, *poffset, extra_len, ENC_ASCII|ENC_NA);
+                  proto_tree_add_item(stree, hf_qnet6_kif_msg_connect_extra_rename_path, tvb, *poffset, extra_len, ENC_ASCII);
                   break;
                 case QNX_IO_CONNECT_EXTRA_MOUNT:
                 case QNX_IO_CONNECT_EXTRA_MOUNT_OCB:
-                  proto_tree_add_item(stree, hf_qnet6_kif_msg_connect_extra_mount, tvb, *poffset, extra_len, ENC_ASCII|ENC_NA);
+                  proto_tree_add_item(stree, hf_qnet6_kif_msg_connect_extra_mount, tvb, *poffset, extra_len, ENC_ASCII);
                   break;
                 case QNX_IO_CONNECT_EXTRA_NONE: /* 0 */
                 default:
@@ -3464,7 +3462,7 @@ dissect_qnet6_kif_cred(tvbuff_t * tvb, packet_info * pinfo _U_, proto_tree * tre
 
   for (; nleft > 0; nleft -= 4)
     {
-      proto_item_append_text(ti, " %" G_GUINT32_FORMAT, tvb_get_guint32(tvb, *poffset, encoding));
+      proto_item_append_text(ti, " %" PRIu32, tvb_get_guint32(tvb, *poffset, encoding));
       *poffset += 4;
       length += 4;
     }
@@ -5262,12 +5260,12 @@ proto_register_qnet6(void)
     },
     {&hf_qnet6_kif_msg_io_read_xtypes_0_7,
      {"Xtype", "qnet6.kif.msgsend.msg.read.xtypes0-7",
-      FT_UINT32, BASE_HEX, VALS(qnet6_kif_msgsend_msg_io_read_xtypes_vals), 0xff,
+      FT_UINT32, BASE_HEX, VALS(qnet6_kif_msgsend_msg_io_read_xtypes_vals), 0x000000ff,
       "Extended types 0-7 bits", HFILL}
     },
     {&hf_qnet6_kif_msg_io_read_xtypes_8,
      {"DirExtraHint", "qnet6.kif.msgsend.msg.read.xtypes8",
-      FT_UINT32, BASE_HEX, NULL, 0x100,
+      FT_UINT32, BASE_HEX, NULL, 0x00000100,
       "_IO_XFLAG_DIR_EXTRA_HINT", HFILL}
     },
     {&hf_qnet6_kif_msg_io_read_xtypes_14,
@@ -5318,22 +5316,22 @@ proto_register_qnet6(void)
     },
     {&hf_qnet6_kif_msg_io_write_xtypes_0_7,
      {"Xtype", "qnet6.kif.msgsend.msg.write.xtypes0-7",
-      FT_UINT32, BASE_HEX, VALS(qnet6_kif_msgsend_msg_io_read_xtypes_vals), 0xff,
+      FT_UINT32, BASE_HEX, VALS(qnet6_kif_msgsend_msg_io_read_xtypes_vals), 0x000000ff,
       "Extended types 0-7 bits", HFILL}
     },
     {&hf_qnet6_kif_msg_io_write_xtypes_8,
      {"DirExtraHint", "qnet6.kif.msgsend.msg.write.xtypes8",
-      FT_UINT32, BASE_HEX, NULL, 0x100,
+      FT_UINT32, BASE_HEX, NULL, 0x00000100,
       "_IO_XFLAG_DIR_EXTRA_HINT", HFILL}
     },
     {&hf_qnet6_kif_msg_io_write_xtypes_14,
      {"Nonblock", "qnet6.kif.msgsend.msg.write.xtypes0-7",
-      FT_UINT32, BASE_HEX, NULL, 0x4000,
+      FT_UINT32, BASE_HEX, NULL, 0x00004000,
       "_IO_XFLAG_NONBLOCK", HFILL}
     },
     {&hf_qnet6_kif_msg_io_write_xtypes_15,
      {"Block", "qnet6.kif.msgsend.msg.write.xtypes0-7",
-      FT_UINT32, BASE_HEX, NULL, 0x8000,
+      FT_UINT32, BASE_HEX, NULL, 0x00008000,
       "_IO_XFLAG_BLOCK", HFILL}
     },
     {&hf_qnet6_kif_msg_io_write_xoffset,
@@ -5700,17 +5698,17 @@ proto_register_qnet6(void)
     },
     {&hf_qnet6_kif_msg_io_mmap_prot_read,
      {"Read", "qnet6.kif.msgsend.msg.mmap.prot.read",
-      FT_BOOLEAN, 32, NULL, 0x100,
+      FT_BOOLEAN, 32, NULL, 0x00000100,
       "protection field of mmap", HFILL}
     },
     {&hf_qnet6_kif_msg_io_mmap_prot_write,
      {"Write", "qnet6.kif.msgsend.msg.mmap.prot.write",
-      FT_BOOLEAN, 32, NULL, 0x200,
+      FT_BOOLEAN, 32, NULL, 0x00000200,
       "protection field of mmap", HFILL}
     },
     {&hf_qnet6_kif_msg_io_mmap_prot_exec,
      {"Exec", "qnet6.kif.msgsend.msg.mmap.prot.exec",
-      FT_BOOLEAN, 32, NULL, 0x400,
+      FT_BOOLEAN, 32, NULL, 0x00000400,
       "protection field of mmap", HFILL}
     },
     {&hf_qnet6_kif_msg_io_mmap_offset,

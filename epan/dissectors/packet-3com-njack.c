@@ -45,6 +45,8 @@ Specs:
 void proto_register_njack(void);
 void proto_reg_handoff_njack(void);
 
+static dissector_handle_t njack_handle;
+
 /* protocol handles */
 static int proto_njack = -1;
 
@@ -471,7 +473,7 @@ dissect_tlvs(tvbuff_t *tvb, proto_tree *njack_tree, guint32 offset)
 		case NJACK_CMD_PRODUCTNAME:
 		case NJACK_CMD_SERIALNO:
 			proto_tree_add_item(tlv_tree, hf_njack_tlv_typestring,
-				tvb, offset, tlv_length, ENC_ASCII|ENC_NA);
+				tvb, offset, tlv_length, ENC_ASCII);
 			offset += tlv_length;
 			break;
 		case NJACK_CMD_PORT1:
@@ -516,8 +518,8 @@ verify_password(tvbuff_t *tvb, const char *password)
 	gcry_md_hd_t  md5_handle;
 	guint8       *digest;
 
-	workbuffer=wmem_alloc(wmem_packet_scope(), 32);
-	digest=wmem_alloc(wmem_packet_scope(), 16);
+	workbuffer=wmem_alloc(pinfo->pool, 32);
+	digest=wmem_alloc(pinfo->pool, 16);
 
 	length = tvb_get_ntohs(tvb, 6);
 	packetdata = tvb_get_ptr(tvb, 0, length);
@@ -574,7 +576,7 @@ dissect_njack(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
 	njack_tree = proto_item_add_subtree(ti, ett_njack);
 
 	proto_tree_add_item(njack_tree, hf_njack_magic, tvb, offset, 5,
-			    ENC_ASCII|ENC_NA);
+			    ENC_ASCII);
 	offset += 5;
 
 	proto_tree_add_item(njack_tree, hf_njack_type, tvb, offset, 1,
@@ -771,14 +773,13 @@ proto_register_njack(void)
 	proto_njack = proto_register_protocol(PROTO_LONG_NAME, PROTO_SHORT_NAME, "njack");
 	proto_register_field_array(proto_njack, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
+
+	njack_handle = register_dissector("njack", dissect_njack_static, proto_njack);
 }
 
 void
 proto_reg_handoff_njack(void)
 {
-	dissector_handle_t njack_handle;
-
-	njack_handle = create_dissector_handle(dissect_njack_static, proto_njack);
 	dissector_add_uint_range_with_preference("udp.port", NJACK_PORT_RANGE, njack_handle);
 	/* dissector_add_uint_with_preference("tcp.port", PORT_NJACK_PC, njack_handle); */
 	/* dissector_add_uint_with_preference("tcp.port", PORT_NJACK_SWITCH, njack_handle); */

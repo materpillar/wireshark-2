@@ -58,6 +58,7 @@ WS_DLL_PUBLIC const true_false_string tfs_odd_even;
 WS_DLL_PUBLIC const true_false_string tfs_allow_block;
 WS_DLL_PUBLIC const true_false_string tfs_restricted_allowed;
 WS_DLL_PUBLIC const true_false_string tfs_restricted_not_restricted;
+WS_DLL_PUBLIC const true_false_string tfs_not_restricted_restricted;
 WS_DLL_PUBLIC const true_false_string tfs_accept_reject;
 WS_DLL_PUBLIC const true_false_string tfs_more_nomore;
 WS_DLL_PUBLIC const true_false_string tfs_present_absent;
@@ -126,6 +127,8 @@ WS_DLL_PUBLIC const true_false_string tfs_selected_not_selected;
 WS_DLL_PUBLIC const true_false_string tfs_add_drop;
 WS_DLL_PUBLIC const true_false_string tfs_no_extension_extension;
 WS_DLL_PUBLIC const true_false_string tfs_user_provider;
+WS_DLL_PUBLIC const true_false_string tfs_applicable_not_applicable;
+WS_DLL_PUBLIC const true_false_string tfs_current_not_yet;
 
 #ifdef __cplusplus
 }

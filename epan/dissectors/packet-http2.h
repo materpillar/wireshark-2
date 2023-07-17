@@ -14,6 +14,21 @@
 extern "C" {
 #endif /* __cplusplus */
 
+/* http2 standard headers */
+#define HTTP2_HEADER_CONTENT_ENCODING "content-encoding"
+#define HTTP2_HEADER_STATUS ":status"
+#define HTTP2_HEADER_STATUS_PARTIAL_CONTENT "206"
+#define HTTP2_HEADER_METHOD ":method"
+#define HTTP2_HEADER_METHOD_CONNECT "CONNECT"
+#define HTTP2_HEADER_TRANSFER_ENCODING "transfer-encoding"
+#define HTTP2_HEADER_PATH ":path"
+#define HTTP2_HEADER_AUTHORITY ":authority"
+#define HTTP2_HEADER_SCHEME ":scheme"
+#define HTTP2_HEADER_CONTENT_TYPE "content-type"
+#define HTTP2_HEADER_UNKNOWN "<unknown>"
+/* http2 for grpc */
+#define HTTP2_HEADER_GRPC_ENCODING "grpc-encoding"
+
 int dissect_http2_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_ );
 
 /** Get header value from current or the other direction stream.
@@ -25,7 +40,7 @@ int dissect_http2_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void*
  * @param name   the name of header.
  * @param the_other_direction  FALSE means from current direction stream, TRUE from the other.
  * @return  NULL if header was not found. Or header value. Note: the value is allocated
- *          by wmem_packet_scope().
+ *          by pinfo->pool.
  */
 const gchar* http2_get_header_value(packet_info *pinfo, const gchar* name, gboolean the_other_direction);
 
@@ -49,6 +64,9 @@ http2_get_stream_id_le(guint streamid, guint sub_stream_id, guint *sub_stream_id
  */
 WS_DLL_PUBLIC gboolean
 http2_get_stream_id_ge(guint streamid, guint sub_stream_id, guint *sub_stream_id_out);
+
+WS_DLL_PUBLIC void
+dissect_http2_settings_ext(tvbuff_t* tvb, packet_info* pinfo _U_, proto_tree* http2_tree, guint offset);
 
 #ifdef __cplusplus
 }

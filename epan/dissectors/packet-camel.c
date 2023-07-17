@@ -3,9 +3,6 @@
 /* packet-camel.c                                                             */
 /* asn2wrs.py -b -L -p camel -c ./camel.cnf -s ./packet-camel-template -D . -O ../.. CAP-object-identifiers.asn CAP-classes.asn CAP-datatypes.asn CAP-errorcodes.asn CAP-errortypes.asn CAP-operationcodes.asn CAP-GPRS-ReferenceNumber.asn CAP-gsmSCF-gsmSRF-ops-args.asn CAP-gsmSSF-gsmSCF-ops-args.asn CAP-gprsSSF-gsmSCF-ops-args.asn CAP-SMS-ops-args.asn CAP-U-ABORT-Data.asn CamelV2diff.asn ../ros/Remote-Operations-Information-Objects.asn ../ros/Remote-Operations-Generic-ROS-PDUs.asn */
 
-/* Input file: packet-camel-template.c */
-
-#line 1 "./asn1/camel/packet-camel-template.c"
 /* packet-camel-template.c
  * Routines for Camel
  * Copyright 2004, Tim Endean <endeant@hotmail.com>
@@ -106,10 +103,8 @@ static int hf_camelsrt_DeltaTime65=-1;
 static int hf_camelsrt_DeltaTime22=-1;
 static int hf_camelsrt_DeltaTime35=-1;
 static int hf_camelsrt_DeltaTime80=-1;
+static int hf_camel_timeandtimezone_bcd = -1;
 
-
-/*--- Included file: packet-camel-hf.c ---*/
-#line 1 "./asn1/camel/packet-camel-hf.c"
 static int hf_camel_PAR_cancelFailed_PDU = -1;    /* PAR_cancelFailed */
 static int hf_camel_PAR_requestedInfoError_PDU = -1;  /* PAR_requestedInfoError */
 static int hf_camel_UnavailableNetworkResource_PDU = -1;  /* UnavailableNetworkResource */
@@ -316,7 +311,7 @@ static int hf_camel_metDPCriteriaList = -1;       /* MetDPCriteriaList */
 static int hf_camel_tChangeOfPositionSpecificInfo = -1;  /* T_tChangeOfPositionSpecificInfo */
 static int hf_camel_dpSpecificInfoAlt = -1;       /* DpSpecificInfoAlt */
 static int hf_camel_o_smsFailureSpecificInfo = -1;  /* T_o_smsFailureSpecificInfo */
-static int hf_camel_smsfailureCause = -1;         /* MO_SMSCause */
+static int hf_camel_mo_smsfailureCause = -1;      /* MO_SMSCause */
 static int hf_camel_o_smsSubmissionSpecificInfo = -1;  /* T_o_smsSubmissionSpecificInfo */
 static int hf_camel_t_smsFailureSpecificInfo = -1;  /* T_t_smsFailureSpecificInfo */
 static int hf_camel_t_smsfailureCause = -1;       /* MT_SMSCause */
@@ -597,9 +592,6 @@ static int hf_camel_returnErrorProblem = -1;      /* ReturnErrorProblem */
 static int hf_camel_present = -1;                 /* INTEGER */
 static int hf_camel_InvokeId_present = -1;        /* InvokeId_present */
 
-/*--- End of included file: packet-camel-hf.c ---*/
-#line 103 "./asn1/camel/packet-camel-template.c"
-
 static struct camelsrt_info_t * gp_camelsrt_info;
 
 /* Forward declarations */
@@ -613,7 +605,6 @@ static int dissect_camel_EstablishTemporaryConnectionArgV2(gboolean implicit_tag
 static int dissect_camel_SpecializedResourceReportArgV23(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_);
 
 /* XXX - can we get rid of these and always do the SRT work? */
-static gboolean gcamel_HandleSRT=FALSE;
 static gboolean gcamel_PersistentSRT=FALSE;
 static gboolean gcamel_DisplaySRT=FALSE;
 gboolean gcamel_StatSRT=FALSE;
@@ -640,10 +631,8 @@ static gint ett_camel_dTMFDigitsCompleted = -1;
 static gint ett_camel_dTMFDigitsTimeOut = -1;
 static gint ett_camel_number = -1;
 static gint ett_camel_digitsResponse = -1;
+static gint ett_camel_timeandtimezone = -1;
 
-
-/*--- Included file: packet-camel-ett.c ---*/
-#line 1 "./asn1/camel/packet-camel-ett.c"
 static gint ett_camel_AChChargingAddress = -1;
 static gint ett_camel_AOCBeforeAnswer = -1;
 static gint ett_camel_AOCGPRS = -1;
@@ -841,12 +830,10 @@ static gint ett_camel_Reject = -1;
 static gint ett_camel_T_problem = -1;
 static gint ett_camel_InvokeId = -1;
 
-/*--- End of included file: packet-camel-ett.c ---*/
-#line 146 "./asn1/camel/packet-camel-template.c"
-
 static expert_field ei_camel_unknown_invokeData = EI_INIT;
 static expert_field ei_camel_unknown_returnResultData = EI_INIT;
 static expert_field ei_camel_unknown_returnErrorData = EI_INIT;
+static expert_field ei_camel_par_wrong_length = EI_INIT;
 
 /* Preference settings default */
 #define MAX_SSN 254
@@ -884,7 +871,7 @@ static const value_string camel_Component_vals[] = {
 
 const value_string  camelSRTtype_naming[]= {
   { CAMELSRT_SESSION,         "TCAP_Session" },
-  { CAMELSRT_VOICE_INITIALDP, "InialDP/Continue" },
+  { CAMELSRT_VOICE_INITIALDP, "InitialDP/Continue" },
   { CAMELSRT_VOICE_ACR1,      "Slice1_ACR/ACH" },
   { CAMELSRT_VOICE_ACR2,      "Slice2_ACR/ACH" },
   { CAMELSRT_VOICE_ACR3,      "Slice3_ACR/ACH" },
@@ -999,9 +986,6 @@ static const value_string camel_ectTreatmentIndicator_values[] = {
   { 0, NULL }
 };
 
-
-/*--- Included file: packet-camel-val.h ---*/
-#line 1 "./asn1/camel/packet-camel-val.h"
 #define tc_Messages                    "0.0.17.773.2.1.3"
 #define tc_NotationExtensions          "0.0.17.775.2.4.1"
 #define ros_InformationObjects         "2.4.5.0"
@@ -1183,12 +1167,6 @@ static const value_string camel_ectTreatmentIndicator_values[] = {
 #define id_CAP_U_ABORT_Reason          "0.4.0.0.1.1.2.2"
 #define noInvokeId                     NULL
 
-/*--- End of included file: packet-camel-val.h ---*/
-#line 303 "./asn1/camel/packet-camel-template.c"
-
-
-/*--- Included file: packet-camel-table.c ---*/
-#line 1 "./asn1/camel/packet-camel-table.c"
 
 /* CAMEL OPERATIONS */
 const value_string camel_opr_code_strings[] = {
@@ -1273,9 +1251,6 @@ static const value_string camel_err_code_string_vals[] = {
 };
 
 
-/*--- End of included file: packet-camel-table.c ---*/
-#line 305 "./asn1/camel/packet-camel-template.c"
-
 /*
  * DEBUG fonctions
  */
@@ -1315,7 +1290,7 @@ camelstat_init(struct register_srt* srt _U_, GArray* srt_array)
 }
 
 static tap_packet_status
-camelstat_packet(void *pcamel, packet_info *pinfo, epan_dissect_t *edt _U_, const void *psi)
+camelstat_packet(void *pcamel, packet_info *pinfo, epan_dissect_t *edt _U_, const void *psi, tap_flags_t flags _U_)
 {
   guint idx = 0;
   srt_stat_table *camel_srt_table;
@@ -1375,9 +1350,6 @@ dissect_RP_cause_ie(tvbuff_t *tvb, guint32 offset, _U_ guint len,
 
 static int dissect_camel_InitialDPArgExtensionV2(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_);
 
-
-/*--- Included file: packet-camel-fn.c ---*/
-#line 1 "./asn1/camel/packet-camel-fn.c"
 
 
 static int
@@ -3982,7 +3954,7 @@ dissect_camel_MO_SMSCause(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offs
 
 
 static const ber_sequence_t T_o_smsFailureSpecificInfo_sequence[] = {
-  { &hf_camel_smsfailureCause, BER_CLASS_CON, 0, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_camel_MO_SMSCause },
+  { &hf_camel_mo_smsfailureCause, BER_CLASS_CON, 0, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_camel_MO_SMSCause },
   { NULL, 0, 0, 0, NULL }
 };
 
@@ -4642,8 +4614,56 @@ dissect_camel_QualityOfService(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 static int
 dissect_camel_TimeAndTimezone(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+ tvbuff_t  *parameter_tvb;
+ proto_tree *subtree;
+ proto_item *item;
+ gchar *digit_str;
+ guint length;
+ gchar year[5];
+ gchar month[3];
+ gchar day[3];
+ gchar hour[3];
+ gchar minute[3];
+ gchar second[3];
+ gchar timezone_digits[3];
+
+ guint8 oct;
+ char   sign;
   offset = dissect_ber_octet_string(implicit_tag, actx, tree, tvb, offset, hf_index,
-                                       NULL);
+                                       &parameter_tvb);
+
+
+  if (!parameter_tvb)
+    return offset;
+  length = tvb_reported_length(parameter_tvb);
+  if (length < 8 /*cAPSpecificBoundSetminTimeAndTimezoneLength*/){
+    expert_add_info(actx->pinfo, actx->created_item, &ei_camel_par_wrong_length);
+    return offset;
+  }
+  subtree = proto_item_add_subtree(actx->created_item, ett_camel_timeandtimezone);
+  item = proto_tree_add_item_ret_display_string(subtree, hf_camel_timeandtimezone_bcd, parameter_tvb, 0, -1, ENC_BCD_DIGITS_0_9, actx->pinfo->pool, &digit_str);
+
+  (void) g_strlcpy(year, digit_str, 5);
+  (void) g_strlcpy(month, digit_str+4, 3);
+  (void) g_strlcpy(day, digit_str+6, 3);
+  (void) g_strlcpy(hour, digit_str+8, 3);
+  (void) g_strlcpy(minute, digit_str+10, 3);
+  (void) g_strlcpy(second, digit_str+12, 3);
+  (void) g_strlcpy(timezone_digits, digit_str+14, 3);
+
+/*
+The Time Zone indicates the difference, expressed in quarters of an hour, between the local time and GMT. In the first of the two semi octets,
+the first bit (bit 3 of the seventh octet of the TP Service Centre Time Stamp field) represents the algebraic sign of this difference (0: positive, 1: negative).
+*/
+  if (!ws_hexstrtou8(timezone_digits, NULL, &oct)){
+    return offset;
+  }
+  sign = (oct & 0x08)?'-':'+';
+  oct = (oct >> 4) + (oct & 0x07) * 10;
+
+  proto_item_append_text(item, "(%s-%s-%s %s:%s:%s GMT %c %d hours %d minutes)", year,month,day,hour,minute,second,sign, oct / 4, oct % 4 * 15);
+
+
 
   return offset;
 }
@@ -7226,12 +7246,6 @@ static int dissect_CAP_U_ABORT_REASON_PDU(tvbuff_t *tvb _U_, packet_info *pinfo 
 }
 
 
-/*--- End of included file: packet-camel-fn.c ---*/
-#line 406 "./asn1/camel/packet-camel-template.c"
-
-
-/*--- Included file: packet-camel-table2.c ---*/
-#line 1 "./asn1/camel/packet-camel-table2.c"
 
 static int dissect_invokeData(proto_tree *tree, tvbuff_t *tvb, int offset, asn1_ctx_t *actx) {
 
@@ -7433,9 +7447,6 @@ static int dissect_returnErrorData(proto_tree *tree, tvbuff_t *tvb, int offset,a
 }
 
 
-/*--- End of included file: packet-camel-table2.c ---*/
-#line 408 "./asn1/camel/packet-camel-template.c"
-
 /*
  * Functions needed for Hash-Table
  */
@@ -7526,9 +7537,9 @@ camelsrt_init_routine(void)
 
   /* The Display of SRT is enable
    * 1) For wireshark only if Persistent Stat is enable
-   * 2) For Tshark, if the SRT handling is enable
+   * 2) For Tshark, if the SRT CLI tap is registered
    */
-  gcamel_DisplaySRT=gcamel_PersistentSRT || gcamel_HandleSRT&gcamel_StatSRT;
+  gcamel_DisplaySRT=gcamel_PersistentSRT || gcamel_StatSRT;
 }
 
 
@@ -8135,8 +8146,7 @@ dissect_camel_all(int version, const char* col_protocol, const char* suffix,
   dissect_camel_camelPDU(FALSE, tvb, 0, &asn1_ctx , tree, -1, p_private_tcap);
 
   /* If a Tcap context is associated to this transaction */
-  if (gcamel_HandleSRT &&
-      gp_camelsrt_info->tcap_context ) {
+  if (gp_camelsrt_info->tcap_context ) {
     if (gcamel_DisplaySRT && tree) {
       stat_tree = proto_tree_add_subtree(tree, tvb, 0, 0, ett_camel_stat, NULL, "Stat");
     }
@@ -8188,13 +8198,24 @@ static stat_tap_table_item camel_stat_fields[] = {{TABLE_ITEM_STRING, TAP_ALIGN_
 
 static void camel_stat_init(stat_tap_table_ui* new_stat)
 {
+  const char *table_name = "CAMEL Message Counters";
   int num_fields = sizeof(camel_stat_fields)/sizeof(stat_tap_table_item);
-  stat_tap_table* table = stat_tap_init_table("CAMEL Message Counters", num_fields, 0, NULL);
+  stat_tap_table *table;
   int i;
   stat_tap_table_item_type items[sizeof(camel_stat_fields)/sizeof(stat_tap_table_item)];
 
+  table = stat_tap_find_table(new_stat, table_name);
+  if (table) {
+    if (new_stat->stat_tap_reset_table_cb) {
+      new_stat->stat_tap_reset_table_cb(table);
+    }
+    return;
+  }
+
+  table = stat_tap_init_table(table_name, num_fields, 0, NULL);
   stat_tap_add_table(new_stat, table);
 
+  memset(items, 0x0, sizeof(items));
   items[MESSAGE_TYPE_COLUMN].type = TABLE_ITEM_STRING;
   items[COUNT_COLUMN].type = TABLE_ITEM_UINT;
   items[COUNT_COLUMN].value.uint_value = 0;
@@ -8205,9 +8226,9 @@ static void camel_stat_init(stat_tap_table_ui* new_stat)
     const char *ocs = try_val_to_str(i, camel_opr_code_strings);
     char *col_str;
     if (ocs) {
-      col_str = g_strdup_printf("Request %s", ocs);
+      col_str = ws_strdup_printf("Request %s", ocs);
     } else {
-      col_str = g_strdup_printf("Unknown op code %d", i);
+      col_str = ws_strdup_printf("Unknown op code %d", i);
     }
 
     items[MESSAGE_TYPE_COLUMN].value.string_value = col_str;
@@ -8216,15 +8237,14 @@ static void camel_stat_init(stat_tap_table_ui* new_stat)
 }
 
 static tap_packet_status
-camel_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *csi_ptr)
+camel_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *csi_ptr, tap_flags_t flags _U_)
 {
   stat_data_t* stat_data = (stat_data_t*)tapdata;
   const struct camelsrt_info_t *csi = (const struct camelsrt_info_t *) csi_ptr;
   stat_tap_table* table;
   stat_tap_table_item_type* msg_data;
-  guint i = 0;
 
-  table = g_array_index(stat_data->stat_tap_data->tables, stat_tap_table*, i);
+  table = g_array_index(stat_data->stat_tap_data->tables, stat_tap_table*, 0);
   if (csi->opcode >= table->num_elements)
     return TAP_PACKET_DONT_REDRAW;
   msg_data = stat_tap_get_field_data(table, csi->opcode, COUNT_COLUMN);
@@ -8299,15 +8319,9 @@ void proto_reg_handoff_camel(void) {
     register_ber_oid_dissector_handle("0.4.0.0.1.23.3.61", camel_v4_handle, proto_camel, "cap4-sms-AC");
 
 
-
-/*--- Included file: packet-camel-dis-tab.c ---*/
-#line 1 "./asn1/camel/packet-camel-dis-tab.c"
   register_ber_oid_dissector("0.4.0.0.1.1.5.2", dissect_CAP_GPRS_ReferenceNumber_PDU, proto_camel, "id-CAP-GPRS-ReferenceNumber");
   register_ber_oid_dissector("0.4.0.0.1.1.2.2", dissect_CAP_U_ABORT_REASON_PDU, proto_camel, "id-CAP-U-ABORT-Reason");
 
-
-/*--- End of included file: packet-camel-dis-tab.c ---*/
-#line 1273 "./asn1/camel/packet-camel-template.c"
   } else {
     range_foreach(ssn_range, range_delete_callback, NULL);
     wmem_free(wmem_epan_scope(), ssn_range);
@@ -8477,12 +8491,14 @@ void proto_register_camel(void) {
         FT_RELATIVE_TIME, BASE_NONE, NULL, 0x0,
         "DeltaTime between EventReportGPRS and ContinueGPRS", HFILL }
     },
-
+    { &hf_camel_timeandtimezone_bcd,
+      { "Time and timezone",
+        "camel.timeandtimezone_bcd",
+        FT_STRING, BASE_NONE, NULL, 0x0,
+        NULL, HFILL }
+    },
 #ifdef REMOVED
 #endif
-
-/*--- Included file: packet-camel-hfarr.c ---*/
-#line 1 "./asn1/camel/packet-camel-hfarr.c"
     { &hf_camel_PAR_cancelFailed_PDU,
       { "PAR-cancelFailed", "camel.PAR_cancelFailed_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -9172,7 +9188,7 @@ void proto_register_camel(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_camel_routeSelectfailureCause,
-      { "failureCause", "camel.failureCause",
+      { "failureCause", "camel.routeSelectfailureCause",
         FT_BYTES, BASE_NONE, NULL, 0,
         "Cause", HFILL }},
     { &hf_camel_oCalledPartyBusySpecificInfo,
@@ -9307,8 +9323,8 @@ void proto_register_camel(void) {
       { "o-smsFailureSpecificInfo", "camel.o_smsFailureSpecificInfo_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
-    { &hf_camel_smsfailureCause,
-      { "failureCause", "camel.failureCause",
+    { &hf_camel_mo_smsfailureCause,
+      { "failureCause", "camel.mo-smsfailureCause",
         FT_UINT32, BASE_DEC, VALS(camel_MO_SMSCause_vals), 0,
         "MO_SMSCause", HFILL }},
     { &hf_camel_o_smsSubmissionSpecificInfo,
@@ -9320,7 +9336,7 @@ void proto_register_camel(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         "T_t_smsFailureSpecificInfo", HFILL }},
     { &hf_camel_t_smsfailureCause,
-      { "failureCause", "camel.failureCause",
+      { "failureCause", "camel.t-smsfailureCause",
         FT_BYTES, BASE_NONE, NULL, 0,
         "MT_SMSCause", HFILL }},
     { &hf_camel_t_smsDeliverySpecificInfo,
@@ -9356,7 +9372,7 @@ void proto_register_camel(void) {
         FT_NONE, BASE_NONE, NULL, 0,
         "CompoundCriteria", HFILL }},
     { &hf_camel_gapIndicatorsDuration,
-      { "duration", "camel.duration",
+      { "duration", "camel.gapIndicatorsDuration",
         FT_INT32, BASE_DEC, NULL, 0,
         NULL, HFILL }},
     { &hf_camel_gapInterval,
@@ -9468,7 +9484,7 @@ void proto_register_camel(void) {
         FT_UINT32, BASE_DEC, NULL, 0,
         "INTEGER_1_127", HFILL }},
     { &hf_camel_inbandInfoDuration,
-      { "duration", "camel.duration",
+      { "duration", "camel.inbandInfoDuration",
         FT_UINT32, BASE_DEC, NULL, 0,
         "INTEGER_0_32767", HFILL }},
     { &hf_camel_interval,
@@ -9720,7 +9736,7 @@ void proto_register_camel(void) {
         FT_UINT32, BASE_DEC, NULL, 0,
         "Integer4", HFILL }},
     { &hf_camel_toneDuration,
-      { "duration", "camel.duration",
+      { "duration", "camel.toneDuration",
         FT_UINT32, BASE_DEC, NULL, 0,
         "Integer4", HFILL }},
     { &hf_camel_volumeIfNoTariffSwitch,
@@ -10427,9 +10443,6 @@ void proto_register_camel(void) {
       { "InvokeId.present", "camel.InvokeId_present",
         FT_INT32, BASE_DEC, NULL, 0,
         "InvokeId_present", HFILL }},
-
-/*--- End of included file: packet-camel-hfarr.c ---*/
-#line 1446 "./asn1/camel/packet-camel-template.c"
   };
 
   /* List of subtrees */
@@ -10455,10 +10468,8 @@ void proto_register_camel(void) {
     &ett_camel_dTMFDigitsTimeOut,
     &ett_camel_number,
     &ett_camel_digitsResponse,
+    &ett_camel_timeandtimezone,
 
-
-/*--- Included file: packet-camel-ettarr.c ---*/
-#line 1 "./asn1/camel/packet-camel-ettarr.c"
     &ett_camel_AChChargingAddress,
     &ett_camel_AOCBeforeAnswer,
     &ett_camel_AOCGPRS,
@@ -10655,15 +10666,13 @@ void proto_register_camel(void) {
     &ett_camel_Reject,
     &ett_camel_T_problem,
     &ett_camel_InvokeId,
-
-/*--- End of included file: packet-camel-ettarr.c ---*/
-#line 1473 "./asn1/camel/packet-camel-template.c"
   };
 
   static ei_register_info ei[] = {
      { &ei_camel_unknown_invokeData, { "camel.unknown.invokeData", PI_MALFORMED, PI_WARN, "Unknown invokeData", EXPFILL }},
      { &ei_camel_unknown_returnResultData, { "camel.unknown.returnResultData", PI_MALFORMED, PI_WARN, "Unknown returnResultData", EXPFILL }},
      { &ei_camel_unknown_returnErrorData, { "camel.unknown.returnErrorData", PI_MALFORMED, PI_WARN, "Unknown returnResultData", EXPFILL }},
+     { &ei_camel_par_wrong_length, { "camel.par_wrong_length", PI_PROTOCOL, PI_ERROR, "Wrong length of parameter", EXPFILL }},
   };
 
   expert_module_t* expert_camel;
@@ -10731,10 +10740,7 @@ void proto_register_camel(void) {
     "TCAP Subsystem numbers used for Camel",
     &global_ssn_range, MAX_SSN);
 
-  prefs_register_bool_preference(camel_module, "srt",
-                                 "Analyze Service Response Time",
-                                 "Enable response time analysis",
-                                 &gcamel_HandleSRT);
+  prefs_register_obsolete_preference(camel_module, "srt");
 
   prefs_register_bool_preference(camel_module, "persistentsrt",
                                  "Persistent stats for SRT",

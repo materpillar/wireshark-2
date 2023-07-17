@@ -1,4 +1,4 @@
-/* module_preferences_scroll_area.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -53,6 +53,7 @@ private slots:
     void saveFilenamePushButtonClicked();
     void openFilenamePushButtonClicked();
     void dirnamePushButtonClicked();
+    void enumComboBoxCurrentIndexChanged_PROTO_TCP(int index);
 };
 
 #endif // MODULE_PREFERENCES_SCROLL_AREA_H

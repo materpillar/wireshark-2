@@ -346,13 +346,6 @@ static const value_string sna_th_efi_vals[] = {
 	{ 0x0,	NULL }
 };
 
-/* Request/Response Indicator */
-static const value_string sna_rh_rri_vals[] = {
-	{ 0, "Request" },
-	{ 1, "Response" },
-	{ 0x0,	NULL }
-};
-
 /* Request/Response Unit Category */
 static const value_string sna_rh_ru_category_vals[] = {
 	{ 0, "Function Management Data (FMD)" },
@@ -365,10 +358,6 @@ static const value_string sna_rh_ru_category_vals[] = {
 /* Format Indicator */
 static const true_false_string sna_rh_fi_truth =
 	{ "FM Header", "No FM Header" };
-
-/* Sense Data Included */
-static const true_false_string sna_rh_sdi_truth =
-	{ "Included", "Not Included" };
 
 /* Begin Chain Indicator */
 static const true_false_string sna_rh_bci_truth =
@@ -1151,8 +1140,7 @@ dissect_optional(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		if (tree) {
 			sub_tree = proto_tree_add_subtree(tree, tvb,
 			    offset, len << 2, ett, NULL,
-			    val_to_str(type, sna_nlp_opti_vals,
-			    "Unknown Segment Type"));
+			    val_to_str_const(type, sna_nlp_opti_vals, "Unknown Segment Type"));
 			proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_len,
 			    tvb, offset, 1, len);
 			proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_type,
@@ -1607,7 +1595,7 @@ mpf_value(guint8 th_byte)
  * This consumes resources. A trickier way, but a way which works, is to
  * always map the "LAST" BIU segment to frag-number 2. Here's the trickery:
  * if we add frag-number 2, which we know to be the "LAST" BIU segment,
- * and the reassembly code tells us that the the BIU is still not reassmebled,
+ * and the reassembly code tells us that the BIU is still not reassmebled,
  * then, owing to the, ahem, /fact/, that fragmented BIU segments arrive
  * in order :), we know that 1) "FIRST" did come, and 2) there's no "MIDDLE",
  * because this BIU was fragmented into 2 frames, not 3. So, we'll be
@@ -2293,7 +2281,7 @@ dissect_control_0e(tvbuff_t *tvb, proto_tree *tree)
 	if (len <= 0)
 		return;
 
-	proto_tree_add_item(tree, hf_sna_control_0e_value, tvb, 3, len, ENC_EBCDIC|ENC_NA);
+	proto_tree_add_item(tree, hf_sna_control_0e_value, tvb, 3, len, ENC_EBCDIC);
 }
 
 static void
@@ -2891,7 +2879,7 @@ proto_register_sna(void)
 
 		{ &hf_sna_nlp_opti_0f_bits,
 		  { "Client Bits", "sna.nlp.thdr.optional.0f.bits",
-		    FT_UINT8, BASE_HEX, VALS(sna_nlp_opti_0f_bits_vals),
+		    FT_UINT16, BASE_HEX, VALS(sna_nlp_opti_0f_bits_vals),
 		    0x0, NULL, HFILL }},
 
 		{ &hf_sna_nlp_opti_10_tcid,
@@ -3058,8 +3046,8 @@ proto_register_sna(void)
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
 		{ &hf_sna_rh_rri,
-		  { "Request/Response Indicator", "sna.rh.rri", FT_UINT8,
-		    BASE_DEC, VALS(sna_rh_rri_vals), 0x80, NULL, HFILL }},
+		  { "Request/Response Indicator", "sna.rh.rri", FT_BOOLEAN,
+		    8, TFS(&tfs_response_request), 0x80, NULL, HFILL }},
 
 		{ &hf_sna_rh_ru_category,
 		  { "Request/Response Unit Category", "sna.rh.ru_category",
@@ -3072,7 +3060,7 @@ proto_register_sna(void)
 
 		{ &hf_sna_rh_sdi,
 		  { "Sense Data Included", "sna.rh.sdi", FT_BOOLEAN, 8,
-		    TFS(&sna_rh_sdi_truth), 0x04, NULL, HFILL }},
+		    TFS(&tfs_included_not_included), 0x04, NULL, HFILL }},
 
 		{ &hf_sna_rh_bci,
 		  { "Begin Chain Indicator", "sna.rh.bci", FT_BOOLEAN, 8,

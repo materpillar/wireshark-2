@@ -12,10 +12,8 @@
 
 #include "win32-utils.h"
 
-#include <log.h>
-
 #include <tchar.h>
-#include <VersionHelpers.h>
+#include <versionhelpers.h>
 
 /* Quote the argument element if necessary, so that it will get
  * reconstructed correctly in the C runtime startup code.  Note that
@@ -119,7 +117,7 @@ win32strerror(DWORD error)
                             (LPTSTR)&utf16_message, ERRBUF_SIZE, NULL);
     if (retval == 0) {
         /* Failed. */
-        tempmsg = g_strdup_printf("Couldn't get error message for error (%lu) (because %lu)",
+        tempmsg = ws_strdup_printf("Couldn't get error message for error (%lu) (because %lu)",
                                   error, GetLastError());
         msg = g_intern_string(tempmsg);
         g_free(tempmsg);
@@ -130,13 +128,13 @@ win32strerror(DWORD error)
     LocalFree(utf16_message);
     if (utf8_message == NULL) {
         /* Conversion failed. */
-        tempmsg = g_strdup_printf("Couldn't convert error message for error to UTF-8 (%lu) (because %lu)",
+        tempmsg = ws_strdup_printf("Couldn't convert error message for error to UTF-8 (%lu) (because %lu)",
                                   error, GetLastError());
         msg = g_intern_string(tempmsg);
         g_free(tempmsg);
         return msg;
     }
-    tempmsg = g_strdup_printf("%s (%lu)", utf8_message, error);
+    tempmsg = ws_strdup_printf("%s (%lu)", utf8_message, error);
     g_free(utf8_message);
     msg = g_intern_string(tempmsg);
     g_free(tempmsg);
@@ -151,7 +149,7 @@ win32strexception(DWORD exception)
 {
     static char errbuf[ERRBUF_SIZE+1];
     static const struct exception_msg {
-        int code;
+        DWORD code;
         char *msg;
     } exceptions[] = {
         { EXCEPTION_ACCESS_VIOLATION, "Access violation" },
@@ -179,13 +177,12 @@ win32strexception(DWORD exception)
         { 0, NULL }
     };
 #define N_EXCEPTIONS    (sizeof exceptions / sizeof exceptions[0])
-    int i;
 
-    for (i = 0; i < N_EXCEPTIONS; i++) {
+    for (size_t i = 0; i < N_EXCEPTIONS; i++) {
         if (exceptions[i].code == exception)
             return exceptions[i].msg;
     }
-    g_snprintf(errbuf, (gulong)sizeof errbuf, "Exception 0x%08x", exception);
+    snprintf(errbuf, sizeof errbuf, "Exception 0x%08lx", exception);
     return errbuf;
 }
 
@@ -199,7 +196,7 @@ static void win32_kill_child_on_exit(HANDLE child_handle) {
         cjo_handle = CreateJobObject(NULL, NULL);
 
         if (!cjo_handle) {
-            g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_DEBUG, "Could not create child cleanup job object: %s",
+            ws_log(LOG_DOMAIN_CAPTURE, LOG_LEVEL_DEBUG, "Could not create child cleanup job object: %s",
                 win32strerror(GetLastError()));
             return;
         }
@@ -209,22 +206,25 @@ static void win32_kill_child_on_exit(HANDLE child_handle) {
         BOOL sijo_ret = SetInformationJobObject(cjo_handle, JobObjectExtendedLimitInformation,
             &cjo_jel_info, sizeof(cjo_jel_info));
         if (!sijo_ret) {
-            g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_DEBUG, "Could not set child cleanup limits: %s",
+            ws_log(LOG_DOMAIN_CAPTURE, LOG_LEVEL_DEBUG, "Could not set child cleanup limits: %s",
                 win32strerror(GetLastError()));
         }
     }
 
     BOOL aptjo_ret = AssignProcessToJobObject(cjo_handle, child_handle);
     if (!aptjo_ret) {
-        g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_DEBUG, "Could not assign child cleanup process: %s",
+        ws_log(LOG_DOMAIN_CAPTURE, LOG_LEVEL_DEBUG, "Could not assign child cleanup process: %s",
             win32strerror(GetLastError()));
     }
 }
 
-BOOL win32_create_process(const char *application_name, const char *command_line, LPSECURITY_ATTRIBUTES process_attributes, LPSECURITY_ATTRIBUTES thread_attributes, BOOL inherit_handles, DWORD creation_flags, LPVOID environment, const char *current_directory, LPSTARTUPINFO startup_info, LPPROCESS_INFORMATION process_information)
+BOOL win32_create_process(const char *application_name, const char *command_line, LPSECURITY_ATTRIBUTES process_attributes, LPSECURITY_ATTRIBUTES thread_attributes, size_t n_inherit_handles, HANDLE *inherit_handles, DWORD creation_flags, LPVOID environment, const char *current_directory, LPSTARTUPINFO startup_info, LPPROCESS_INFORMATION process_information)
 {
     gunichar2 *wappname = NULL, *wcurrentdirectory = NULL;
     gunichar2 *wcommandline = g_utf8_to_utf16(command_line, -1, NULL, NULL, NULL);
+    LPPROC_THREAD_ATTRIBUTE_LIST attribute_list = NULL;
+    STARTUPINFOEX startup_infoex;
+    size_t i;
     // CREATE_SUSPENDED: Suspend the child so that we can cleanly call
     //     AssignProcessToJobObject.
     DWORD wcreationflags = creation_flags|CREATE_SUSPENDED;
@@ -232,7 +232,7 @@ BOOL win32_create_process(const char *application_name, const char *command_line
     //     e.g. if we're running under "Run As", ConEmu, or Visual Studio. On Windows
     //     <= 7 our child process needs to break away from it so that we can cleanly
     //     call AssignProcessToJobObject on *our* job.
-    //     Windows >= 8 supports nested jobs so this isn't neccessary there.
+    //     Windows >= 8 supports nested jobs so this isn't necessary there.
     //     https://blogs.msdn.microsoft.com/winsdk/2014/09/22/job-object-insanity/
     //
     if (! IsWindowsVersionOrGreater(6, 2, 0)) { // Windows 8
@@ -245,15 +245,54 @@ BOOL win32_create_process(const char *application_name, const char *command_line
     if (current_directory) {
         wcurrentdirectory = g_utf8_to_utf16(current_directory, -1, NULL, NULL, NULL);
     }
+    if (n_inherit_handles > 0) {
+        size_t attr_size = 0;
+        BOOL success;
+        success = InitializeProcThreadAttributeList(NULL, 1, 0, &attr_size);
+        if (success || (GetLastError() == ERROR_INSUFFICIENT_BUFFER)) {
+            attribute_list = g_malloc(attr_size);
+            success = InitializeProcThreadAttributeList(attribute_list, 1, 0, &attr_size);
+        }
+        if (success && (attribute_list != NULL)) {
+            success = UpdateProcThreadAttribute(attribute_list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                inherit_handles, n_inherit_handles * sizeof(HANDLE), NULL, NULL);
+        }
+        if (!success && (attribute_list != NULL)) {
+            DeleteProcThreadAttributeList(attribute_list);
+            g_free(attribute_list);
+            attribute_list = NULL;
+        }
+    }
+    memset(&startup_infoex, 0, sizeof(startup_infoex));
+    startup_infoex.StartupInfo = *startup_info;
+    startup_infoex.StartupInfo.cb = sizeof(startup_infoex);
+    startup_infoex.lpAttributeList = attribute_list;
+    wcreationflags |= EXTENDED_STARTUPINFO_PRESENT;
+    for (i = 0; i < n_inherit_handles; i++) {
+        SetHandleInformation(inherit_handles[i], HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+    }
     BOOL cp_res = CreateProcess(wappname, wcommandline, process_attributes, thread_attributes,
-        inherit_handles, wcreationflags, environment, wcurrentdirectory, startup_info,
-        process_information);
+        (n_inherit_handles > 0) ? TRUE : FALSE, wcreationflags, environment, wcurrentdirectory,
+        &startup_infoex.StartupInfo, process_information);
+    /* While this function makes the created process inherit only the explicitly
+     * listed handles, there can be other functions (in 3rd party libraries)
+     * that create processes inheriting all inheritable handles. To minimize
+     * number of unwanted handle duplicates (handle duplicate can extend object
+     * lifetime, e.g. pipe write end) created that way clear the inherit flag.
+     */
+    for (i = 0; i < n_inherit_handles; i++) {
+        SetHandleInformation(inherit_handles[i], HANDLE_FLAG_INHERIT, 0);
+    }
     if (cp_res) {
         win32_kill_child_on_exit(process_information->hProcess);
         ResumeThread(process_information->hThread);
     }
     // XXX Else try again if CREATE_BREAKAWAY_FROM_JOB and GetLastError() == ERROR_ACCESS_DENIED?
 
+    if (attribute_list) {
+        DeleteProcThreadAttributeList(attribute_list);
+        g_free(attribute_list);
+    }
     g_free(wappname);
     g_free(wcommandline);
     g_free(wcurrentdirectory);

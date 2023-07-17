@@ -1291,7 +1291,7 @@ static int hf_ec_puan_monitor_ec_pacch = -1;
 static int hf_t3238 = -1;
 static int hf_ec_initial_waiting_time = -1;
 static int hf_ec_pacch_monitoring_pattern = -1;
-static int hf_ec_puan_fua_dealy_exist = -1;
+static int hf_ec_puan_fua_delay_exist = -1;
 
 static int hf_ec_reject_wait_exist = -1;
 static int hf_ec_packet_access_reject_count = -1;
@@ -2664,8 +2664,8 @@ CSN_DESCR_END         (DTM_EGPRS_HighMultislotClass_t)
 
 static const
 CSN_DESCR_BEGIN       (DownlinkDualCarrierCapability_r7_t)
-  M_NEXT_EXIST        (DownlinkDualCarrierCapability_r7_t, MultislotCapabilityReductionForDL_DualCarrier, 1, &hf_content_multislot_capability_reduction_for_dl_dual_carrier),
-  M_UINT              (DownlinkDualCarrierCapability_r7_t, DL_DualCarrierForDTM,  3, &hf_content_dual_carrier_for_dtm),
+  M_UINT              (DownlinkDualCarrierCapability_r7_t, MultislotCapabilityReductionForDL_DualCarrier, 3, &hf_content_multislot_capability_reduction_for_dl_dual_carrier),
+  M_UINT              (DownlinkDualCarrierCapability_r7_t, DL_DualCarrierForDTM,  1, &hf_content_dual_carrier_for_dtm),
 CSN_DESCR_END         (DownlinkDualCarrierCapability_r7_t)
 
 static const
@@ -2750,7 +2750,7 @@ CSN_DESCR_BEGIN       (Content_t)
   /* additions in release 7 */
   M_UINT_OR_NULL      (Content_t,  DTM_Handover_Capability,  1, &hf_content_dtm_handover_capability),
   M_NEXT_EXIST_OR_NULL(Content_t, Exist_DownlinkDualCarrierCapability_r7, 1, &hf_content_multislot_capability_reduction_for_dl_dual_carrier_exist),
-  M_TYPE              (Content_t, DownlinkDualCarrierCapability_r7, DownlinkDualCarrierCapability_r7_t),
+  M_TYPE_OR_NULL      (Content_t, DownlinkDualCarrierCapability_r7, DownlinkDualCarrierCapability_r7_t),
 
   M_UINT_OR_NULL      (Content_t,  FlexibleTimeslotAssignment,  1, &hf_content_flexible_timeslot_assignment),
   M_UINT_OR_NULL      (Content_t,  GAN_PS_HandoverCapability,  1, &hf_content_gan_ps_handover_capability),
@@ -4129,7 +4129,7 @@ CSN_DESCR_BEGIN       (PUAN_Fixed_Uplink_Allocation_t)
   M_NEXT_EXIST        (PUAN_Fixed_Uplink_Allocation_t, Exist_BSN_OFFSET, 1, &hf_ec_bsn_offset_exist),
   M_UINT              (PUAN_Fixed_Uplink_Allocation_t, BSN_OFFSET, 2, &hf_ec_bsn_offset),
   M_UINT              (PUAN_Fixed_Uplink_Allocation_t, START_FIRST_UL_RLC_DATA_BLOCK, 4, &hf_ec_start_first_ul_rlc_data_block),
-  M_REC_TARRAY        (PUAN_Fixed_Uplink_Allocation_t, FUA_Delay, FUA_Delay_t, Count_FUA_Delay, &hf_ec_puan_fua_dealy_exist),
+  M_REC_TARRAY        (PUAN_Fixed_Uplink_Allocation_t, FUA_Delay, FUA_Delay_t, Count_FUA_Delay, &hf_ec_puan_fua_delay_exist),
 CSN_DESCR_END         (PUAN_Fixed_Uplink_Allocation_t)
 
 static const
@@ -4263,7 +4263,7 @@ CSN_DESCR_END         (EC_Packet_Tbf_Release_t)
 static const
 CSN_DESCR_BEGIN       (Fixed_Uplink_Allocation_t)
   M_UINT              (Fixed_Uplink_Allocation_t, START_FIRST_UL_RLC_DATA_BLOCK, 4, &hf_ec_start_first_ul_rlc_data_block),
-  M_REC_TARRAY        (Fixed_Uplink_Allocation_t, FUA_Delay, FUA_Delay_t, Count_FUA_Delay, &hf_ec_puan_fua_dealy_exist),
+  M_REC_TARRAY        (Fixed_Uplink_Allocation_t, FUA_Delay, FUA_Delay_t, Count_FUA_Delay, &hf_ec_puan_fua_delay_exist),
 CSN_DESCR_END         (Fixed_Uplink_Allocation_t)
 
 static const
@@ -4496,10 +4496,12 @@ static CSN_CallBackStatus_t cb_parse_mi(proto_tree *tree, tvbuff_t *tvb,
 {
   guint8 mi_length = *((guint8 *) _mi_length);
 
-  /* de_mid() requires an octet-aligned buffer */
-  tvbuff_t *mi_tvb = tvb_new_octet_aligned(tvb, bit_offset, mi_length << 3);
-  add_new_data_source(pinfo, mi_tvb, "Mobile Identity");
-  de_mid(mi_tvb, tree, pinfo, 0, -1, NULL, 0);
+  if ((mi_length << 3) != 0) {
+    /* de_mid() requires an octet-aligned buffer */
+    tvbuff_t *mi_tvb = tvb_new_octet_aligned(tvb, bit_offset, mi_length << 3);
+    add_new_data_source(pinfo, mi_tvb, "Mobile Identity");
+    de_mid(mi_tvb, tree, pinfo, 0, -1, NULL, 0);
+  }
 
   return mi_length << 3;
 }
@@ -7589,14 +7591,14 @@ CSN_DESCR_BEGIN  (SI6_RestOctet_t)
 CSN_DESCR_END    (SI6_RestOctet_t)
 #endif
 
-CSN_DESCR_BEGIN  (UL_Data_Mac_Header_t)
+static CSN_DESCR_BEGIN  (UL_Data_Mac_Header_t)
   M_UINT         (UL_Data_Mac_Header_t,  Payload_Type, 2, &hf_ul_payload_type),
   M_UINT         (UL_Data_Mac_Header_t,  Countdown_Value, 4, &hf_countdown_value),
   M_UINT         (UL_Data_Mac_Header_t,  SI, 1, &hf_ul_data_si),
   M_UINT         (UL_Data_Mac_Header_t,  R, 1, &hf_ul_retry),
 CSN_DESCR_END    (UL_Data_Mac_Header_t)
 
-CSN_DESCR_BEGIN  (UL_Data_Block_GPRS_t)
+static CSN_DESCR_BEGIN  (UL_Data_Block_GPRS_t)
   M_TYPE         (UL_Data_Block_GPRS_t, UL_Data_Mac_Header, UL_Data_Mac_Header_t),
   M_UINT         (UL_Data_Block_GPRS_t, Spare, 1, &hf_ul_data_spare),
   M_UINT         (UL_Data_Block_GPRS_t, PI, 1, &hf_pi),
@@ -7606,7 +7608,7 @@ CSN_DESCR_BEGIN  (UL_Data_Block_GPRS_t)
   M_UINT         (UL_Data_Block_GPRS_t, E, 1, &hf_e),
 CSN_DESCR_END    (UL_Data_Block_GPRS_t)
 
-CSN_DESCR_BEGIN  (UL_Data_Block_EGPRS_Header_Type1_t)
+static CSN_DESCR_BEGIN  (UL_Data_Block_EGPRS_Header_Type1_t)
   M_SPLIT_BITS   (UL_Data_Block_EGPRS_Header_Type1_t, TFI, bits_spec_ul_tfi, 5, &hf_uplink_tfi),
   M_BITS_CRUMB   (UL_Data_Block_EGPRS_Header_Type1_t, TFI, bits_spec_ul_tfi, 1, &hf_uplink_tfi),
   M_UINT         (UL_Data_Block_EGPRS_Header_Type1_t, Countdown_Value, 4, &hf_countdown_value),
@@ -7627,7 +7629,7 @@ CSN_DESCR_BEGIN  (UL_Data_Block_EGPRS_Header_Type1_t)
   M_UINT         (UL_Data_Block_EGPRS_Header_Type1_t, SPARE2, 6, &hf_ul_data_spare),
 CSN_DESCR_END    (UL_Data_Block_EGPRS_Header_Type1_t)
 
-CSN_DESCR_BEGIN  (UL_Data_Block_EGPRS_Header_Type2_t)
+static CSN_DESCR_BEGIN  (UL_Data_Block_EGPRS_Header_Type2_t)
   M_SPLIT_BITS   (UL_Data_Block_EGPRS_Header_Type2_t, TFI, bits_spec_ul_tfi, 5, &hf_uplink_tfi),
   M_BITS_CRUMB   (UL_Data_Block_EGPRS_Header_Type2_t, TFI, bits_spec_ul_tfi, 1, &hf_uplink_tfi),
   M_UINT         (UL_Data_Block_EGPRS_Header_Type2_t, Countdown_Value, 4, &hf_countdown_value),
@@ -7647,7 +7649,7 @@ CSN_DESCR_BEGIN  (UL_Data_Block_EGPRS_Header_Type2_t)
   M_UINT         (UL_Data_Block_EGPRS_Header_Type2_t, SPARE2, 5, &hf_ul_data_spare),
 CSN_DESCR_END    (UL_Data_Block_EGPRS_Header_Type2_t)
 
-CSN_DESCR_BEGIN  (UL_Data_Block_EGPRS_Header_Type3_t)
+static CSN_DESCR_BEGIN  (UL_Data_Block_EGPRS_Header_Type3_t)
   M_SPLIT_BITS   (UL_Data_Block_EGPRS_Header_Type3_t, TFI, bits_spec_ul_tfi, 5, &hf_uplink_tfi),
   M_BITS_CRUMB   (UL_Data_Block_EGPRS_Header_Type3_t, TFI, bits_spec_ul_tfi, 1, &hf_uplink_tfi),
   M_UINT         (UL_Data_Block_EGPRS_Header_Type3_t, Countdown_Value, 4, &hf_countdown_value),
@@ -7667,7 +7669,7 @@ CSN_DESCR_BEGIN  (UL_Data_Block_EGPRS_Header_Type3_t)
   M_BITS_CRUMB   (UL_Data_Block_EGPRS_Header_Type3_t, CPS, bits_spec_ul_type3_cps, 0, &hf_cps3),
 CSN_DESCR_END    (UL_Data_Block_EGPRS_Header_Type3_t)
 
-CSN_DESCR_BEGIN  (UL_Data_Block_EC_EGPRS_Header_Type3_t)
+static CSN_DESCR_BEGIN  (UL_Data_Block_EC_EGPRS_Header_Type3_t)
   M_SPLIT_BITS   (UL_Data_Block_EC_EGPRS_Header_Type3_t, TFI, bits_spec_ul_tfi, 5, &hf_uplink_tfi),
   M_BITS_CRUMB   (UL_Data_Block_EC_EGPRS_Header_Type3_t, TFI, bits_spec_ul_tfi, 1, &hf_uplink_tfi),
   M_UINT         (UL_Data_Block_EC_EGPRS_Header_Type3_t, Countdown_Value, 4, &hf_countdown_value),
@@ -7685,29 +7687,29 @@ CSN_DESCR_BEGIN  (UL_Data_Block_EC_EGPRS_Header_Type3_t)
   M_BITS_CRUMB   (UL_Data_Block_EC_EGPRS_Header_Type3_t, DL_CC_EST, bits_spec_ul_ec_type3_dl_cc_est, 0, &hf_ec_dl_cc_est),
 CSN_DESCR_END    (UL_Data_Block_EC_EGPRS_Header_Type3_t)
 
-CSN_DESCR_BEGIN  (UL_Packet_Control_Ack_11_t)
+static CSN_DESCR_BEGIN  (UL_Packet_Control_Ack_11_t)
   M_UINT         (UL_Packet_Control_Ack_11_t,  MESSAGE_TYPE, 9, &hf_prach11_message_type_9),
   M_UINT         (UL_Packet_Control_Ack_11_t,  CTRL_ACK, 2, &hf_packet_control_acknowledgement_ctrl_ack),
 CSN_DESCR_END    (UL_Packet_Control_Ack_11_t)
 
-CSN_DESCR_BEGIN  (UL_Packet_Control_Ack_TN_RRBP_11_t)
+static CSN_DESCR_BEGIN  (UL_Packet_Control_Ack_TN_RRBP_11_t)
   M_UINT         (UL_Packet_Control_Ack_TN_RRBP_11_t,  MESSAGE_TYPE, 6, &hf_prach11_message_type_6),
   M_UINT         (UL_Packet_Control_Ack_TN_RRBP_11_t,  TN_RRBP, 3, &hf_packet_control_acknowledgement_additionsr5_tn_rrbp),
   M_UINT         (UL_Packet_Control_Ack_TN_RRBP_11_t,  CTRL_ACK, 2, &hf_packet_control_acknowledgement_ctrl_ack),
 CSN_DESCR_END    (UL_Packet_Control_Ack_TN_RRBP_11_t)
 
-CSN_DESCR_BEGIN  (UL_Packet_Control_Ack_8_t)
+static CSN_DESCR_BEGIN  (UL_Packet_Control_Ack_8_t)
   M_UINT         (UL_Packet_Control_Ack_8_t,  MESSAGE_TYPE, 6, &hf_prach8_message_type_6),
   M_UINT         (UL_Packet_Control_Ack_8_t,  CTRL_ACK, 2, &hf_packet_control_acknowledgement_ctrl_ack),
 CSN_DESCR_END    (UL_Packet_Control_Ack_8_t)
 
-CSN_DESCR_BEGIN  (UL_Packet_Control_Ack_TN_RRBP_8_t)
+static CSN_DESCR_BEGIN  (UL_Packet_Control_Ack_TN_RRBP_8_t)
   M_UINT         (UL_Packet_Control_Ack_TN_RRBP_8_t,  MESSAGE_TYPE, 3, &hf_prach8_message_type_3),
   M_UINT         (UL_Packet_Control_Ack_TN_RRBP_8_t,  TN_RRBP, 3, &hf_packet_control_acknowledgement_additionsr5_tn_rrbp),
   M_UINT         (UL_Packet_Control_Ack_TN_RRBP_8_t,  CTRL_ACK, 2, &hf_packet_control_acknowledgement_ctrl_ack),
 CSN_DESCR_END    (UL_Packet_Control_Ack_TN_RRBP_8_t)
 
-CSN_DESCR_BEGIN  (DL_Data_Mac_Header_t)
+static CSN_DESCR_BEGIN  (DL_Data_Mac_Header_t)
   M_UINT         (DL_Data_Mac_Header_t, Payload_Type, 2, &hf_dl_payload_type),
   M_UINT         (DL_Data_Mac_Header_t,  RRBP,  2, &hf_rrbp),
   M_UINT         (DL_Data_Mac_Header_t,  S_P,  1, &hf_s_p),
@@ -7715,7 +7717,7 @@ CSN_DESCR_BEGIN  (DL_Data_Mac_Header_t)
 CSN_DESCR_END    (DL_Data_Mac_Header_t)
 
 
-CSN_DESCR_BEGIN  (DL_Data_Block_GPRS_t)
+static CSN_DESCR_BEGIN  (DL_Data_Block_GPRS_t)
   M_TYPE         (DL_Data_Block_GPRS_t, DL_Data_Mac_Header, DL_Data_Mac_Header_t),
   M_UINT         (DL_Data_Block_GPRS_t, Power_Reduction, 2, &hf_dl_ctrl_pr),
   M_UINT         (DL_Data_Block_GPRS_t, TFI, 5, &hf_downlink_tfi),
@@ -7724,7 +7726,7 @@ CSN_DESCR_BEGIN  (DL_Data_Block_GPRS_t)
   M_UINT         (DL_Data_Block_GPRS_t, E, 1, &hf_e),
 CSN_DESCR_END    (DL_Data_Block_GPRS_t)
 
-CSN_DESCR_BEGIN  (DL_Data_Block_EGPRS_Header_Type1_t)
+static CSN_DESCR_BEGIN  (DL_Data_Block_EGPRS_Header_Type1_t)
   M_SPLIT_BITS   (DL_Data_Block_EGPRS_Header_Type1_t, TFI, bits_spec_dl_tfi, 5, &hf_downlink_tfi),
   M_BITS_CRUMB   (DL_Data_Block_EGPRS_Header_Type1_t, TFI, bits_spec_dl_tfi, 1, &hf_downlink_tfi),
   M_UINT         (DL_Data_Block_EGPRS_Header_Type1_t, RRBP, 2, &hf_rrbp),
@@ -7742,7 +7744,7 @@ CSN_DESCR_BEGIN  (DL_Data_Block_EGPRS_Header_Type1_t)
   M_BITS_CRUMB   (DL_Data_Block_EGPRS_Header_Type1_t, BSN2_offset, bits_spec_dl_type1_bsn2, 0, &hf_bsn2_offset),
 CSN_DESCR_END    (DL_Data_Block_EGPRS_Header_Type1_t)
 
-CSN_DESCR_BEGIN  (DL_Data_Block_EGPRS_Header_Type2_t)
+static CSN_DESCR_BEGIN  (DL_Data_Block_EGPRS_Header_Type2_t)
   M_SPLIT_BITS   (DL_Data_Block_EGPRS_Header_Type2_t, TFI, bits_spec_dl_tfi, 5, &hf_downlink_tfi),
   M_BITS_CRUMB   (DL_Data_Block_EGPRS_Header_Type2_t, TFI, bits_spec_dl_tfi, 1, &hf_downlink_tfi),
   M_UINT         (DL_Data_Block_EGPRS_Header_Type2_t, RRBP, 2, &hf_rrbp),
@@ -7758,7 +7760,7 @@ CSN_DESCR_BEGIN  (DL_Data_Block_EGPRS_Header_Type2_t)
   M_BITS_CRUMB   (DL_Data_Block_EGPRS_Header_Type2_t, BSN1, bits_spec_dl_type2_bsn, 0, &hf_bsn),
 CSN_DESCR_END    (DL_Data_Block_EGPRS_Header_Type2_t)
 
-CSN_DESCR_BEGIN  (DL_Data_Block_EGPRS_Header_Type3_t)
+static CSN_DESCR_BEGIN  (DL_Data_Block_EGPRS_Header_Type3_t)
   M_SPLIT_BITS   (DL_Data_Block_EGPRS_Header_Type3_t, TFI, bits_spec_dl_tfi, 5, &hf_downlink_tfi),
   M_BITS_CRUMB   (DL_Data_Block_EGPRS_Header_Type3_t, TFI, bits_spec_dl_tfi, 1, &hf_downlink_tfi),
   M_UINT         (DL_Data_Block_EGPRS_Header_Type3_t, RRBP, 2, &hf_rrbp),
@@ -7775,7 +7777,7 @@ CSN_DESCR_BEGIN  (DL_Data_Block_EGPRS_Header_Type3_t)
   M_BITS_CRUMB   (DL_Data_Block_EGPRS_Header_Type3_t, BSN1, bits_spec_dl_type3_bsn, 0, &hf_bsn),
 CSN_DESCR_END    (DL_Data_Block_EGPRS_Header_Type3_t)
 
-CSN_DESCR_BEGIN  (DL_Data_Block_EC_EGPRS_Header_Type3_t)
+static CSN_DESCR_BEGIN  (DL_Data_Block_EC_EGPRS_Header_Type3_t)
   M_SPLIT_BITS   (DL_Data_Block_EC_EGPRS_Header_Type3_t, TFI, bits_spec_dl_tfi, 5, &hf_downlink_tfi),
   M_BITS_CRUMB   (DL_Data_Block_EC_EGPRS_Header_Type3_t, TFI, bits_spec_dl_tfi, 1, &hf_downlink_tfi),
   M_UINT         (DL_Data_Block_EC_EGPRS_Header_Type3_t, SPARE1, 1, &hf_dl_data_spare),
@@ -8390,7 +8392,7 @@ static const value_string gsm_rlcmac_val_plus_1_vals[] = {
 
 static const true_false_string gsm_rlcmac_psi1_measurement_order_value = {
   "MS shall send measurement reports for cell re-selection",
-  "MS performs cell re-selection in both packet idle and transfert mode and shall not send any measurement reports to the network"
+  "MS performs cell re-selection in both packet idle and transfer mode and shall not send any measurement reports to the network"
 };
 
 static const value_string gsm_rlcmac_nmo_vals[] = {
@@ -8549,14 +8551,20 @@ static gint construct_egprs_data_segment_li_array(tvbuff_t *tvb, proto_tree *tre
   return (offset - initial_offset);
 }
 
-static guint8 dissect_gprs_data_segments(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint8 initial_offset,
-                                         guint8 octet_length, guint8 li_count, length_indicator_t *li_array)
+static guint8 dissect_gprs_data_segments(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
+                                         guint8 initial_offset, guint8 octet_length,
+                                         gboolean is_uplink, guint8 cs,
+                                         guint8 li_count, length_indicator_t *li_array)
 {
   guint8      octet_offset = initial_offset;
   guint8      i;
   tvbuff_t*   data_tvb     = NULL;
   gboolean    more         = TRUE, first_li = TRUE;
   proto_tree *subtree      = NULL;
+
+  guint8 blk_length = gsm_rlcmac_gprs_cs_to_block_length[cs - 1];
+  if (blk_length > octet_length)
+      blk_length = octet_length; /* part of the block or spare bits missing */
 
   /* decode the LIs and any associated LLC Frames */
   for(i = 0; (i < li_count) && more; i++)
@@ -8569,9 +8577,16 @@ static guint8 dissect_gprs_data_segments(tvbuff_t *tvb, packet_info *pinfo, prot
     switch (li)
     {
       case 0:
-        proto_tree_add_subtree_format(tree, tvb, li_array[i].offset, 1, ett_data_segments, NULL,
-                            "LI[%d]=%d indicates: The previous segment of LLC Frame precisely filled the previous RLC Block",
-                            i, li);
+        /* 3GPP TS 44.060 B.2 Example 2 */
+        col_append_str_uint(pinfo->cinfo, COL_INFO, "Len", blk_length - octet_offset, " ");
+        subtree = proto_tree_add_subtree_format(tree, tvb, li_array[i].offset, 1, ett_data_segments, NULL,
+                                    "LI[%d]=%d indicates: The current LLC PDU would fit within current RLC data block but the addition "
+                                    "of the length indicator octet (to indicate the LLC PDU boundary) causes the LLC PDU to extend into "
+                                    "another RLC data block",
+                                    i, li);
+        data_tvb = tvb_new_subset_length(tvb, octet_offset, blk_length - octet_offset);
+        call_data_dissector(data_tvb, pinfo, subtree);
+        octet_offset = blk_length;
         break;
 
       case 63:
@@ -8587,9 +8602,9 @@ static guint8 dissect_gprs_data_segments(tvbuff_t *tvb, packet_info *pinfo, prot
                                    "data segment: LI[%d]=%d indicates: The remainder of the RLC data block contains filler bits",
                                    i, li);
         }
-        data_tvb = tvb_new_subset_length(tvb, octet_offset, octet_length - octet_offset);
+        data_tvb = tvb_new_subset_length(tvb, octet_offset, blk_length - octet_offset);
         call_data_dissector(data_tvb, pinfo, subtree);
-        octet_offset = octet_length;
+        octet_offset = blk_length;
         break;
 
       default:
@@ -8604,24 +8619,27 @@ static guint8 dissect_gprs_data_segments(tvbuff_t *tvb, packet_info *pinfo, prot
     }
     first_li = FALSE;
   }
-  if (octet_offset < octet_length)
+
+  if (octet_offset < blk_length)
   {
     /* if there is space left in the RLC Block, then it is a segment of LLC Frame without LI*/
     if (more)
     {
-      col_append_str_uint(pinfo->cinfo, COL_INFO, "Len", octet_length - octet_offset, " ");
-      subtree = proto_tree_add_subtree_format(tree, tvb, octet_offset, octet_length - octet_offset, ett_data_segments, NULL,
+      col_append_str_uint(pinfo->cinfo, COL_INFO, "Len", blk_length - octet_offset, " ");
+      subtree = proto_tree_add_subtree_format(tree, tvb, octet_offset, blk_length - octet_offset, ett_data_segments, NULL,
                                "data segment: LI not present: \n The Upper Layer PDU in the current RLC data block either fills the current RLC data block precisely \nor continues in the following in-sequence RLC data block");
-    }
-    else
-    {
-      subtree = proto_tree_add_subtree(tree, tvb, octet_offset, octet_length - octet_offset, ett_data_segments, NULL, "Padding Octets");
-    }
-    data_tvb = tvb_new_subset_length(tvb, octet_offset, octet_length - octet_offset);
-    call_data_dissector(data_tvb, pinfo, subtree);
-    octet_offset = octet_length;
+      data_tvb = tvb_new_subset_length(tvb, octet_offset, blk_length - octet_offset);
+      call_data_dissector(data_tvb, pinfo, subtree);
+     } else {
+      proto_tree_add_bytes_item(tree, hf_padding, tvb, octet_offset, blk_length - octet_offset, ENC_BIG_ENDIAN, NULL, NULL, NULL);
+     }
   }
-  return (octet_offset - initial_offset);
+  octet_offset = blk_length;
+
+  if(octet_offset < octet_length)
+    proto_tree_add_bits_item(tree, is_uplink ? hf_ul_data_spare : hf_dl_data_spare, tvb,
+                             octet_offset*8, (octet_length - octet_offset)*8, ENC_BIG_ENDIAN);
+  return octet_length;
 }
 
 static guint16 dissect_egprs_data_segments(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint initial_offset, guint8 octet_length, guint8 li_count, length_indicator_t *li_array)
@@ -8746,11 +8764,11 @@ dissect_ul_rlc_control_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 
   ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, bit_offset >> 3, -1,
                                       "GSM RLC/MAC: %s (%d) (Uplink)",
-                                      val_to_str_ext(data->u.MESSAGE_TYPE, &ul_rlc_message_type_vals_ext, "Unknown Message Type"),
+                                      val_to_str_ext_const(data->u.MESSAGE_TYPE, &ul_rlc_message_type_vals_ext, "Unknown Message Type"),
                                       data->u.MESSAGE_TYPE);
   rlcmac_tree = proto_item_add_subtree(ti, ett_gsm_rlcmac);
 
-  col_append_sep_str(pinfo->cinfo, COL_INFO, " ", val_to_str_ext(data->u.MESSAGE_TYPE, &ul_rlc_message_type_vals_ext, "Unknown Message Type"));
+  col_append_sep_str(pinfo->cinfo, COL_INFO, " ", val_to_str_ext_const(data->u.MESSAGE_TYPE, &ul_rlc_message_type_vals_ext, "Unknown Message Type"));
 
   switch (data->u.MESSAGE_TYPE)
   {
@@ -8846,7 +8864,7 @@ dissect_dl_rlc_control_message(tvbuff_t *tvb, packet_info* pinfo, proto_tree *tr
 
   ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, bit_offset >> 3, -1,
                                       "%s (%d) (downlink)",
-                                      val_to_str_ext(data->u.MESSAGE_TYPE, &dl_rlc_message_type_vals_ext, "Unknown Message Type"),
+                                      val_to_str_ext_const(data->u.MESSAGE_TYPE, &dl_rlc_message_type_vals_ext, "Unknown Message Type"),
                                       data->u.MESSAGE_TYPE);
   rlcmac_tree = proto_item_add_subtree(ti, ett_gsm_rlcmac);
   /* Initialize the contexts */
@@ -8996,6 +9014,7 @@ dissect_dl_gprs_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, RlcMa
   guint16      bit_length  = tvb_reported_length(tvb) * 8;
 
   guint8 payload_type = tvb_get_bits8(tvb, 0, 2);
+  guint8 s_p  = tvb_get_bits8(tvb, 4, 1);
   guint8 rbsn = tvb_get_bits8(tvb, 8, 1);
   guint8 fs   = tvb_get_bits8(tvb, 14, 1);
   guint8 ac   = tvb_get_bits8(tvb, 15, 1);
@@ -9005,13 +9024,12 @@ dissect_dl_gprs_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, RlcMa
   {
     length_indicator_t  li_array[7];
     guint8              li_count    = array_length(li_array);
+    guint8              cs = (data->block_format & 0x0F);
     guint64 e;
 
-    col_set_str(pinfo->cinfo, COL_PROTOCOL, "GSM RLC/MAC");
-    col_append_sep_fstr(pinfo->cinfo, COL_INFO, " ", "DATA: CS%d", data->block_format & 0x0F);
+    col_append_sep_fstr(pinfo->cinfo, COL_INFO, " ", "DATA: CS%d", cs);
     ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, bit_offset >> 3, -1,
-                                        "GPRS DL DATA (CS%d)",
-                                        data->block_format & 0x0F);
+                                        "GPRS DL DATA (CS%d)", cs);
     rlcmac_tree = proto_item_add_subtree(ti, ett_gsm_rlcmac);
 
     csnStreamInit(&ar, 0, bit_length, pinfo);
@@ -9040,9 +9058,9 @@ dissect_dl_gprs_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, RlcMa
     if (e)
     {
       /* dissect the data segments */
-      /*bit_offset += 8 * */ dissect_gprs_data_segments(tvb, pinfo, rlcmac_tree, bit_offset / 8, bit_length / 8,
-                                                        li_count,
-                                                        li_array);
+      /*bit_offset += 8 * */ dissect_gprs_data_segments(tvb, pinfo, rlcmac_tree,
+                                                         bit_offset / 8, bit_length / 8,
+                                                         FALSE, cs, li_count, li_array);
     }
     else
     {
@@ -9081,10 +9099,12 @@ dissect_dl_gprs_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, RlcMa
       }
     }
     data->u.MESSAGE_TYPE = tvb_get_bits8(tvb, message_type_offset, 6);
-    col_append_sep_fstr(pinfo->cinfo, COL_INFO, " CTRL: ", "%s", val_to_str_ext(data->u.MESSAGE_TYPE, &dl_rlc_message_type_vals_ext, "Unknown Message Type"));
+    col_append_sep_fstr(pinfo->cinfo, COL_INFO, " CTRL: ", "%s", val_to_str_ext_const(data->u.MESSAGE_TYPE, &dl_rlc_message_type_vals_ext, "Unknown Message Type"));
+    if (s_p)
+        col_append_str(pinfo->cinfo, COL_INFO, " [RRBP]");
     ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, bit_offset >> 3, -1,
                                         "GSM RLC/MAC: %s (%d) (Downlink)",
-                                        val_to_str_ext(data->u.MESSAGE_TYPE, &dl_rlc_message_type_vals_ext, "Unknown Message Type"),
+                                        val_to_str_ext_const(data->u.MESSAGE_TYPE, &dl_rlc_message_type_vals_ext, "Unknown Message Type"),
                                         data->u.MESSAGE_TYPE);
     rlcmac_tree = proto_item_add_subtree(ti, ett_gsm_rlcmac);
 
@@ -9146,7 +9166,6 @@ dissect_egprs_dl_header_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 
     guint16      bit_length = tvb_reported_length(tvb) * 8;
 
-    col_set_str(pinfo->cinfo, COL_PROTOCOL, "GSM RLC/MAC");
     col_append_sep_str(pinfo->cinfo, COL_INFO, ":", "EGPRS DL DATA:");
     /* Dissect the MAC header */
     ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, 0, -1,
@@ -9184,7 +9203,8 @@ dissect_egprs_dl_header_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
     col_append_sep_fstr(pinfo->cinfo, COL_INFO, " ", "MCS%d", rlc_mac->mcs);
     col_append_str_uint(pinfo->cinfo, COL_INFO, "TFI", data->u.DL_Data_Block_EGPRS_Header.TFI, " ");
     col_append_str_uint(pinfo->cinfo, COL_INFO, "BSN1", rlc_mac->u.egprs_dl_header_info.bsn1, " ");
-    col_append_str_uint(pinfo->cinfo, COL_INFO, "BSN2", rlc_mac->u.egprs_dl_header_info.bsn2, " ");
+    if (data->block_format == RLCMAC_HDR_TYPE_1)
+      col_append_str_uint(pinfo->cinfo, COL_INFO, "BSN2", rlc_mac->u.egprs_dl_header_info.bsn2, " ");
     col_append_str_uint(pinfo->cinfo, COL_INFO, "USF", data->u.DL_Data_Block_EGPRS_Header.USF, " ");
     if (data->u.DL_Data_Block_EGPRS_Header.ES_P)
         col_append_str(pinfo->cinfo, COL_INFO, " [RRBP]");
@@ -9206,7 +9226,6 @@ dissect_ec_egprs_dl_header_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
 
     guint16      bit_length = tvb_reported_length(tvb) * 8;
 
-    col_set_str(pinfo->cinfo, COL_PROTOCOL, "GSM RLC/MAC");
     col_append_sep_str(pinfo->cinfo, COL_INFO, ":", "EC-GSM-IoT DL:HEADER");
     /* Dissect the MAC header */
     ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, 0, -1,
@@ -9245,10 +9264,10 @@ dissect_ul_rlc_ec_control_message(tvbuff_t *tvb, packet_info* pinfo, proto_tree 
   csnStreamInit(&ar, 0, tvb_reported_length(tvb) << 3, pinfo);
   data->u.MESSAGE_TYPE = tvb_get_bits8(tvb, 0, 5);
 
-  col_append_sep_fstr(pinfo->cinfo, COL_INFO, ":", "EC-GSM-IoT UL:%s", val_to_str_ext(data->u.MESSAGE_TYPE, &ec_ul_rlc_message_type_vals_ext, "Unknown Message Type"));
+  col_append_sep_fstr(pinfo->cinfo, COL_INFO, ":", "EC-GSM-IoT UL:%s", val_to_str_ext_const(data->u.MESSAGE_TYPE, &ec_ul_rlc_message_type_vals_ext, "Unknown Message Type"));
   ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, 0, -1,
                                       "%s (%d) (uplink)",
-                                      val_to_str_ext(data->u.MESSAGE_TYPE, &ec_ul_rlc_message_type_vals_ext, "Unknown Message Type... "),
+                                      val_to_str_ext_const(data->u.MESSAGE_TYPE, &ec_ul_rlc_message_type_vals_ext, "Unknown Message Type... "),
                                       data->u.MESSAGE_TYPE);
   rlcmac_tree = proto_item_add_subtree(ti, ett_gsm_rlcmac);
   /* Initialize the contexts */
@@ -9287,10 +9306,10 @@ dissect_dl_rlc_ec_control_message(tvbuff_t *tvb, packet_info* pinfo, proto_tree 
   csnStreamInit(&ar, header_bit_offset, (tvb_reported_length(tvb) << 3) - header_bit_offset, pinfo);
   data->u.MESSAGE_TYPE = tvb_get_bits8(tvb, header_bit_offset, 5);
 
-  col_append_sep_fstr(pinfo->cinfo, COL_INFO, ":", "EC-GSM-IoT DL:%s", val_to_str_ext(data->u.MESSAGE_TYPE, &ec_dl_rlc_message_type_vals_ext, "Unknown Message Type"));
+  col_append_sep_fstr(pinfo->cinfo, COL_INFO, ":", "EC-GSM-IoT DL:%s", val_to_str_ext_const(data->u.MESSAGE_TYPE, &ec_dl_rlc_message_type_vals_ext, "Unknown Message Type"));
   ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, 0, -1,
                                       "%s (%d) (downlink)",
-                                      val_to_str_ext(data->u.MESSAGE_TYPE, &ec_dl_rlc_message_type_vals_ext, "Unknown Message Type... "),
+                                      val_to_str_ext_const(data->u.MESSAGE_TYPE, &ec_dl_rlc_message_type_vals_ext, "Unknown Message Type... "),
                                       data->u.MESSAGE_TYPE);
   rlcmac_tree = proto_item_add_subtree(ti, ett_gsm_rlcmac);
   /* Initialize the contexts */
@@ -9378,7 +9397,6 @@ dissect_ul_pacch_access_burst(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
   csnStream_t  ar;
   guint16      bit_length = tvb_reported_length(tvb) * 8;
 
-  col_set_str(pinfo->cinfo, COL_PROTOCOL, "GSM RLC/MAC");
   col_append_sep_str(pinfo->cinfo, COL_INFO, ":", "PACCH ACCESS BURST");
   ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, 0, -1,
                                       "GPRS UL PACCH ACCESS BURST");
@@ -9429,7 +9447,6 @@ dissect_ul_gprs_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, RlcMa
   guint16     bit_length   = tvb_reported_length(tvb) * 8;
   gint        bit_offset   = 0;
 
-  col_set_str(pinfo->cinfo, COL_PROTOCOL, "GSM RLC/MAC");
   col_append_sep_str(pinfo->cinfo, COL_INFO, ":", "GPRS UL");
   if (payload_type == PAYLOAD_TYPE_DATA)
   {
@@ -9438,11 +9455,11 @@ dissect_ul_gprs_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, RlcMa
     guint64     e;
     length_indicator_t li_array[10];
     guint8             li_count = array_length(li_array);
+    guint8             cs = data->block_format & 0x0F;
 
-    col_append_sep_fstr(pinfo->cinfo, COL_INFO, " ", "DATA: CS%d", data->block_format & 0x0F);
+    col_append_sep_fstr(pinfo->cinfo, COL_INFO, " ", "DATA: CS%d", cs);
     ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, bit_offset >> 3, -1,
-                                        "GPRS UL DATA (CS%d)",
-                                        data->block_format & 0x0F);
+                                        "GPRS UL DATA (CS%d)", cs);
     rlcmac_tree = proto_item_add_subtree(ti, ett_gsm_rlcmac);
     data->u.UL_Data_Block_GPRS.TI = 0;
     data->u.UL_Data_Block_GPRS.PI = 0;
@@ -9482,9 +9499,9 @@ dissect_ul_gprs_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, RlcMa
     if (e)
     {
       /* dissect the data segments */
-      /*bit_offset += 8 * */ dissect_gprs_data_segments(tvb, pinfo, rlcmac_tree, bit_offset / 8, bit_length / 8,
-                                                        li_count,
-                                                        li_array);
+      /*bit_offset += 8 * */ dissect_gprs_data_segments(tvb, pinfo, rlcmac_tree,
+                                                         bit_offset / 8, bit_length / 8,
+                                                         TRUE, cs, li_count, li_array);
     }
     else
     {
@@ -9522,7 +9539,6 @@ dissect_egprs_ul_header_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
     guint16      bit_offset = 0;
     guint16      bit_length = tvb_reported_length(tvb) * 8;
 
-    col_set_str(pinfo->cinfo, COL_PROTOCOL,  "GSM RLC/MAC");
     col_append_sep_str(pinfo->cinfo, COL_INFO, ":",  "EGPRS UL DATA:");
     ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, bit_offset >> 3, -1,
                                         "GSM RLC/MAC: EGPRS UL HEADER");
@@ -9559,7 +9575,8 @@ dissect_egprs_ul_header_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
     col_append_sep_fstr(pinfo->cinfo, COL_INFO, " ", "MCS%d", rlc_mac->mcs);
     col_append_str_uint(pinfo->cinfo, COL_INFO, "TFI", data->u.UL_Data_Block_EGPRS_Header.TFI, " ");
     col_append_str_uint(pinfo->cinfo, COL_INFO, "BSN1", rlc_mac->u.egprs_ul_header_info.bsn1, " ");
-    col_append_str_uint(pinfo->cinfo, COL_INFO, "BSN2", rlc_mac->u.egprs_ul_header_info.bsn2, " ");
+    if (data->block_format == RLCMAC_HDR_TYPE_1)
+      col_append_str_uint(pinfo->cinfo, COL_INFO, "BSN2", rlc_mac->u.egprs_ul_header_info.bsn2, " ");
     col_append_str_uint(pinfo->cinfo, COL_INFO, "CV", data->u.UL_Data_Block_EGPRS_Header.Countdown_Value, " ");
   }
 }
@@ -9579,7 +9596,6 @@ dissect_ec_egprs_ul_header_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
     guint16      bit_offset = 0;
     guint16      bit_length = tvb_reported_length(tvb) * 8;
 
-    col_set_str(pinfo->cinfo, COL_PROTOCOL,  "GSM RLC/MAC");
     col_append_sep_str(pinfo->cinfo, COL_INFO, ":",  "EC-GSM-IoT UL:HEADER");
     ti = proto_tree_add_protocol_format(tree, proto_gsm_rlcmac, tvb, bit_offset >> 3, -1,
                                         "GSM RLC/MAC: EC-GSM-IoT UL HEADER");
@@ -9644,7 +9660,7 @@ dissect_egprs_ul_data_block(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   /* the next fields are present according to earlier flags */
   if (tlli_i)
   {
-    proto_tree_add_bits_item(data_tree, hf_tlli, tvb, offset * 8, 32, ENC_BIG_ENDIAN);
+    proto_tree_add_item(data_tree, hf_tlli, tvb, offset, 4, ENC_LITTLE_ENDIAN);
     offset += 4;
   }
   if (egprs_ul_header_info->pi)
@@ -9717,8 +9733,10 @@ dissect_gsm_rlcmac_downlink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   RlcMacDownlink_t    *rlc_dl;
   RlcMacPrivateData_t *rlc_mac = (RlcMacPrivateData_t*)data;
 
+  col_set_str(pinfo->cinfo, COL_PROTOCOL, "GSM RLC/MAC");
+
   /* allocate a data structure and guess the coding scheme */
-  rlc_dl = wmem_new0(wmem_packet_scope(), RlcMacDownlink_t);
+  rlc_dl = wmem_new0(pinfo->pool, RlcMacDownlink_t);
 
   if ((rlc_mac != NULL) && (rlc_mac->magic == GSM_RLC_MAC_MAGIC_NUMBER))
   {
@@ -9798,8 +9816,10 @@ dissect_gsm_rlcmac_uplink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
   RlcMacUplink_t      *rlc_ul;
   RlcMacPrivateData_t *rlc_mac = (RlcMacPrivateData_t*)data;
 
+  col_set_str(pinfo->cinfo, COL_PROTOCOL, "GSM RLC/MAC");
+
   /* allocate a data structure and set the coding scheme */
-  rlc_ul = wmem_new0(wmem_packet_scope(), RlcMacUplink_t);
+  rlc_ul = wmem_new0(pinfo->pool, RlcMacUplink_t);
 
   if ((rlc_mac != NULL) && (rlc_mac->magic == GSM_RLC_MAC_MAGIC_NUMBER))
   {
@@ -9845,21 +9865,19 @@ dissect_gsm_rlcmac_uplink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
       }
       break;
     case RLCMAC_EC_CS1:
-      {
-        dissect_ul_rlc_ec_control_message(tvb, pinfo, tree, rlc_ul);
-      }
-    break;
+      dissect_ul_rlc_ec_control_message(tvb, pinfo, tree, rlc_ul);
+      break;
 
     case RLCMAC_HDR_TYPE_1_EC:
     case RLCMAC_HDR_TYPE_2_EC:
     case RLCMAC_HDR_TYPE_3_EC:
         if (rlc_ul->flags & (GSM_RLC_MAC_EGPRS_BLOCK1 | GSM_RLC_MAC_EGPRS_BLOCK2))
         {
-            dissect_egprs_ul_data_block(tvb, pinfo, tree, rlc_ul, &rlc_mac->u.egprs_ul_header_info);
+          dissect_egprs_ul_data_block(tvb, pinfo, tree, rlc_ul, &rlc_mac->u.egprs_ul_header_info);
         }
         else
         {
-            dissect_ec_egprs_ul_header_block(tvb, pinfo, tree, rlc_ul, rlc_mac);
+          dissect_ec_egprs_ul_header_block(tvb, pinfo, tree, rlc_ul, rlc_mac);
         }
         break;
 
@@ -10145,7 +10163,7 @@ proto_register_gsm_rlcmac(void)
      { &hf_tlli,
        { "TLLI",
          "gsm_rlcmac.tlli",
-         FT_UINT32, BASE_DEC, NULL, 0x0,
+         FT_UINT32, BASE_HEX, NULL, 0x0,
          NULL, HFILL
        }
      },
@@ -10875,7 +10893,7 @@ proto_register_gsm_rlcmac(void)
       }
     },
     { &hf_mobile_union,
-      { "Mobile Allocation",        "gsm_rlcmac.dl.bitmap",
+      { "Mobile Allocation",        "gsm_rlcmac.dl.mobile_allocation",
         FT_UINT8, BASE_DEC, NULL, 0x0,
         NULL, HFILL
       }
@@ -10956,7 +10974,7 @@ proto_register_gsm_rlcmac(void)
     },
     { &hf_padding,
       { "Padding",        "gsm_rlcmac.dl.padding",
-        FT_UINT8, BASE_DEC, NULL, 0x0,
+        FT_BYTES, BASE_NONE, NULL, 0x0,
         NULL, HFILL
       }
     },
@@ -12224,7 +12242,7 @@ proto_register_gsm_rlcmac(void)
       }
     },
     { &hf_egprs_prr_additionsr7_16qam_hsr_mean_bep_exist,
-      { "Exist_16QAM_HSR_MEAN_BEP",        "gsm_rlcmac.ul.prr_esixt_16qam_hsr_mean_bep",
+      { "Exist_16QAM_HSR_MEAN_BEP",        "gsm_rlcmac.ul.prr_exist_16qam_hsr_mean_bep",
         FT_UINT8, BASE_DEC, NULL, 0x0,
         NULL, HFILL
       }
@@ -12296,7 +12314,7 @@ proto_register_gsm_rlcmac(void)
       }
     },
     { &hf_prr_additionsr6_additionsr7_exist,
-      { "Exist_AdditionsR7",        "gsm_rlcmac.ul.prr_exsit_r7",
+      { "Exist_AdditionsR7",        "gsm_rlcmac.ul.prr_exist_r7",
         FT_UINT8, BASE_DEC, NULL, 0x0,
         NULL, HFILL
       }
@@ -12314,7 +12332,7 @@ proto_register_gsm_rlcmac(void)
       }
     },
     { &hf_egprs_timeslotlinkquality_measurements_type2_exist,
-      { "Exist_EGPRS_TimeslotLinkQualityMeasurements_type2",        "gsm_rlcmac.ul.prr_exist_egprs_temeslotquality_meas_type2",
+      { "Exist_EGPRS_TimeslotLinkQualityMeasurements_type2",        "gsm_rlcmac.ul.prr_exist_egprs_timeslotquality_meas_type2",
         FT_UINT8, BASE_DEC, NULL, 0x0,
         NULL, HFILL
       }
@@ -15506,7 +15524,7 @@ proto_register_gsm_rlcmac(void)
       }
     },
     { &hf_packet_compact_cell_sel_gprs_penalty_time,
-      { "GPRS_PENALTY_TIME",        "gsm_rlcmac.dl.psi3_compact_cell_sel_gprs_panelty_time",
+      { "GPRS_PENALTY_TIME",        "gsm_rlcmac.dl.psi3_compact_cell_sel_gprs_penalty_time",
         FT_UINT8, BASE_DEC, NULL, 0x0,
         NULL, HFILL
       }
@@ -18211,7 +18229,7 @@ proto_register_gsm_rlcmac(void)
     },
 
     { &hf_packet_access_reject_reject_exist,
-      { "Reject[1] Exist", "gsm_rlcmac.acket_access_reject.reject_exist",
+      { "Reject[1] Exist", "gsm_rlcmac.packet_access_reject.reject_exist",
         FT_UINT8, BASE_DEC, NULL, 0x0,
         NULL, HFILL
       }
@@ -18439,8 +18457,8 @@ proto_register_gsm_rlcmac(void)
       }
     },
 
-    { &hf_ec_puan_fua_dealy_exist,
-      { "EC_PUAN_FUA_DEALY Exist", "gsm_rlcmac.dl.ec_puan_fua_dealy_exist",
+    { &hf_ec_puan_fua_delay_exist,
+      { "EC_PUAN_FUA_DELAY Exist", "gsm_rlcmac.dl.ec_puan_fua_delay_exist",
         FT_UINT8, BASE_DEC, NULL, 0x0,
         NULL, HFILL
       }

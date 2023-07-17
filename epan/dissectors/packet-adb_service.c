@@ -140,6 +140,7 @@ dissect_adb_service(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *d
     wmem_tree_key_t      key[5];
     wmem_tree_t         *subtree;
     guint32              i_key;
+    char                *display_str;
 
     main_item = proto_tree_add_item(tree, proto_adb_service, tvb, offset, -1, ENC_NA);
     main_tree = proto_item_add_subtree(main_item, ett_adb_service);
@@ -518,12 +519,12 @@ dissect_adb_service(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *d
             offset = tvb_captured_length(tvb);
         } else if (g_str_has_prefix(service, "shell:")) {
             if (adb_service_data->direction == P2P_DIR_SENT) {
-                proto_tree_add_item(main_tree, hf_stdin, tvb, offset, -1, ENC_NA | ENC_ASCII);
-                col_append_fstr(pinfo->cinfo, COL_INFO, " Stdin=<%s>", tvb_format_text_wsp(wmem_packet_scope(), tvb, offset, tvb_captured_length_remaining(tvb, offset)));
+                proto_tree_add_item_ret_display_string(main_tree, hf_stdin, tvb, offset, -1, ENC_ASCII, pinfo->pool, &display_str);
+                col_append_fstr(pinfo->cinfo, COL_INFO, " Stdin=<%s>", display_str);
 
             } else {
-                proto_tree_add_item(main_tree, hf_stdout, tvb, offset, -1, ENC_NA | ENC_ASCII);
-                col_append_fstr(pinfo->cinfo, COL_INFO, " Stdout=<%s>", tvb_format_text_wsp(wmem_packet_scope(), tvb, offset, tvb_captured_length_remaining(tvb, offset)));
+                proto_tree_add_item_ret_display_string(main_tree, hf_stdout, tvb, offset, -1, ENC_ASCII, pinfo->pool, &display_str);
+                col_append_fstr(pinfo->cinfo, COL_INFO, " Stdout=<%s>", display_str);
             }
             offset = tvb_captured_length(tvb);
         } else if (g_str_has_prefix(service, "jdwp:")) {
@@ -540,8 +541,8 @@ dissect_adb_service(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *d
                 g_str_has_prefix(service, "tcpip:")  ||
                 g_str_has_prefix(service, "usb:")) {
             if (tvb_reported_length_remaining(tvb, offset)) {
-                proto_tree_add_item(main_tree, hf_result, tvb, offset, -1, ENC_NA | ENC_ASCII);
-                col_append_fstr(pinfo->cinfo, COL_INFO, " Result=<%s>", tvb_format_text_wsp(wmem_packet_scope(), tvb, offset, tvb_captured_length_remaining(tvb, offset)));
+                proto_tree_add_item_ret_display_string(main_tree, hf_result, tvb, offset, -1, ENC_ASCII, pinfo->pool, &display_str);
+                col_append_fstr(pinfo->cinfo, COL_INFO, " Result=<%s>", display_str);
 
                 offset = tvb_captured_length(tvb);
             }
@@ -563,7 +564,7 @@ proto_register_adb_service(void)
     static hf_register_info hf[] = {
         { &hf_service,
             { "Service",                         "adb_service.service",
-            FT_STRING, STR_ASCII, NULL, 0x00,
+            FT_STRING, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
         { &hf_fragment,
@@ -578,7 +579,7 @@ proto_register_adb_service(void)
         },
         { &hf_hex_ascii_length,
             { "Hex ASCII String Length",         "adb_service.hex_ascii_length",
-            FT_STRING, STR_ASCII, NULL, 0x00,
+            FT_STRING, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
         { &hf_length,
@@ -593,7 +594,7 @@ proto_register_adb_service(void)
         },
         { &hf_hex_ascii_version,
             { "Hex ASCII String Version",        "adb_service.hex_ascii_version",
-            FT_STRING, STR_ASCII, NULL, 0x00,
+            FT_STRING, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
         { &hf_version,
@@ -708,27 +709,27 @@ proto_register_adb_service(void)
         },
         { &hf_devices,
             { "Devices",                         "adb_service.devices",
-            FT_STRING, STR_ASCII, NULL, 0x00,
+            FT_STRING, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
         { &hf_stdin,
             { "Stdin",                           "adb_service.stdin",
-            FT_STRING, STR_ASCII, NULL, 0x00,
+            FT_STRING, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
         { &hf_stdout,
             { "Stdout",                          "adb_service.stdout",
-            FT_STRING, STR_ASCII, NULL, 0x00,
+            FT_STRING, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
         { &hf_result,
             { "Result",                          "adb_service.result",
-            FT_STRING, STR_ASCII, NULL, 0x00,
+            FT_STRING, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
         { &hf_pids,
             { "PIDs",                            "adb_service.pids",
-            FT_STRING, STR_ASCII, NULL, 0x00,
+            FT_STRING, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
     };

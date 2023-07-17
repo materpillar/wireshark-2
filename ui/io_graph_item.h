@@ -1,4 +1,5 @@
-/* io_graph_item.h
+/** @file
+ *
  * Definitions and functions for I/O graph items
  *
  * Copied from gtk/io_stat.c, (c) 2002 Ronnie Sahlberg
@@ -13,11 +14,12 @@
 #ifndef __IO_GRAPH_ITEM_H__
 #define __IO_GRAPH_ITEM_H__
 
+#include "cfile.h"
+#include <wsutil/ws_assert.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-#include "cfile.h"
 
 typedef enum {
     IOG_ITEM_UNIT_FIRST,
@@ -166,14 +168,14 @@ update_io_graph_item(io_graph_item_t *items, int idx, packet_info *pinfo, epan_d
             guint64 new_uint64;
             float new_float;
             double new_double;
-            nstime_t *new_time;
+            const nstime_t *new_time;
 
             switch (proto_registrar_get_ftype(hf_index)) {
             case FT_UINT8:
             case FT_UINT16:
             case FT_UINT24:
             case FT_UINT32:
-                new_uint64 = fvalue_get_uinteger(&((field_info *)gp->pdata[i])->value);
+                new_uint64 = fvalue_get_uinteger(((field_info *)gp->pdata[i])->value);
 
                 if ((new_uint64 > (guint64)item->int_max) || (item->fields == 0)) {
                     item->int_max = new_uint64;
@@ -197,7 +199,7 @@ update_io_graph_item(io_graph_item_t *items, int idx, packet_info *pinfo, epan_d
             case FT_INT16:
             case FT_INT24:
             case FT_INT32:
-                new_int64 = fvalue_get_sinteger(&((field_info *)gp->pdata[i])->value);
+                new_int64 = fvalue_get_sinteger(((field_info *)gp->pdata[i])->value);
                 if ((new_int64 > item->int_max) || (item->fields == 0)) {
                     item->int_max = new_int64;
                     item->double_max = (gdouble)new_int64;
@@ -220,7 +222,7 @@ update_io_graph_item(io_graph_item_t *items, int idx, packet_info *pinfo, epan_d
             case FT_UINT48:
             case FT_UINT56:
             case FT_UINT64:
-                new_uint64 = fvalue_get_uinteger64(&((field_info *)gp->pdata[i])->value);
+                new_uint64 = fvalue_get_uinteger64(((field_info *)gp->pdata[i])->value);
                 if ((new_uint64 > (guint64)item->int_max) || (item->fields == 0)) {
                     item->int_max = new_uint64;
                     item->double_max = (gdouble)new_uint64;
@@ -243,7 +245,7 @@ update_io_graph_item(io_graph_item_t *items, int idx, packet_info *pinfo, epan_d
             case FT_INT48:
             case FT_INT56:
             case FT_INT64:
-                new_int64 = fvalue_get_sinteger64(&((field_info *)gp->pdata[i])->value);
+                new_int64 = fvalue_get_sinteger64(((field_info *)gp->pdata[i])->value);
                 if ((new_int64 > item->int_max) || (item->fields == 0)) {
                     item->int_max = new_int64;
                     item->double_max = (gdouble)new_int64;
@@ -263,7 +265,7 @@ update_io_graph_item(io_graph_item_t *items, int idx, packet_info *pinfo, epan_d
                 item->fields++;
                 break;
             case FT_FLOAT:
-                new_float = (gfloat)fvalue_get_floating(&((field_info *)gp->pdata[i])->value);
+                new_float = (gfloat)fvalue_get_floating(((field_info *)gp->pdata[i])->value);
                 if ((new_float > item->float_max) || (item->fields == 0)) {
                     item->float_max = new_float;
                     if (item_unit == IOG_ITEM_UNIT_CALC_MAX) {
@@ -280,7 +282,7 @@ update_io_graph_item(io_graph_item_t *items, int idx, packet_info *pinfo, epan_d
                 item->fields++;
                 break;
             case FT_DOUBLE:
-                new_double = fvalue_get_floating(&((field_info *)gp->pdata[i])->value);
+                new_double = fvalue_get_floating(((field_info *)gp->pdata[i])->value);
                 if ((new_double > item->double_max) || (item->fields == 0)) {
                     item->double_max = new_double;
                     if (item_unit == IOG_ITEM_UNIT_CALC_MAX) {
@@ -297,7 +299,7 @@ update_io_graph_item(io_graph_item_t *items, int idx, packet_info *pinfo, epan_d
                 item->fields++;
                 break;
             case FT_RELATIVE_TIME:
-                new_time = (nstime_t *)fvalue_get(&((field_info *)gp->pdata[i])->value);
+                new_time = fvalue_get_time(((field_info *)gp->pdata[i])->value);
 
                 switch (item_unit) {
                 case IOG_ITEM_UNIT_CALC_LOAD:
@@ -381,7 +383,7 @@ update_io_graph_item(io_graph_item_t *items, int idx, packet_info *pinfo, epan_d
                      * type is compatible" check in
                      * filter_callback().
                      */
-                    g_assert_not_reached();
+                    ws_assert_not_reached();
                 }
                 break;
             }
@@ -400,16 +402,3 @@ update_io_graph_item(io_graph_item_t *items, int idx, packet_info *pinfo, epan_d
 #endif /* __cplusplus */
 
 #endif /* __IO_GRAPH_ITEM_H__ */
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

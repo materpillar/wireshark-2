@@ -134,12 +134,12 @@ static uat_rfcomm_channels_t  *rfcomm_channels          = NULL;
 static guint                  num_rfcomm_channels       = 0;
 
 UAT_DEC_CB_DEF(rfcomm_channels, channel, uat_rfcomm_channels_t)
-UAT_PROTO_DEF(rfcomm_channels, payload_proto, payload_proto, payload_proto_name, uat_rfcomm_channels_t)
+UAT_DISSECTOR_DEF(rfcomm_channels, payload_proto, payload_proto, payload_proto_name, uat_rfcomm_channels_t)
 
 static uat_field_t uat_rfcomm_channels_fields[] = {
     UAT_FLD_DEC(rfcomm_channels, channel, "RFCOMM Channel",
             "Range: 0-32"),
-    UAT_FLD_PROTO(rfcomm_channels, payload_proto, "Payload protocol",
+    UAT_FLD_DISSECTOR(rfcomm_channels, payload_proto, "Payload dissector",
             "Dissector name used to decode RFCOMM channel"),
     UAT_END_FIELDS
 };
@@ -237,12 +237,6 @@ static const value_string vs_ea[] = {
     {0, NULL}
 };
 
-static const value_string vs_cr[] = {
-    {1, "Command"},
-    {0, "Response"},
-    {0, NULL}
-};
-
 void proto_register_btrfcomm(void);
 void proto_reg_handoff_btrfcomm(void);
 void proto_register_btdun(void);
@@ -260,9 +254,9 @@ static void btrfcomm_directed_channel_prompt(packet_info *pinfo, gchar* result)
 
     value_data = (guint8 *) p_get_proto_data(pinfo->pool, pinfo, proto_btrfcomm, PROTO_DATA_BTRFCOMM_DIRECTED_CHANNEL);
     if (value_data)
-        g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "RFCOMM Channel %d (direction: %u) as", (guint) (*value_data) >> 1, (guint) (*value_data) & 1);
+        snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "RFCOMM Channel %d (direction: %u) as", (guint) (*value_data) >> 1, (guint) (*value_data) & 1);
     else
-        g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Unknown RFCOMM Channel");
+        snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Unknown RFCOMM Channel");
 }
 
 static gpointer btrfcomm_directed_channel_value(packet_info *pinfo)
@@ -656,7 +650,7 @@ dissect_btrfcomm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 
             subtree = (wmem_tree_t *) wmem_tree_lookup32_array(service_directions, key);
             service_direction = (subtree) ? (service_direction_t *) wmem_tree_lookup32_le(subtree, k_frame_number) : NULL;
-            if (service_direction && service_direction->end_in == max_disconnect_in_frame) {
+            if (service_direction && service_direction->end_in == bluetooth_max_disconnect_in_frame) {
                 service_direction->end_in = k_frame_number;
             }
 
@@ -667,7 +661,7 @@ dissect_btrfcomm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 
             service_direction = wmem_new(wmem_file_scope(), service_direction_t);
             service_direction->direction = (pinfo->p2p_dir == P2P_DIR_RECV) ? P2P_DIR_SENT : P2P_DIR_RECV;
-            service_direction->end_in = max_disconnect_in_frame;
+            service_direction->end_in = bluetooth_max_disconnect_in_frame;
 
             wmem_tree_insert32_array(service_directions, key, service_direction);
         }
@@ -728,7 +722,7 @@ dissect_btrfcomm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
                 service_info->channel == (dlci >> 1)) {
 
         } else {
-            service_info = wmem_new0(wmem_packet_scope(), service_info_t);
+            service_info = wmem_new0(pinfo->pool, service_info_t);
         }
     }
 
@@ -736,7 +730,7 @@ dissect_btrfcomm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
                     val_to_str_const(frame_type, vs_frame_type_short, "Unknown"), dlci >> 1);
     if (dlci && (frame_type == FRAME_TYPE_SABM) && service_info) {
         if (service_info->uuid.size==16)
-            col_append_fstr(pinfo->cinfo, COL_INFO, "(UUID128: %s) ", print_uuid(&service_info->uuid));
+            col_append_fstr(pinfo->cinfo, COL_INFO, "(UUID128: %s) ", print_bluetooth_uuid(pinfo->pool, &service_info->uuid));
         else
             col_append_fstr(pinfo->cinfo, COL_INFO, "(%s) ",
                     val_to_str_ext_const(service_info->uuid.bt_uuid, &bluetooth_uuid_vals_ext, "Unknown"));
@@ -831,7 +825,7 @@ dissect_btrfcomm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 
         next_tvb = tvb_new_subset_length(tvb, offset, frame_len);
 
-        rfcomm_data = (btrfcomm_data_t *) wmem_new(wmem_packet_scope(), btrfcomm_data_t);
+        rfcomm_data = (btrfcomm_data_t *) wmem_new(pinfo->pool, btrfcomm_data_t);
         rfcomm_data->interface_id       = l2cap_data->interface_id;
         rfcomm_data->adapter_id         = l2cap_data->adapter_id;
         rfcomm_data->chandle            = l2cap_data->chandle;
@@ -845,7 +839,7 @@ dissect_btrfcomm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
                 p_get_proto_data(pinfo->pool, pinfo, proto_bluetooth, PROTO_DATA_BLUETOOTH_SERVICE_UUID) == NULL) {
             guint8 *value_data;
 
-            value_data = wmem_strdup(wmem_file_scope(), print_numeric_uuid(&service_info->uuid));
+            value_data = wmem_strdup(wmem_file_scope(), print_numeric_bluetooth_uuid(pinfo->pool, &service_info->uuid));
 
             p_add_proto_data(pinfo->pool, pinfo, proto_bluetooth, PROTO_DATA_BLUETOOTH_SERVICE_UUID, value_data);
         }
@@ -853,7 +847,7 @@ dissect_btrfcomm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
         if (!dissector_try_uint_new(rfcomm_dlci_dissector_table, (guint32) dlci,
                 next_tvb, pinfo, tree, TRUE, rfcomm_data)) {
             if (service_info && (service_info->uuid.size == 0 ||
-                !dissector_try_string(bluetooth_uuid_table, print_numeric_uuid(&service_info->uuid),
+                !dissector_try_string(bluetooth_uuid_table, print_numeric_bluetooth_uuid(pinfo->pool, &service_info->uuid),
                     next_tvb, pinfo, tree, rfcomm_data))) {
                 decode_by_dissector = find_proto_by_channel(dlci >> 1);
                 if (rfcomm_channels_enabled && decode_by_dissector) {
@@ -941,7 +935,7 @@ proto_register_btrfcomm(void)
         },
         { &hf_cr,
           { "C/R Flag", "btrfcomm.cr",
-            FT_UINT8, BASE_HEX, VALS(vs_cr), 0x02,
+            FT_BOOLEAN, 8, TFS(&tfs_command_response), 0x02,
             "Command/Response flag", HFILL}
         },
         { &hf_mcc,
@@ -966,7 +960,7 @@ proto_register_btrfcomm(void)
         },
         { &hf_mcc_cr,
           { "C/R Flag", "btrfcomm.mcc.cr",
-            FT_UINT8, BASE_HEX, VALS(vs_cr), 0x02,
+            FT_BOOLEAN, 8, TFS(&tfs_command_response), 0x02,
             "Command/Response flag", HFILL}
         },
         { &hf_mcc_const_1,
@@ -1214,7 +1208,7 @@ dissect_btdun(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
         /* presumably an AT command */
         col_add_fstr(pinfo->cinfo, COL_INFO, "%s \"%s\"",
                      (pinfo->p2p_dir == P2P_DIR_SENT) ? "Sent" : "Rcvd",
-                     tvb_format_text(tvb, 0, length));
+                     tvb_format_text(pinfo->pool, tvb, 0, length));
 
            proto_tree_add_item(st, hf_dun_at_cmd, tvb, 0, tvb_reported_length(tvb), ENC_ASCII|ENC_NA);
     }
@@ -1293,7 +1287,7 @@ dissect_btspp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     if (ascii_only) {
         col_add_fstr(pinfo->cinfo, COL_INFO, "%s \"%s%s\"",
                      (pinfo->p2p_dir == P2P_DIR_SENT) ? "Sent" : "Rcvd",
-                     tvb_format_text(tvb, 0, length),
+                     tvb_format_text(pinfo->pool, tvb, 0, length),
                      (tvb_captured_length(tvb) > length) ? "..." : "");
     }
 
@@ -1349,7 +1343,7 @@ dissect_btgnss(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 
     col_add_fstr(pinfo->cinfo, COL_INFO, "%s %s",
             (pinfo->p2p_dir == P2P_DIR_SENT) ? "Sent" : "Rcvd",
-            tvb_format_text(tvb, 0, tvb_captured_length(tvb)));
+            tvb_format_text(pinfo->pool, tvb, 0, tvb_captured_length(tvb)));
 
     /* GNSS using NMEA-0183 protocol, but it is not available */
     proto_tree_add_item(main_tree, hf_gnss_data, tvb, 0, tvb_reported_length(tvb), ENC_NA | ENC_ASCII);

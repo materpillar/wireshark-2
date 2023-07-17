@@ -75,7 +75,7 @@ dissect_interlink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dat
 	ilh_tree = proto_tree_add_subtree(il_tree, tvb, 0, 12, ett_interlink_header, NULL, "Interlink Header");
 
 	if (ilh_tree) {
-		proto_tree_add_item(ilh_tree, hf_interlink_id, tvb, offset, 4, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(ilh_tree, hf_interlink_id, tvb, offset, 4, ENC_ASCII);
 		offset += 4;
 		proto_tree_add_item(ilh_tree, hf_interlink_version, tvb, offset, 2, ENC_LITTLE_ENDIAN);
 		offset += 2;
@@ -174,10 +174,10 @@ proto_register_interlink(void)
 			BASE_HEX, NULL, 0, NULL, HFILL }},
 		{ &hf_interlink_flags_req_ack, {
 			"REQ_ACK", "interlink.flags.req_ack", FT_BOOLEAN,
-			16, TFS(&tfs_set_notset), 0x01, NULL, HFILL }},
+			16, TFS(&tfs_set_notset), 0x0001, NULL, HFILL }},
 		{ &hf_interlink_flags_inc_ack_port, {
 			"INC_ACK_PORT", "interlink.flags.inc_ack_port", FT_BOOLEAN,
-			16, TFS(&tfs_set_notset), 0x02, NULL, HFILL }},
+			16, TFS(&tfs_set_notset), 0x0002, NULL, HFILL }},
 		{ &hf_interlink_block_type, {
 			"Type", "interlink.type", FT_UINT8,
 			BASE_DEC, NULL, 0, NULL, HFILL }},

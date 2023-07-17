@@ -16,6 +16,8 @@
 void proto_register_lpd(void);
 void proto_reg_handoff_lpd(void);
 
+static dissector_handle_t lpd_handle;
+
 #define TCP_PORT_PRINTER		515
 
 static int proto_lpd = -1;
@@ -105,7 +107,7 @@ dissect_lpd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 			if (code <= 9 && printer_len != -1) {
 				proto_tree_add_uint_format(lpd_tree, hf_lpd_client_code, tvb, 0, 1, code,
 					"%s", val_to_str(code, lpd_client_code, "Unknown client code: %u"));
-				proto_tree_add_item(lpd_tree, hf_lpd_printer_option, tvb, 1, printer_len, ENC_ASCII|ENC_NA);
+				proto_tree_add_item(lpd_tree, hf_lpd_printer_option, tvb, 1, printer_len, ENC_ASCII);
 			}
 			else {
 				call_data_dissector(tvb, pinfo, lpd_tree);
@@ -176,6 +178,7 @@ proto_register_lpd(void)
 	};
 
 	proto_lpd = proto_register_protocol("Line Printer Daemon Protocol", "LPD", "lpd");
+	lpd_handle = register_dissector("lpd", dissect_lpd, proto_lpd);
 	proto_register_field_array(proto_lpd, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
 }
@@ -183,9 +186,6 @@ proto_register_lpd(void)
 void
 proto_reg_handoff_lpd(void)
 {
-	dissector_handle_t lpd_handle;
-
-	lpd_handle = create_dissector_handle(dissect_lpd, proto_lpd);
 	dissector_add_uint_with_preference("tcp.port", TCP_PORT_PRINTER, lpd_handle);
 }
 

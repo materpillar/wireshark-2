@@ -9,6 +9,7 @@
  */
 
 #include "config.h"
+#define WS_LOG_DOMAIN LOG_DOMAIN_CAPTURE
 
 #ifdef HAVE_LIBPCAP
 
@@ -20,18 +21,19 @@
 
 #include <epan/packet.h>
 #include <epan/dfilter/dfilter.h>
+#include "extcap.h"
 #include "file.h"
 #include "ui/capture.h"
-#include "caputils/capture_ifinfo.h"
-#include <capchild/capture_sync.h>
+#include "capture/capture_ifinfo.h"
+#include <capture/capture_sync.h>
 #include "ui/capture_info.h"
 #include "ui/capture_ui_utils.h"
 #include "ui/util.h"
-#include "caputils/capture-pcap-util.h"
-#include <epan/prefs.h>
+#include "ui/urls.h"
+#include "capture/capture-pcap-util.h"
 
 #ifdef _WIN32
-#include "caputils/capture-wpcap.h"
+#include "capture/capture-wpcap.h"
 #endif
 
 #include "ui/simple_dialog.h"
@@ -40,7 +42,8 @@
 #include "wsutil/file_util.h"
 #include "wsutil/str_util.h"
 #include <wsutil/filesystem.h>
-#include "log.h"
+#include <wsutil/wslog.h>
+#include <wsutil/ws_assert.h>
 
 typedef struct if_stat_cache_item_s {
     char *name;
@@ -68,7 +71,7 @@ capture_callback_invoke(int event, capture_session *cap_session)
     GList *cb_item = capture_callbacks;
 
     /* there should be at least one interested */
-    g_assert(cb_item != NULL);
+    ws_assert(cb_item != NULL);
 
     while(cb_item != NULL) {
         cb = (capture_callback_data_t *)cb_item->data;
@@ -83,7 +86,7 @@ capture_callback_add(capture_callback_t func, gpointer user_data)
 {
     capture_callback_data_t *cb;
 
-    cb = (capture_callback_data_t *)g_malloc(sizeof(capture_callback_data_t));
+    cb = g_new(capture_callback_data_t, 1);
     cb->cb_fct = func;
     cb->user_data = user_data;
 
@@ -106,7 +109,7 @@ capture_callback_remove(capture_callback_t func, gpointer user_data)
         cb_item = g_list_next(cb_item);
     }
 
-    g_assert_not_reached();
+    ws_assert_not_reached();
 }
 
 /**
@@ -115,27 +118,37 @@ capture_callback_remove(capture_callback_t func, gpointer user_data)
  * @return TRUE if the capture starts successfully, FALSE otherwise.
  */
 gboolean
-capture_start(capture_options *capture_opts, capture_session *cap_session, info_data_t* cap_data, void(*update_cb)(void))
+capture_start(capture_options *capture_opts, GPtrArray *capture_comments,
+              capture_session *cap_session, info_data_t* cap_data,
+              void(*update_cb)(void))
 {
     GString *source;
 
     cap_session->state = CAPTURE_PREPARING;
     cap_session->count = 0;
-    g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_MESSAGE, "Capture Start ...");
+    ws_message("Capture Start ...");
     source = get_iface_list_string(capture_opts, IFLIST_SHOW_FILTER);
     cf_set_tempfile_source((capture_file *)cap_session->cf, source->str);
     g_string_free(source, TRUE);
     /* try to start the capture child process */
-    if (!sync_pipe_start(capture_opts, cap_session, cap_data, update_cb)) {
+    if (!sync_pipe_start(capture_opts, capture_comments, cap_session,
+                         cap_data, update_cb)) {
         /* We failed to start the capture child. */
         if(capture_opts->save_file != NULL) {
             g_free(capture_opts->save_file);
             capture_opts->save_file = NULL;
         }
 
-        g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_MESSAGE, "Capture Start failed.");
+        ws_message("Capture Start failed.");
         cap_session->state = CAPTURE_STOPPED;
         return FALSE;
+    }
+
+    // Do we need data structures for ignoring duplicate frames?
+    if (prefs.ignore_dup_frames && capture_opts->real_time_mode) {
+        fifo_string_cache_init(&cap_session->frame_dup_cache,
+                prefs.ignore_dup_frames_cache_entries, g_free);
+        cap_session->frame_cksum = g_checksum_new(G_CHECKSUM_SHA256);
     }
 
     /* the capture child might not respond shortly after bringing it up */
@@ -148,9 +161,9 @@ capture_start(capture_options *capture_opts, capture_session *cap_session, info_
     wtap_rec_init(&cap_session->rec);
     ws_buffer_init(&cap_session->buf, 1514);
 
-    if (capture_opts->show_info) {
-        cap_session->wtap = NULL;
+    cap_session->wtap = NULL;
 
+    if (capture_opts->show_info) {
         if (cap_data->counts.counts_hash != NULL)
         {
             /* Clean up any previous lists of packet counts */
@@ -173,19 +186,24 @@ capture_start(capture_options *capture_opts, capture_session *cap_session, info_
 void
 capture_stop(capture_session *cap_session)
 {
-    g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_MESSAGE, "Capture Stop ...");
+    ws_message("Capture Stop ...");
 
     capture_callback_invoke(capture_cb_capture_stopping, cap_session);
 
-    /* stop the capture child gracefully */
-    sync_pipe_stop(cap_session);
+    if (!extcap_session_stop(cap_session)) {
+        extcap_request_stop(cap_session);
+        cap_session->capture_opts->stop_after_extcaps = TRUE;
+    } else {
+        /* stop the capture child gracefully */
+        sync_pipe_stop(cap_session);
+    }
 }
 
 
 void
 capture_kill_child(capture_session *cap_session)
 {
-    g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_INFO, "Capture Kill");
+    ws_info("Capture Kill");
 
     /* kill the capture child */
     sync_pipe_kill(cap_session->fork_child);
@@ -242,7 +260,7 @@ capture_input_read_all(capture_session *cap_session, gboolean is_tempfile,
     }
 
     /* read in the packet data */
-    switch (cf_read((capture_file *)cap_session->cf, FALSE)) {
+    switch (cf_read((capture_file *)cap_session->cf, /*reloading=*/FALSE)) {
 
         case CF_READ_OK:
         case CF_READ_ERROR:
@@ -254,7 +272,7 @@ capture_input_read_all(capture_session *cap_session, gboolean is_tempfile,
         case CF_READ_ABORTED:
             /* User wants to quit program. Exit by leaving the main loop,
                so that any quit functions we registered get called. */
-            main_window_quit();
+            exit_application(0);
             return FALSE;
     }
 
@@ -268,7 +286,7 @@ capture_input_read_all(capture_session *cap_session, gboolean is_tempfile,
                 "\n"
                 "Help about capturing can be found at\n"
                 "\n"
-                "       https://wiki.wireshark.org/CaptureSetup"
+                "       " WS_WIKI_URL("CaptureSetup")
 #ifdef _WIN32
                 "\n\n"
                 "Wireless (Wi-Fi/WLAN):\n"
@@ -283,8 +301,7 @@ capture_input_read_all(capture_session *cap_session, gboolean is_tempfile,
 }
 
 static const char *
-cf_open_error_message(int err, gchar *err_info, gboolean for_writing,
-                      int file_type)
+cf_open_error_message(int err, gchar *err_info)
 {
     const char *errmsg;
     static char errmsg_errno[1024 + 1];
@@ -303,42 +320,19 @@ cf_open_error_message(int err, gchar *err_info, gboolean for_writing,
             break;
 
         case WTAP_ERR_UNSUPPORTED:
-            /* Seen only when opening a capture file for reading. */
-            g_snprintf(errmsg_errno, sizeof(errmsg_errno),
+            snprintf(errmsg_errno, sizeof(errmsg_errno),
                        "The file \"%%s\" contains record data that Wireshark doesn't support.\n"
                        "(%s)", err_info != NULL ? err_info : "no information supplied");
             g_free(err_info);
             errmsg = errmsg_errno;
             break;
 
-        case WTAP_ERR_CANT_WRITE_TO_PIPE:
-            /* Seen only when opening a capture file for writing. */
-            g_snprintf(errmsg_errno, sizeof(errmsg_errno),
-                       "The file \"%%s\" is a pipe, and %s capture files can't be "
-                       "written to a pipe.", wtap_file_type_subtype_string(file_type));
-            errmsg = errmsg_errno;
-            break;
-
-        case WTAP_ERR_UNWRITABLE_FILE_TYPE:
-            /* Seen only when opening a capture file for writing. */
-            errmsg = "Wireshark doesn't support writing capture files in that format.";
-            break;
-
-        case WTAP_ERR_UNWRITABLE_ENCAP:
-            /* Seen only when opening a capture file for writing. */
-            errmsg = "Wireshark can't save this capture in that format.";
-            break;
-
         case WTAP_ERR_ENCAP_PER_PACKET_UNSUPPORTED:
-            if (for_writing)
-                errmsg = "Wireshark can't save this capture in that format.";
-            else
-                errmsg = "The file \"%s\" is a capture for a network type that Wireshark doesn't support.";
+            errmsg = "The file \"%s\" is a capture for a network type that Wireshark doesn't support.";
             break;
 
         case WTAP_ERR_BAD_FILE:
-            /* Seen only when opening a capture file for reading. */
-            g_snprintf(errmsg_errno, sizeof(errmsg_errno),
+            snprintf(errmsg_errno, sizeof(errmsg_errno),
                        "The file \"%%s\" appears to be damaged or corrupt.\n"
                        "(%s)", err_info != NULL ? err_info : "no information supplied");
             g_free(err_info);
@@ -346,10 +340,7 @@ cf_open_error_message(int err, gchar *err_info, gboolean for_writing,
             break;
 
         case WTAP_ERR_CANT_OPEN:
-            if (for_writing)
-                errmsg = "The file \"%s\" could not be created for some unknown reason.";
-            else
-                errmsg = "The file \"%s\" could not be opened for some unknown reason.";
+            errmsg = "The file \"%s\" could not be opened for some unknown reason.";
             break;
 
         case WTAP_ERR_SHORT_READ:
@@ -357,42 +348,45 @@ cf_open_error_message(int err, gchar *err_info, gboolean for_writing,
                 " in the middle of a packet or other data.";
             break;
 
-        case WTAP_ERR_SHORT_WRITE:
-            errmsg = "A full header couldn't be written to the file \"%s\".";
+        case WTAP_ERR_DECOMPRESS:
+            snprintf(errmsg_errno, sizeof(errmsg_errno),
+                       "The file \"%%s\" cannot be decompressed; it may be damaged or corrupt.\n"
+                       "(%s)", err_info != NULL ? err_info : "no information supplied");
+            g_free(err_info);
+            errmsg = errmsg_errno;
             break;
 
-        case WTAP_ERR_DECOMPRESS:
-            g_snprintf(errmsg_errno, sizeof(errmsg_errno),
-                       "The compressed file \"%%s\" appears to be damaged or corrupt.\n"
+        case WTAP_ERR_INTERNAL:
+            snprintf(errmsg_errno, sizeof(errmsg_errno),
+                       "An internal error occurred opening the file \"%%s\".\n"
                        "(%s)", err_info != NULL ? err_info : "no information supplied");
             g_free(err_info);
             errmsg = errmsg_errno;
             break;
 
         case WTAP_ERR_DECOMPRESSION_NOT_SUPPORTED:
-            g_snprintf(errmsg_errno, sizeof(errmsg_errno),
-                       "We don't support the form of compression used by the compressed file \"%%s\".\n"
+            snprintf(errmsg_errno, sizeof(errmsg_errno),
+                       "The file \"%%s\" cannot be decompressed; it is compressed in a way that We don't support.\n"
                        "(%s)", err_info != NULL ? err_info : "no information supplied");
             g_free(err_info);
             errmsg = errmsg_errno;
             break;
 
         default:
-            g_snprintf(errmsg_errno, sizeof(errmsg_errno),
-                       "The file \"%%s\" could not be %s: %s.",
-                       for_writing ? "created" : "opened",
+            snprintf(errmsg_errno, sizeof(errmsg_errno),
+                       "The file \"%%s\" could not be opened: %s.",
                        wtap_strerror(err));
             errmsg = errmsg_errno;
             break;
         }
     }
     else
-        errmsg = file_open_error_message(err, for_writing);
+        errmsg = file_open_error_message(err, FALSE);
     return errmsg;
 }
 
 /* capture child tells us we have a new (or the first) capture file */
-static gboolean
+static bool
 capture_input_new_file(capture_session *cap_session, gchar *new_file)
 {
     capture_options *capture_opts = cap_session->capture_opts;
@@ -402,26 +396,25 @@ capture_input_new_file(capture_session *cap_session, gchar *new_file)
     gchar *err_msg;
 
     if(cap_session->state == CAPTURE_PREPARING) {
-        g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_MESSAGE, "Capture started");
+        ws_message("Capture started");
     }
-    g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_MESSAGE, "File: \"%s\"", new_file);
+    ws_message("File: \"%s\"", new_file);
 
-    g_assert(cap_session->state == CAPTURE_PREPARING || cap_session->state == CAPTURE_RUNNING);
+    ws_assert(cap_session->state == CAPTURE_PREPARING || cap_session->state == CAPTURE_RUNNING);
 
     /* free the old filename */
     if(capture_opts->save_file != NULL) {
         /* we start a new capture file, close the old one (if we had one before). */
         /* (we can only have an open capture file in real_time_mode!) */
-        if( ((capture_file *) cap_session->cf)->state != FILE_CLOSED) {
-            if(capture_opts->real_time_mode) {
-                cap_session->session_will_restart = TRUE;
-                capture_callback_invoke(capture_cb_capture_update_finished, cap_session);
-                cf_finish_tail((capture_file *)cap_session->cf,
-                               &cap_session->rec, &cap_session->buf, &err);
-                cf_close((capture_file *)cap_session->cf);
-            } else {
-                capture_callback_invoke(capture_cb_capture_fixed_finished, cap_session);
-            }
+        if (((capture_file*)cap_session->cf)->state == FILE_READ_PENDING) {
+            capture_callback_invoke(capture_cb_capture_fixed_finished, cap_session);
+        } else if (((capture_file*)cap_session->cf)->state != FILE_CLOSED) {
+            cap_session->session_will_restart = TRUE;
+            capture_callback_invoke(capture_cb_capture_update_finished, cap_session);
+            cf_finish_tail((capture_file *)cap_session->cf,
+                           &cap_session->rec, &cap_session->buf, &err,
+                           &cap_session->frame_dup_cache, cap_session->frame_cksum);
+            cf_close((capture_file *)cap_session->cf);
         }
         g_free(capture_opts->save_file);
         is_tempfile = FALSE;
@@ -459,9 +452,9 @@ capture_input_new_file(capture_session *cap_session, gchar *new_file)
 
         cap_session->wtap = wtap_open_offline(new_file, WTAP_TYPE_AUTO, &err, &err_info, FALSE);
         if (!cap_session->wtap) {
-            err_msg = g_strdup_printf(cf_open_error_message(err, err_info, FALSE, WTAP_FILE_TYPE_SUBTYPE_UNKNOWN),
+            err_msg = ws_strdup_printf(cf_open_error_message(err, err_info),
                                       new_file);
-            g_warning("capture_input_new_file: %d (%s)", err, err_msg);
+            ws_warning("capture_input_new_file: %d (%s)", err, err_msg);
             g_free(err_msg);
             return FALSE;
         }
@@ -504,7 +497,7 @@ capture_info_new_packets(int to_read, wtap *wth, info_data_t* cap_info)
 
     cap_info->ui.new_packets = to_read;
 
-    /*g_warning("new packets: %u", to_read);*/
+    /*ws_warning("new packets: %u", to_read);*/
 
     wtap_rec_init(&rec);
     ws_buffer_init(&buf, 1514);
@@ -520,9 +513,10 @@ capture_info_new_packets(int to_read, wtap *wth, info_data_t* cap_info)
                     rec.rec_header.packet_header.caplen,
                     pseudo_header);
 
-                /*g_warning("new packet");*/
+                /*ws_warning("new packet");*/
                 to_read--;
             }
+            wtap_rec_reset(&rec);
         }
     }
     wtap_rec_cleanup(&rec);
@@ -538,12 +532,29 @@ capture_input_new_packets(capture_session *cap_session, int to_read)
     capture_options *capture_opts = cap_session->capture_opts;
     int  err;
 
-    g_assert(capture_opts->save_file);
+    ws_assert(capture_opts->save_file);
 
     if(capture_opts->real_time_mode) {
+        if (((capture_file*)cap_session->cf)->state == FILE_READ_PENDING) {
+            /* Attempt to open the capture file and set up to read from it. */
+            switch (cf_open((capture_file*)cap_session->cf, capture_opts->save_file, WTAP_TYPE_AUTO, cf_is_tempfile((capture_file*)cap_session->cf), &err)) {
+            case CF_OK:
+                break;
+            case CF_ERROR:
+                /* Don't unlink (delete) the save file - leave it around,
+                   for debugging purposes. */
+                g_free(capture_opts->save_file);
+                capture_opts->save_file = NULL;
+                capture_kill_child(cap_session);
+            }
+            capture_callback_invoke(capture_cb_capture_update_started, cap_session);
+        }
         /* Read from the capture file the number of records the child told us it added. */
+        to_read += cap_session->count_pending;
+        cap_session->count_pending = 0;
         switch (cf_continue_tail((capture_file *)cap_session->cf, to_read,
-                                 &cap_session->rec, &cap_session->buf, &err)) {
+                                 &cap_session->rec, &cap_session->buf, &err,
+                                 &cap_session->frame_dup_cache, cap_session->frame_cksum)) {
 
             case CF_READ_OK:
             case CF_READ_ERROR:
@@ -563,11 +574,12 @@ capture_input_new_packets(capture_session *cap_session, int to_read)
         }
     } else {
         cf_fake_continue_tail((capture_file *)cap_session->cf);
+        cap_session->count_pending += to_read;
 
         capture_callback_invoke(capture_cb_capture_fixed_continue, cap_session);
     }
 
-    if(capture_opts->show_info)
+    if(cap_session->wtap)
         capture_info_new_packets(to_read, cap_session->wtap, cap_session->cap_data_info);
 }
 
@@ -578,12 +590,12 @@ static void
 capture_input_drops(capture_session *cap_session, guint32 dropped, const char* interface_name)
 {
     if (interface_name != NULL) {
-        g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_INFO, "%u packet%s dropped from %s", dropped, plurality(dropped, "", "s"), interface_name);
+        ws_info("%u packet%s dropped from %s", dropped, plurality(dropped, "", "s"), interface_name);
     } else {
-        g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_INFO, "%u packet%s dropped", dropped, plurality(dropped, "", "s"));
+        ws_info("%u packet%s dropped", dropped, plurality(dropped, "", "s"));
     }
 
-    g_assert(cap_session->state == CAPTURE_RUNNING);
+    ws_assert(cap_session->state == CAPTURE_RUNNING);
 
     cf_set_drops_known((capture_file *)cap_session->cf, TRUE);
     cf_set_drops((capture_file *)cap_session->cf, dropped);
@@ -597,16 +609,15 @@ capture_input_drops(capture_session *cap_session, guint32 dropped, const char* i
    The secondary message might be a null string.
  */
 static void
-capture_input_error(capture_session *cap_session, char *error_msg,
+capture_input_error(capture_session *cap_session _U_, char *error_msg,
                     char *secondary_error_msg)
 {
     gchar *safe_error_msg;
     gchar *safe_secondary_error_msg;
 
-    g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_MESSAGE, "Error message from child: \"%s\", \"%s\"",
-            error_msg, secondary_error_msg);
+    ws_message("Error message from child: \"%s\", \"%s\"", error_msg, secondary_error_msg);
 
-    g_assert(cap_session->state == CAPTURE_PREPARING || cap_session->state == CAPTURE_RUNNING);
+    ws_assert(cap_session->state == CAPTURE_PREPARING || cap_session->state == CAPTURE_RUNNING);
 
     safe_error_msg = simple_dialog_format_message(error_msg);
     if (*secondary_error_msg != '\0') {
@@ -641,10 +652,10 @@ capture_input_cfilter_error(capture_session *cap_session, guint i,
     gchar *safe_cfilter_error_msg;
     interface_options *interface_opts;
 
-    g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_MESSAGE, "Capture filter error message from child: \"%s\"", error_message);
+    ws_message("Capture filter error message from child: \"%s\"", error_message);
 
-    g_assert(cap_session->state == CAPTURE_PREPARING || cap_session->state == CAPTURE_RUNNING);
-    g_assert(i < capture_opts->ifaces->len);
+    ws_assert(cap_session->state == CAPTURE_PREPARING || cap_session->state == CAPTURE_RUNNING);
+    ws_assert(i < capture_opts->ifaces->len);
 
     interface_opts = &g_array_index(capture_opts->ifaces, interface_options, i);
     safe_cfilter = simple_dialog_format_message(interface_opts->cfilter);
@@ -688,11 +699,29 @@ capture_input_closed(capture_session *cap_session, gchar *msg)
     capture_options *capture_opts = cap_session->capture_opts;
     int  err;
 
-    g_log(LOG_DOMAIN_CAPTURE, G_LOG_LEVEL_MESSAGE, "Capture stopped.");
-    g_assert(cap_session->state == CAPTURE_PREPARING || cap_session->state == CAPTURE_RUNNING);
+    ws_message("Capture stopped.");
+    ws_assert(cap_session->state == CAPTURE_PREPARING || cap_session->state == CAPTURE_RUNNING);
 
-    if (msg != NULL)
-        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", msg);
+    if (msg != NULL) {
+        ESD_TYPE_E dlg_type = ESD_TYPE_ERROR;
+        if (strstr(msg, " WARNING] ")) {
+            dlg_type = ESD_TYPE_WARN;
+        }
+        /*
+         * ws_log prefixes log messages with a timestamp delimited by " -- " and possibly
+         * a function name delimted by "(): ". Log it to sterr, but omit it in the UI.
+         */
+        char *plain_msg = strstr(msg, "(): ");
+        if (plain_msg != NULL) {
+            plain_msg += strlen("(): ");
+        } else if ((plain_msg = strstr(msg, " -- ")) != NULL) {
+            plain_msg += strlen(" -- ");
+        } else {
+            plain_msg = msg;
+        }
+        ws_warning("%s", msg);
+        simple_dialog(dlg_type, ESD_BTN_OK, "%s", plain_msg);
+    }
 
     wtap_rec_cleanup(&cap_session->rec);
     ws_buffer_free(&cap_session->buf);
@@ -705,12 +734,23 @@ capture_input_closed(capture_session *cap_session, gchar *msg)
         /* We started a capture; process what's left of the capture file if
            we were in "update list of packets in real time" mode, or process
            all of it if we weren't. */
-        if(capture_opts->real_time_mode) {
+        if(((capture_file*)cap_session->cf)->state == FILE_READ_IN_PROGRESS) {
             cf_read_status_t status;
 
             /* Read what remains of the capture file. */
             status = cf_finish_tail((capture_file *)cap_session->cf,
-                                    &cap_session->rec, &cap_session->buf, &err);
+                                    &cap_session->rec, &cap_session->buf, &err,
+                                    &cap_session->frame_dup_cache, cap_session->frame_cksum);
+
+            // The real-time reading of the pcap is done. Now we can clear the
+            // dup-frame cache, if present. But check that we actually have
+            // data structures to clear (by checking frame-checksum); the user
+            // could have changed the preference *during* the live capture.
+            if (cap_session->frame_cksum != NULL) {
+                fifo_string_cache_free(&cap_session->frame_dup_cache);
+                g_checksum_free(cap_session->frame_cksum);
+                cap_session->frame_cksum = NULL;
+            }
 
             /* Tell the GUI we are not doing a capture any more.
                Must be done after the cf_finish_tail(), so file lengths are
@@ -731,7 +771,7 @@ capture_input_closed(capture_session *cap_session, gchar *msg)
                                 "\n"
                                 "Help about capturing can be found at\n"
                                 "\n"
-                                "       https://wiki.wireshark.org/CaptureSetup"
+                                "       " WS_WIKI_URL("CaptureSetup")
 #ifdef _WIN32
                                 "\n\n"
                                 "Wireless (Wi-Fi/WLAN):\n"
@@ -752,10 +792,10 @@ capture_input_closed(capture_session *cap_session, gchar *msg)
                 case CF_READ_ABORTED:
                     /* Exit by leaving the main loop, so that any quit functions
                        we registered get called. */
-                    main_window_quit();
+                    exit_application(0);
                     break;
             }
-        } else {
+        } else if (((capture_file*)cap_session->cf)->state == FILE_READ_PENDING) {
             /* first of all, we are not doing a capture any more */
             capture_callback_invoke(capture_cb_capture_fixed_finished, cap_session);
 
@@ -767,10 +807,10 @@ capture_input_closed(capture_session *cap_session, gchar *msg)
         }
     }
 
-    if(capture_opts->show_info) {
-        capture_info_ui_destroy(&cap_session->cap_data_info->ui);
-        if(cap_session->wtap)
-            wtap_close(cap_session->wtap);
+    capture_info_ui_destroy(&cap_session->cap_data_info->ui);
+    if(cap_session->wtap) {
+        wtap_close(cap_session->wtap);
+        cap_session->wtap = NULL;
     }
 
     cap_session->state = CAPTURE_STOPPED;
@@ -844,9 +884,9 @@ capture_stat_start(capture_options *capture_opts)
         /* Initialize the cache */
         for (i = 0; i < capture_opts->all_ifaces->len; i++) {
             device = &g_array_index(capture_opts->all_ifaces, interface_t, i);
-            if (device->type != IF_PIPE) {
-                sc_item = (if_stat_cache_item_t *)g_malloc0(sizeof(if_stat_cache_item_t));
-                g_assert(device->if_info.name);
+            if (device->type != IF_PIPE && device->type != IF_EXTCAP) {
+                sc_item = g_new0(if_stat_cache_item_t, 1);
+                ws_assert(device->if_info.name);
                 sc_item->name = g_strdup(device->if_info.name);
                 sc->cache_list = g_list_prepend(sc->cache_list, sc_item);
             }
@@ -950,16 +990,3 @@ capture_input_init(capture_session *cap_session, capture_file *cf)
                          capture_input_cfilter_error, capture_input_closed);
 }
 #endif /* HAVE_LIBPCAP */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

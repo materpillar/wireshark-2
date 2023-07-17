@@ -32,6 +32,8 @@
 void proto_register_glbp(void);
 void proto_reg_handoff_glbp(void);
 
+static dissector_handle_t glbp_handle;
+
 #define GLBP_UDP_PORT 3222
 
 static int proto_glbp = -1;
@@ -256,7 +258,7 @@ dissect_glbp_auth(tvbuff_t *tvb, int offset,
   offset++;
   switch(authtype) {
   case 1:
-    proto_tree_add_item(tlv_tree, hf_glbp_auth_plainpass, tvb, offset, authlength, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(tlv_tree, hf_glbp_auth_plainpass, tvb, offset, authlength, ENC_ASCII);
     offset += authlength;
     break;
   case 2:
@@ -592,14 +594,13 @@ proto_register_glbp(void)
   proto_register_subtree_array(ett, array_length(ett));
   expert_glbp = expert_register_protocol(proto_glbp);
   expert_register_field_array(expert_glbp, ei, array_length(ei));
+
+  glbp_handle = register_dissector("glbp", dissect_glbp_static, proto_glbp);
 }
 
 void
 proto_reg_handoff_glbp(void)
 {
-  dissector_handle_t glbp_handle;
-
-  glbp_handle = create_dissector_handle(dissect_glbp_static, proto_glbp);
   dissector_add_uint_with_preference("udp.port", GLBP_UDP_PORT, glbp_handle);
 }
 

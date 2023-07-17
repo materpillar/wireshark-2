@@ -52,6 +52,7 @@ static const struct radiotap_align_size rtap_namespace_sizes[] = {
 	/* [IEEE80211_RADIOTAP_HE_MU_USER = 25 notdef */	{ 0, 0 },
 	/* [IEEE80211_RADIOTAP_0_LENGTH_PSDU = 26 */		{ 1, 1 },
 	/* [IEEE80211_RADIOTAP_L_SIG = 27 */			{ 2, 4 },
+	/* [IEEE80211_RADIOTAP_TLV = 28 */                      { 4, 10 },
 	/*
 	 * add more here as they are defined in
 	 * include/net/ieee80211_radiotap.h
@@ -346,6 +347,7 @@ return_tlv:
 			}
 			if (!align) {
 				/* skip all subsequent data */
+				int skip_size = IEEE80211_RADIOTAP_RADIOTAP_NAMESPACE - (iterator->_arg_index % 32);
 				/* XXX - we should report an expert info here */
 				if (!iterator->_next_ns_data)
 					return -EINVAL;
@@ -353,6 +355,9 @@ return_tlv:
 				/* give up on this namespace */
 				iterator->current_namespace = NULL;
 				iterator->_next_ns_data = NULL;
+				// Remove 1 because jump to next_entry will also shift bitmap by 1
+				iterator->_bitmap_shifter >>= skip_size - 1;
+				iterator->_arg_index += skip_size - 1;
 				/* XXX - we should report an expert info here */
 				if (!ITERATOR_VALID(iterator, 0))
 					return -EINVAL;

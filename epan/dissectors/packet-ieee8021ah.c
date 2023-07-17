@@ -23,13 +23,15 @@
 void proto_register_ieee8021ah(void);
 void proto_reg_handoff_ieee8021ah(void);
 
+static dissector_handle_t ieee8021ah_handle;
+static dissector_handle_t ieee8021ad_handle;
 static dissector_handle_t ethertype_handle;
 
 static capture_dissector_handle_t ipx_cap_handle;
 static capture_dissector_handle_t llc_cap_handle;
 
-void dissect_ieee8021ah_common(tvbuff_t *tvb, packet_info *pinfo,
-                               proto_tree *tree, proto_tree *parent, int tree_index);
+static void dissect_ieee8021ah_common(tvbuff_t *tvb, packet_info *pinfo,
+                                      proto_tree *tree, proto_tree *parent, int tree_index);
 
 /* GLOBALS ************************************************************/
 
@@ -216,7 +218,7 @@ int dissect_ieee8021ad(tvbuff_t *tvb, packet_info *pinfo,
     return tvb_captured_length(tvb);
 }
 
-void
+static void
 dissect_ieee8021ah_common(tvbuff_t *tvb, packet_info *pinfo,
                           proto_tree *tree, proto_tree *parent, int tree_index) {
     guint32           tci;
@@ -261,8 +263,8 @@ dissect_ieee8021ah_common(tvbuff_t *tvb, packet_info *pinfo,
         if (parent) {
             proto_item_append_text(tree, ", I-SID: %d, C-Src: %s, C-Dst: %s",
                                    tci & IEEE8021AH_ISIDMASK,
-                                   tvb_address_with_resolution_to_str(wmem_packet_scope(), tvb, AT_ETHER, 10),
-                                   tvb_address_with_resolution_to_str(wmem_packet_scope(), tvb, AT_ETHER, 4));
+                                   tvb_address_with_resolution_to_str(pinfo->pool, tvb, AT_ETHER, 10),
+                                   tvb_address_with_resolution_to_str(pinfo->pool, tvb, AT_ETHER, 4));
         }
     }
 
@@ -396,10 +398,14 @@ proto_register_ieee8021ah(void)
     /* dot1ah */
     proto_ieee8021ah = proto_register_protocol("IEEE 802.1ah", "IEEE 802.1AH",
                                                "ieee8021ah");
+    ieee8021ah_handle = register_dissector("ieee8021ah", dissect_ieee8021ah,
+                                                proto_ieee8021ah);
     proto_register_field_array(proto_ieee8021ah, hf, array_length(hf));
 
     proto_ieee8021ad = proto_register_protocol("IEEE 802.1ad", "IEEE 802.1AD",
                                                "ieee8021ad");
+    ieee8021ad_handle = register_dissector("ieee8021ad", dissect_ieee8021ad,
+                                                proto_ieee8021ad);
     proto_register_field_array(proto_ieee8021ad, hf_1ad, array_length(hf_1ad));
 
     /* register subtree array for both */
@@ -418,22 +424,19 @@ void
 proto_reg_handoff_ieee8021ah(void)
 {
     static gboolean           prefs_initialized = FALSE;
-    static dissector_handle_t ieee8021ah_handle;
     static unsigned int       old_ieee8021ah_ethertype;
     static capture_dissector_handle_t ieee8021ah_cap_handle;
 
     if (!prefs_initialized){
-        dissector_handle_t ieee8021ad_handle;
-        ieee8021ah_handle = create_dissector_handle(dissect_ieee8021ah,
-                                                    proto_ieee8021ah);
-        ieee8021ad_handle = create_dissector_handle(dissect_ieee8021ad,
-                                                    proto_ieee8021ad);
         dissector_add_uint("ethertype", ETHERTYPE_IEEE_802_1AD, ieee8021ad_handle);
         ethertype_handle = find_dissector_add_dependency("ethertype", proto_ieee8021ah);
         find_dissector_add_dependency("ethertype", proto_ieee8021ad);
         ieee8021ah_cap_handle = create_capture_dissector_handle(capture_ieee8021ah, proto_ieee8021ah);
         capture_dissector_add_uint("ethertype", ETHERTYPE_IEEE_802_1AD, ieee8021ah_cap_handle);
         capture_dissector_add_uint("ethertype", ETHERTYPE_IEEE_802_1AH, ieee8021ah_cap_handle);
+
+        ipx_cap_handle = find_capture_dissector("ipx");
+        llc_cap_handle = find_capture_dissector("llc");
 
         prefs_initialized = TRUE;
     }
@@ -443,9 +446,6 @@ proto_reg_handoff_ieee8021ah(void)
 
     old_ieee8021ah_ethertype = ieee8021ah_ethertype;
     dissector_add_uint("ethertype", ieee8021ah_ethertype, ieee8021ah_handle);
-
-    ipx_cap_handle = find_capture_dissector("ipx");
-    llc_cap_handle = find_capture_dissector("llc");
 }
 
 /*

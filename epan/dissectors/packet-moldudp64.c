@@ -20,6 +20,8 @@
 void proto_register_moldudp64(void);
 void proto_reg_handoff_moldudp64(void);
 
+static dissector_handle_t moldudp64_handle;
+
 /* Initialize the protocol and registered fields */
 static int proto_moldudp64       = -1;
 static int hf_moldudp64_session  = -1;
@@ -51,7 +53,7 @@ static dissector_table_t moldudp64_payload_table;
 
 static void moldudp64_prompt(packet_info *pinfo _U_, gchar* result)
 {
-    g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Payload as");
+    snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Payload as");
 }
 
 /* Code to dissect a message block */
@@ -155,7 +157,7 @@ dissect_moldudp64(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
     moldudp64_tree = proto_item_add_subtree(ti, ett_moldudp64);
 
     proto_tree_add_item(moldudp64_tree, hf_moldudp64_session,
-                        tvb, offset, MOLDUDP64_SESSION_LEN, ENC_ASCII|ENC_NA);
+                        tvb, offset, MOLDUDP64_SESSION_LEN, ENC_ASCII);
     offset += MOLDUDP64_SESSION_LEN;
 
     proto_tree_add_item(moldudp64_tree, hf_moldudp64_sequence,
@@ -256,15 +258,15 @@ proto_register_moldudp64(void)
 
     moldudp64_payload_table = register_decode_as_next_proto(proto_moldudp64, "moldudp64.payload",
                                                             "MoldUDP64 Payload", moldudp64_prompt);
+
+    /* Register the dissector */
+    moldudp64_handle = register_dissector("moldudp64", dissect_moldudp64, proto_moldudp64);
 }
 
 
 void
 proto_reg_handoff_moldudp64(void)
 {
-    dissector_handle_t moldudp64_handle;
-
-    moldudp64_handle = create_dissector_handle(dissect_moldudp64, proto_moldudp64);
     dissector_add_for_decode_as_with_preference("udp.port", moldudp64_handle);
 }
 

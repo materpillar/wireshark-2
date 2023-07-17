@@ -13,7 +13,8 @@
 #include "ui/qt/widgets/wireshark_file_dialog.h"
 #include <ui/qt/utils/qt_ui_utils.h>
 #include "uat_dialog.h"
-#include "wireshark_application.h"
+#include "main_application.h"
+#include "ui/qt/main_window.h"
 
 #include <ui/qt/utils/variant_pointer.h>
 
@@ -28,10 +29,12 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMainWindow>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScrollBar>
 #include <QSpacerItem>
+#include <QRegularExpression>
 
 const char *pref_prop_ = "pref_ptr";
 
@@ -43,22 +46,30 @@ static const QString title_to_shortcut(const char *title) {
     return shortcut_str;
 }
 
+typedef struct 
+{
+    QVBoxLayout *layout;
+    QString moduleName;
+} prefSearchData;
 
 extern "C" {
 // Callbacks prefs routines
 
 /* Add a single preference to the QVBoxLayout of a preference page */
 static guint
-pref_show(pref_t *pref, gpointer layout_ptr)
+pref_show(pref_t *pref, gpointer user_data)
 {
-    QVBoxLayout *vb = static_cast<QVBoxLayout *>(layout_ptr);
+    prefSearchData * data = static_cast<prefSearchData *>(user_data);
 
-    if (!pref || !vb) return 0;
+    if (!pref || !data) return 0;
+
+    QVBoxLayout *vb = data->layout;
 
     // Convert the pref description from plain text to rich text.
     QString description = html_escape(prefs_get_description(pref));
-    description.replace('\n', "<br>");
-    QString tooltip = QString("<span>%1</span>").arg(description);
+    QString name = QString("%1.%2").arg(data->moduleName).arg(prefs_get_name(pref));
+    description.replace('\n', "<br/>");
+    QString tooltip = QString("<span>%1</span><br/><br/>%2").arg(description).arg(name);
 
     switch (prefs_get_type(pref)) {
     case PREF_UINT:
@@ -120,7 +131,9 @@ pref_show(pref_t *pref, gpointer layout_ptr)
             for (ev = prefs_get_enumvals(pref); ev && ev->description; ev++) {
                 enum_cb->addItem(ev->description, QVariant(ev->value));
             }
-            hb->addWidget(new QLabel(prefs_get_title(pref)));
+            QLabel * lbl = new QLabel(prefs_get_title(pref));
+            lbl->setToolTip(tooltip);
+            hb->addWidget(lbl);
             hb->addWidget(enum_cb);
             hb->addSpacerItem(new QSpacerItem(1, 1, QSizePolicy::Expanding, QSizePolicy::Minimum));
             vb->addLayout(hb);
@@ -137,6 +150,22 @@ pref_show(pref_t *pref, gpointer layout_ptr)
         string_le->setToolTip(tooltip);
         string_le->setProperty(pref_prop_, VariantPointer<pref_t>::asQVariant(pref));
         string_le->setMinimumWidth(string_le->fontMetrics().height() * 20);
+        hb->addWidget(string_le);
+        hb->addSpacerItem(new QSpacerItem(1, 1, QSizePolicy::Expanding, QSizePolicy::Minimum));
+        vb->addLayout(hb);
+        break;
+    }
+    case PREF_PASSWORD:
+    {
+        QHBoxLayout *hb = new QHBoxLayout();
+        QLabel *label = new QLabel(prefs_get_title(pref));
+        label->setToolTip(tooltip);
+        hb->addWidget(label);
+        QLineEdit *string_le = new QLineEdit();
+        string_le->setToolTip(tooltip);
+        string_le->setProperty(pref_prop_, VariantPointer<pref_t>::asQVariant(pref));
+        string_le->setMinimumWidth(string_le->fontMetrics().height() * 20);
+        string_le->setEchoMode(QLineEdit::PasswordEchoOnEdit);
         hb->addWidget(string_le);
         hb->addSpacerItem(new QSpacerItem(1, 1, QSizePolicy::Expanding, QSizePolicy::Minimum));
         vb->addLayout(hb);
@@ -213,6 +242,50 @@ pref_show(pref_t *pref, gpointer layout_ptr)
         // color picker similar to the Font and Colors prefs.
         break;
     }
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
+    {
+        const enum_val_t *ev;
+        ev = prefs_get_enumvals(pref);
+        if (!ev || !ev->description)
+            return 0;
+
+        if (prefs_get_enum_radiobuttons(pref)) {
+            QLabel *label = new QLabel(prefs_get_title(pref));
+            label->setToolTip(tooltip);
+            vb->addWidget(label);
+            QButtonGroup *enum_bg = new QButtonGroup(vb);
+            while (ev->description) {
+                QRadioButton *enum_rb = new QRadioButton(title_to_shortcut(ev->description));
+                enum_rb->setToolTip(tooltip);
+                QStyleOption style_opt;
+                enum_rb->setProperty(pref_prop_, VariantPointer<pref_t>::asQVariant(pref));
+                enum_rb->setStyleSheet(QString(
+                                      "QRadioButton {"
+                                      "  margin-left: %1px;"
+                                      "}"
+                                      )
+                                  .arg(enum_rb->style()->subElementRect(QStyle::SE_CheckBoxContents, &style_opt).left()));
+                enum_bg->addButton(enum_rb, ev->value);
+                vb->addWidget(enum_rb);
+                ev++;
+            }
+        } else {
+            QHBoxLayout *hb = new QHBoxLayout();
+            QComboBox *enum_cb = new QComboBox();
+            enum_cb->setToolTip(tooltip);
+            enum_cb->setProperty(pref_prop_, VariantPointer<pref_t>::asQVariant(pref));
+            for (ev = prefs_get_enumvals(pref); ev && ev->description; ev++) {
+                enum_cb->addItem(ev->description, QVariant(ev->value));
+            }
+            QLabel * lbl = new QLabel(prefs_get_title(pref));
+            lbl->setToolTip(tooltip);
+            hb->addWidget(lbl);
+            hb->addWidget(enum_cb);
+            hb->addSpacerItem(new QSpacerItem(1, 1, QSizePolicy::Expanding, QSizePolicy::Minimum));
+            vb->addLayout(hb);
+        }
+        break;
+    }
     default:
         break;
     }
@@ -237,8 +310,12 @@ ModulePreferencesScrollArea::ModulePreferencesScrollArea(module_t *module, QWidg
     label->setFont(font);
     ui->verticalLayout->addWidget(label);
 
+    prefSearchData * searchData = new prefSearchData;
+    searchData->layout = ui->verticalLayout;
+    searchData->moduleName = module->name;
+
     /* Add items for each of the preferences */
-    prefs_pref_foreach(module, pref_show, (gpointer) ui->verticalLayout);
+    prefs_pref_foreach(module, pref_show, (gpointer) searchData);
 
     foreach (QLineEdit *le, findChildren<QLineEdit *>()) {
         pref_t *pref = VariantPointer<pref_t>::asPtr(le->property(pref_prop_));
@@ -255,6 +332,7 @@ ModulePreferencesScrollArea::ModulePreferencesScrollArea(module_t *module, QWidg
         case PREF_SAVE_FILENAME:
         case PREF_OPEN_FILENAME:
         case PREF_DIRNAME:
+        case PREF_PASSWORD:
             connect(le, &QLineEdit::textEdited, this, &ModulePreferencesScrollArea::stringLineEditTextEdited);
             break;
         case PREF_RANGE:
@@ -291,6 +369,16 @@ ModulePreferencesScrollArea::ModulePreferencesScrollArea(module_t *module, QWidg
         if (prefs_get_type(pref) == PREF_ENUM && !prefs_get_enum_radiobuttons(pref)) {
             connect(combo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
                     this, &ModulePreferencesScrollArea::enumComboBoxCurrentIndexChanged);
+        }
+    }
+
+    foreach (QComboBox *combo, findChildren<QComboBox *>()) {
+        pref_t *pref = VariantPointer<pref_t>::asPtr(combo->property(pref_prop_));
+        if (!pref) continue;
+
+        if (prefs_get_type(pref) == PREF_PROTO_TCP_SNDAMB_ENUM && !prefs_get_enum_radiobuttons(pref)) {
+            connect(combo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+                    this, &ModulePreferencesScrollArea::enumComboBoxCurrentIndexChanged_PROTO_TCP);
         }
     }
 
@@ -344,7 +432,7 @@ void ModulePreferencesScrollArea::updateWidgets()
         pref_t *pref = VariantPointer<pref_t>::asPtr(le->property(pref_prop_));
         if (!pref) continue;
 
-        le->setText(gchar_free_to_qstring(prefs_pref_to_str(pref, pref_stashed)).remove(QRegExp("\n\t")));
+        le->setText(gchar_free_to_qstring(prefs_pref_to_str(pref, pref_stashed)).remove(QRegularExpression("\n\t")));
     }
 
     foreach (QCheckBox *cb, findChildren<QCheckBox *>()) {
@@ -379,6 +467,15 @@ void ModulePreferencesScrollArea::updateWidgets()
                 if (prefs_get_enum_value(pref, pref_stashed) == enum_cb->itemData(i).toInt()) {
                     enum_cb->setCurrentIndex(i);
                 }
+            }
+        }
+
+        if (prefs_get_type(pref) == PREF_PROTO_TCP_SNDAMB_ENUM && !prefs_get_enum_radiobuttons(pref)) {
+            MainWindow* topWidget = dynamic_cast<MainWindow*> (mainApp->mainWindow());
+            /* Ensure there is one unique or multiple selections. See issue 18642 */
+            if (topWidget->hasSelection() || topWidget->hasUniqueSelection()) {
+                frame_data * fdata = topWidget->frameDataForRow((topWidget->selectedRows()).at(0));
+                enum_cb->setCurrentIndex(fdata->tcp_snd_manual_analysis);
             }
         }
     }
@@ -490,7 +587,7 @@ void ModulePreferencesScrollArea::saveFilenamePushButtonClicked()
     pref_t *pref = VariantPointer<pref_t>::asPtr(filename_pb->property(pref_prop_));
     if (!pref) return;
 
-    QString filename = WiresharkFileDialog::getSaveFileName(this, wsApp->windowTitleString(prefs_get_title(pref)),
+    QString filename = WiresharkFileDialog::getSaveFileName(this, mainApp->windowTitleString(prefs_get_title(pref)),
                                                     prefs_get_string_value(pref, pref_stashed));
 
     if (!filename.isEmpty()) {
@@ -507,7 +604,7 @@ void ModulePreferencesScrollArea::openFilenamePushButtonClicked()
     pref_t *pref = VariantPointer<pref_t>::asPtr(filename_pb->property(pref_prop_));
     if (!pref) return;
 
-    QString filename = WiresharkFileDialog::getOpenFileName(this, wsApp->windowTitleString(prefs_get_title(pref)),
+    QString filename = WiresharkFileDialog::getOpenFileName(this, mainApp->windowTitleString(prefs_get_title(pref)),
                                                     prefs_get_string_value(pref, pref_stashed));
     if (!filename.isEmpty()) {
         prefs_set_string_value(pref, QDir::toNativeSeparators(filename).toStdString().c_str(), pref_stashed);
@@ -523,7 +620,7 @@ void ModulePreferencesScrollArea::dirnamePushButtonClicked()
     pref_t *pref = VariantPointer<pref_t>::asPtr(dirname_pb->property(pref_prop_));
     if (!pref) return;
 
-    QString dirname = WiresharkFileDialog::getExistingDirectory(this, wsApp->windowTitleString(prefs_get_title(pref)),
+    QString dirname = WiresharkFileDialog::getExistingDirectory(this, mainApp->windowTitleString(prefs_get_title(pref)),
                                                  prefs_get_string_value(pref, pref_stashed));
 
     if (!dirname.isEmpty()) {
@@ -533,14 +630,30 @@ void ModulePreferencesScrollArea::dirnamePushButtonClicked()
 }
 
 /*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
+ * Dedicated event handling for TCP SEQ Analysis overriding.
  */
+void ModulePreferencesScrollArea::enumComboBoxCurrentIndexChanged_PROTO_TCP(int index)
+{
+    QComboBox *enum_cb = qobject_cast<QComboBox*>(sender());
+    if (!enum_cb) return;
+
+    pref_t *pref = VariantPointer<pref_t>::asPtr(enum_cb->property(pref_prop_));
+    if (!pref) return;
+
+    MainWindow* topWidget = dynamic_cast<MainWindow*> (mainApp->mainWindow());
+
+    // method 1 : apply to one single packet
+    /* frame_data * fdata = topWidget->frameDataForRow((topWidget->selectedRows()).at(0));
+    fdata->tcp_snd_manual_analysis = enum_cb->itemData(index).toInt();*/
+
+    // method 2 : we can leverage the functionality by allowing multiple selections
+    QList<int> rows = topWidget->selectedRows();
+    foreach (int row, rows) {
+        frame_data * fdata = topWidget->frameDataForRow(row);
+        fdata->tcp_snd_manual_analysis = enum_cb->itemData(index).toInt();
+    }
+
+    prefs_set_enum_value(pref, enum_cb->itemData(index).toInt(), pref_current);
+    //prefs_set_enum_value(pref, enum_cb->itemData(index).toInt(), pref_stashed);
+    updateWidgets();
+}

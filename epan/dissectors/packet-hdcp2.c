@@ -156,7 +156,7 @@ dissect_hdcp2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     pi = proto_tree_add_protocol_format(tree, proto_hdcp2,
             tvb, 0, tvb_reported_length(tvb), "HDCP2");
     hdcp_tree = proto_item_add_subtree(pi, ett_hdcp2);
-    cursor = ptvcursor_new(hdcp_tree, tvb, 0);
+    cursor = ptvcursor_new(pinfo->pool, hdcp_tree, tvb, 0);
 
     col_append_str(pinfo->cinfo, COL_INFO,
                     val_to_str(msg_id, hdcp2_msg_id, "unknown (0x%x)"));
@@ -338,7 +338,7 @@ proto_register_hdcp2(void)
                 NULL, 0, NULL, HFILL } },
         { &hf_hdcp2_tx_loc_precompute,
             { "Locality Precompute", "hdcp2.txinf_cap", FT_BOOLEAN, 16,
-                NULL, 0x01, NULL, HFILL } },
+                NULL, 0x0001, NULL, HFILL } },
         { &hf_hdcp2_rx_length,
             { "LENGTH", "hdcp2.rxinf_len", FT_UINT16, BASE_DEC,
                 NULL, 0, NULL, HFILL } },
@@ -347,7 +347,7 @@ proto_register_hdcp2(void)
                 NULL, 0, NULL, HFILL } },
         { &hf_hdcp2_rx_loc_precompute,
             { "Locality Precompute", "hdcp2.rxinf_cap", FT_BOOLEAN, 16,
-                NULL, 0x01, NULL, HFILL } },
+                NULL, 0x0001, NULL, HFILL } },
 
 };
 
@@ -376,7 +376,7 @@ proto_register_hdcp2(void)
             "High bandwidth Digital Content Protection version 2",
             "HDCP2", "hdcp2");
 
-    hdcp2_module = prefs_register_protocol(proto_hdcp2, proto_reg_handoff_hdcp2);
+    hdcp2_module = prefs_register_protocol_obsolete(proto_hdcp2);
     prefs_register_obsolete_preference(hdcp2_module, "enable");
 
     proto_register_field_array(proto_hdcp2, hf, array_length(hf));

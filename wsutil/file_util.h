@@ -1,4 +1,4 @@
-/* file_util.h
+/** @file
  * File utility definitions
  *
  * Wireshark - Network traffic analyzer
@@ -11,30 +11,28 @@
 #ifndef __FILE_UTIL_H__
 #define __FILE_UTIL_H__
 
-#include "config.h"
+#include <glib.h>
 
 #include "ws_symbol_export.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-#include <glib.h>
 
 #ifdef _WIN32
 #include <io.h>		/* for _read(), _write(), etc. */
 #include <gmodule.h>
 #endif
 
-#ifdef HAVE_FCNTL_H
 #include <fcntl.h>	/* for open() */
-#endif
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>	/* for read(), write(), close(), etc. */
 #endif
 
 #include <sys/stat.h>	/* for stat() and struct stat */
+
+#include <stdio.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 /* We set a larger IO Buffer size for the capture files */
 #define IO_BUF_SIZE (64 * 1024)
@@ -57,8 +55,6 @@ extern "C" {
 #ifndef S_ISDIR
 #define S_ISDIR(mode)   (((mode) & S_IFMT) == S_IFDIR)
 #endif
-
-#include <stdio.h>
 
 #ifdef _WIN32
 
@@ -105,6 +101,10 @@ WS_DLL_PUBLIC FILE * ws_stdio_freopen (const gchar *filename, const gchar *mode,
  * These routines don't take pathnames, so they don't require
  * pathname-converting wrappers on Windows.
  */
+
+typedef unsigned int ws_file_size_t;
+typedef signed int ws_file_ssize_t;
+
 #define ws_read    _read
 #define ws_write   _write
 #define ws_close   _close
@@ -133,7 +133,7 @@ WS_DLL_PUBLIC FILE * ws_stdio_freopen (const gchar *filename, const gchar *mode,
  * @return TRUE if we were able to call SetDllDirectory, FALSE otherwise.
  */
 WS_DLL_PUBLIC
-gboolean ws_init_dll_search_path();
+gboolean ws_init_dll_search_path(void);
 
 /** Load a DLL using LoadLibrary.
  * Only the system and program directories are searched.
@@ -145,25 +145,27 @@ gboolean ws_init_dll_search_path();
 WS_DLL_PUBLIC
 void *ws_load_library(const gchar *library_name);
 
-/** Load a DLL using g_module_open.
+/** Load wpcap.dll using g_module_open.
  * Only the system and program directories are searched.
  *
- * @param module_name The name of the DLL.
- * @param flags Flags to be passed to g_module_open.
  * @return A handle to the DLL if found, NULL on failure.
  */
 WS_DLL_PUBLIC
-GModule *ws_module_open(gchar *module_name, GModuleFlags flags);
+GModule *load_wpcap_module(void);
 
 /** Create or open a "Wireshark is running" mutex.
  * Create or open a mutex which signals that Wireshark or its associated
  * executables is running. Used by the installer to test for a running application.
  */
-WS_DLL_PUBLIC void create_app_running_mutex();
+WS_DLL_PUBLIC void create_app_running_mutex(void);
 
 /** Close our "Wireshark is running" mutex.
  */
-WS_DLL_PUBLIC void close_app_running_mutex();
+WS_DLL_PUBLIC void close_app_running_mutex(void);
+
+/** Close a file descriptor if it is not open
+ */
+WS_DLL_PUBLIC int ws_close_if_possible(int fd);
 
 #else	/* _WIN32 */
 
@@ -182,6 +184,9 @@ WS_DLL_PUBLIC void close_app_running_mutex();
 #define ws_fopen		fopen
 #define ws_freopen		freopen
 
+typedef size_t ws_file_size_t;
+typedef ssize_t ws_file_ssize_t;
+
 #define ws_read    read
 #define ws_write   write
 #ifdef __cplusplus
@@ -192,6 +197,9 @@ WS_DLL_PUBLIC void close_app_running_mutex();
 #else
 #define ws_close   close
 #endif
+
+#define ws_close_if_possible ws_close
+
 #define ws_dup     dup
 #ifdef HAVE_FSEEKO
 #define ws_fseek64 fseeko	/* AC_SYS_LARGEFILE should make off_t 64-bit */

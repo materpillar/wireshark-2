@@ -22,6 +22,8 @@
 void proto_register_llrp(void);
 void proto_reg_handoff_llrp(void);
 
+static dissector_handle_t llrp_handle;
+
 #define LLRP_PORT 5084
 
 /* Initialize the protocol and registered fields */
@@ -936,9 +938,9 @@ static const value_string status_code[] = {
 static value_string_ext status_code_ext = VALUE_STRING_EXT_INIT(status_code);
 
 /* C1G2 tag inventory state aware singulation action */
-const true_false_string tfs_state_a_b = { "State B", "State A" };
-const true_false_string tfs_sl =        { "~SL",     "SL"      };
-const true_false_string tfs_all_no =    { "All",     "No"      };
+static const true_false_string tfs_state_a_b = { "State B", "State A" };
+static const true_false_string tfs_sl =        { "~SL",     "SL"      };
+static const true_false_string tfs_all_no =    { "All",     "No"      };
 
 /* Vendors */
 #define LLRP_VENDOR_IMPINJ 25882
@@ -2868,7 +2870,9 @@ dissect_llrp_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
     guint       offset = 0;
 
     /* Check that there's enough data */
-    DISSECTOR_ASSERT(tvb_reported_length(tvb) >= LLRP_HEADER_LENGTH);
+    if (tvb_reported_length(tvb) < LLRP_HEADER_LENGTH) {
+        return 0;
+    }
 
     /* Make entries in Protocol column and Info column on summary display */
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "LLRP");
@@ -3138,7 +3142,7 @@ proto_register_llrp(void)
           NULL, HFILL }},
 
         { &hf_llrp_hop_table_id,
-        { "Hop table ID", "llrp.param.hop_table_id", FT_UINT8, BASE_DEC, NULL, 0,
+        { "Hop table ID", "llrp.param.hop_table_id", FT_UINT16, BASE_DEC, NULL, 0,
           NULL, HFILL }},
 
         { &hf_llrp_rfu,
@@ -3850,7 +3854,7 @@ proto_register_llrp(void)
           NULL, HFILL }},
 
         { &hf_llrp_gpi_debounce,
-        { "GPI debounce timer Msec", "llrp.param.gpi_debounce", FT_UINT16, BASE_DEC, NULL, 0,
+        { "GPI debounce timer Msec", "llrp.param.gpi_debounce", FT_UINT32, BASE_DEC, NULL, 0,
           NULL, HFILL }},
 
         { &hf_llrp_temperature,
@@ -4000,14 +4004,13 @@ proto_register_llrp(void)
     proto_register_subtree_array(ett, array_length(ett));
     expert_llrp = expert_register_protocol(proto_llrp);
     expert_register_field_array(expert_llrp, ei, array_length(ei));
+
+    llrp_handle = register_dissector("llrp", dissect_llrp, proto_llrp);
 }
 
 void
 proto_reg_handoff_llrp(void)
 {
-    dissector_handle_t llrp_handle;
-
-    llrp_handle = create_dissector_handle(dissect_llrp, proto_llrp);
     dissector_add_uint_with_preference("tcp.port", LLRP_PORT, llrp_handle);
 }
 

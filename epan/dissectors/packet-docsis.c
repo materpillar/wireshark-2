@@ -44,7 +44,6 @@
 #include <epan/prefs.h>
 #include <epan/reassemble.h>
 #include <epan/addr_resolv.h>
-#include <wiretap/wtap.h>
 #include <epan/exceptions.h>
 #include <epan/crc16-tvb.h>
 #include <epan/crc32-tvb.h>
@@ -667,7 +666,7 @@ dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* da
       else if (fcparm == FCPARM_FRAG_HDR)
         col_set_str (pinfo->cinfo, COL_INFO, "Fragmented Frame");
       else
-        col_set_str (pinfo->cinfo, COL_INFO, "Mac Specific");
+        col_set_str (pinfo->cinfo, COL_INFO, "MAC Specific");
       break;
   }  /* switch fctype */
 
@@ -771,7 +770,7 @@ dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* da
           fcs_correct = dissect_hcs_field (tvb, pinfo, docsis_tree, hdrlen);
           if (fcs_correct)
           {
-            /* Don't do anything for a Request Frame, there is no data following it*/
+            /* Don't do anything for a Request Frame, there is no data following it */
           }
           break;
         }
@@ -794,7 +793,7 @@ dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* da
             /* Only defragment valid frames with a good FCS */
             if (sent_fcs == fcs)
             {
-              fragment_item *frag_msg = NULL;
+              fragment_head *frag_msg = NULL;
               frag_msg = fragment_add_seq_check(&docsis_reassembly_table,
                                                 tvb, hdrlen, pinfo,
                                                 frag_sid, NULL, /* ID for fragments belonging together */
@@ -888,7 +887,7 @@ dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* da
       } /* switch fcparm */
       break;
     }
-  } /* switch fctype*/
+  } /* switch fctype */
 
   return tvb_captured_length(tvb);
 }
@@ -919,9 +918,9 @@ proto_register_docsis (void)
       "Extended Header Presence", HFILL}
     },
     {&hf_docsis_macparm,
-     {"MacParm", "docsis.macparm",
+     {"MACParm", "docsis.macparm",
       FT_UINT8, BASE_HEX, NULL, 0x0,
-      "Mac Parameter Field", HFILL}
+      "MAC Parameter Field", HFILL}
     },
     {&hf_docsis_concat_cnt,
      {"Number of Concatenated Frames", "docsis.concat_cnt",
@@ -995,7 +994,7 @@ proto_register_docsis (void)
     },
     {&hf_docsis_requested_size,
      {"Requested bytes in units of N bytes, N a parameter of the service flow for which this request is being made", "docsis.ehdr.reqsize",
-      FT_UINT16, BASE_DEC, NULL, 0xFFFF,
+      FT_UINT16, BASE_DEC, NULL, 0x0,
       NULL, HFILL}
     },
     {&hf_docsis_key_seq,

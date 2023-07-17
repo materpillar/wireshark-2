@@ -285,7 +285,7 @@ static void cb_byte_array_postprocess(packet_info *pinfo, proto_tree *tree _U_,
 	if ((end_offset - start_offset) <= 12)
 		return;
 
-	s = tvb_bytes_to_str(wmem_packet_scope(), tvb, start_offset + 12, (end_offset - start_offset - 12) );
+	s = tvb_bytes_to_str(pinfo->pool, tvb, start_offset + 12, (end_offset - start_offset - 12) );
 
 	/* Append string to COL_INFO */
 
@@ -775,7 +775,7 @@ void dcerpc_store_polhnd_name(e_ctx_hnd *policy_hnd, packet_info *pinfo,
 		if (pol->name && name) {
 #ifdef DEBUG_HASH_COLL
 			if (strcmp(pol->name, name) != 0)
-				g_warning("dcerpc_smb: pol_hash name collision %s/%s\n", value->name, name);
+				ws_warning("dcerpc_smb: pol_hash name collision %s/%s\n", value->name, name);
 #endif
 			/* pol->name is wmem_file_scope() allocated, don't free it now */
 		}
@@ -1088,7 +1088,7 @@ PIDL_dissect_policy_hnd(tvbuff_t *tvb, gint offset, packet_info *pinfo,
 		if(!pol_name){
 			pol_name="<...>";
 		}
-		pol_string=wmem_strdup_printf(wmem_packet_scope(), "%s(%s)", di->dcerpc_procedure_name, pol_name);
+		pol_string=wmem_strdup_printf(pinfo->pool, "%s(%s)", di->dcerpc_procedure_name, pol_name);
 		dcerpc_store_polhnd_name(&policy_hnd, pinfo, pol_string);
 		dcerpc_store_polhnd_type(&policy_hnd, pinfo, param&PIDL_POLHND_TYPE_MASK);
 	}
@@ -1259,7 +1259,7 @@ void cb_wstr_postprocess(packet_info *pinfo, proto_tree *tree _U_,
 	 * some way we can get that string, rather than duplicating the
 	 * efforts of that routine?
 	 */
-	s = tvb_get_string_enc(wmem_packet_scope(),
+	s = tvb_get_string_enc(pinfo->pool,
 		tvb, start_offset + 12, end_offset - start_offset - 12,
 		ENC_UTF_16|ENC_LITTLE_ENDIAN);
 
@@ -1292,7 +1292,7 @@ void cb_str_postprocess(packet_info *pinfo, proto_tree *tree _U_,
 	 * some way we can get that string, rather than duplicating the
 	 * efforts of that routine?
 	 */
-	s = tvb_get_string_enc(wmem_packet_scope(),
+	s = tvb_get_string_enc(pinfo->pool,
 		tvb, start_offset + 12, (end_offset - start_offset - 12), ENC_ASCII);
 
 	cb_str_postprocess_options(pinfo, item, di, options, s);
@@ -1829,57 +1829,57 @@ void dcerpc_smb_init(int proto_dcerpc)
 
 		{ &hf_nt_acb_disabled,
 		  { "Account disabled", "dcerpc.nt.acb.disabled", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_disabled), 0x0001,
+		    TFS(&tfs_nt_acb_disabled), 0x00000001,
 		    "If this account is enabled or disabled", HFILL }},
 
 		{ &hf_nt_acb_homedirreq,
 		  { "Home dir required", "dcerpc.nt.acb.homedirreq", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_homedirreq), 0x0002,
+		    TFS(&tfs_nt_acb_homedirreq), 0x00000002,
 		    "Is homedirs required for this account?", HFILL }},
 
 		{ &hf_nt_acb_pwnotreq,
 		  { "Password required", "dcerpc.nt.acb.pwnotreq", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_pwnotreq), 0x0004,
+		    TFS(&tfs_nt_acb_pwnotreq), 0x00000004,
 		    "If a password is required for this account?", HFILL }},
 
 		{ &hf_nt_acb_tempdup,
 		  { "Temporary duplicate account", "dcerpc.nt.acb.tempdup", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_tempdup), 0x0008,
+		    TFS(&tfs_nt_acb_tempdup), 0x00000008,
 		    "If this is a temporary duplicate account", HFILL }},
 
 		{ &hf_nt_acb_normal,
 		  { "Normal user account", "dcerpc.nt.acb.normal", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_normal), 0x0010,
+		    TFS(&tfs_nt_acb_normal), 0x00000010,
 		    "If this is a normal user account", HFILL }},
 
 		{ &hf_nt_acb_mns,
 		  { "MNS logon user account", "dcerpc.nt.acb.mns", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_mns), 0x0020,
+		    TFS(&tfs_nt_acb_mns), 0x00000020,
 		    NULL, HFILL }},
 
 		{ &hf_nt_acb_domtrust,
 		  { "Interdomain trust account", "dcerpc.nt.acb.domtrust", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_domtrust), 0x0040,
+		    TFS(&tfs_nt_acb_domtrust), 0x00000040,
 		    NULL, HFILL }},
 
 		{ &hf_nt_acb_wstrust,
 		  { "Workstation trust account", "dcerpc.nt.acb.wstrust", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_wstrust), 0x0080,
+		    TFS(&tfs_nt_acb_wstrust), 0x00000080,
 		    NULL, HFILL }},
 
 		{ &hf_nt_acb_svrtrust,
 		  { "Server trust account", "dcerpc.nt.acb.svrtrust", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_svrtrust), 0x0100,
+		    TFS(&tfs_nt_acb_svrtrust), 0x00000100,
 		    NULL, HFILL }},
 
 		{ &hf_nt_acb_pwnoexp,
 		  { "Password expires", "dcerpc.nt.acb.pwnoexp", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_pwnoexp), 0x0200,
+		    TFS(&tfs_nt_acb_pwnoexp), 0x00000200,
 		    "If this account expires or not", HFILL }},
 
 		{ &hf_nt_acb_autolock,
 		  { "Account is autolocked", "dcerpc.nt.acb.autolock", FT_BOOLEAN, 32,
-		    TFS(&tfs_nt_acb_autolock), 0x0400,
+		    TFS(&tfs_nt_acb_autolock), 0x00000400,
 		    "If this account has been autolocked", HFILL }},
 
 		{ &hf_nt_error,

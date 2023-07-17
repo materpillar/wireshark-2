@@ -24,6 +24,8 @@ void proto_reg_handoff_nv(void);
 /* Define the nv proto */
 int proto_nv  = -1;
 
+static dissector_handle_t nv_handle;
+
 static int ett_nv = -1;
 static int ett_nv_header = -1;
 static int ett_nv_var = -1;
@@ -47,7 +49,7 @@ static void NvSummaryFormater(tvbuff_t *tvb, gint offset, char *szText, int nMax
 {
    guint32 nvOffset = offset;
 
-   g_snprintf ( szText, nMax, "Network Vars from %d.%d.%d.%d.%d.%d - %d Var(s)",
+   snprintf ( szText, nMax, "Network Vars from %d.%d.%d.%d.%d.%d - %d Var(s)",
       tvb_get_guint8(tvb, nvOffset),
       tvb_get_guint8(tvb, nvOffset+1),
       tvb_get_guint8(tvb, nvOffset+2),
@@ -61,7 +63,7 @@ static void NvPublisherFormater(tvbuff_t *tvb, gint offset, char *szText, int nM
 {
    guint32 nvOffset = offset;
 
-   g_snprintf ( szText, nMax, "Publisher %d.%d.%d.%d.%d.%d",
+   snprintf ( szText, nMax, "Publisher %d.%d.%d.%d.%d.%d",
       tvb_get_guint8(tvb, nvOffset),
       tvb_get_guint8(tvb, nvOffset+1),
       tvb_get_guint8(tvb, nvOffset+2),
@@ -72,7 +74,7 @@ static void NvPublisherFormater(tvbuff_t *tvb, gint offset, char *szText, int nM
 
 static void NvVarHeaderFormater(tvbuff_t *tvb, gint offset, char *szText, int nMax)
 {
-   g_snprintf ( szText, nMax, "Variable - Id = %d, Length = %d",
+   snprintf ( szText, nMax, "Variable - Id = %d, Length = %d",
       tvb_get_letohs(tvb, offset),
       tvb_get_letohs(tvb, offset+4));
 }
@@ -217,13 +219,11 @@ void proto_register_nv(void)
                                       "TC-NV","tc_nv");
    proto_register_field_array(proto_nv,hf,array_length(hf));
    proto_register_subtree_array(ett,array_length(ett));
+   nv_handle = register_dissector("tc_nv", dissect_nv, proto_nv);
 }
 
 void proto_reg_handoff_nv(void)
 {
-   dissector_handle_t nv_handle;
-
-   nv_handle = create_dissector_handle(dissect_nv, proto_nv);
    dissector_add_uint("ecatf.type", 4, nv_handle);
 }
 

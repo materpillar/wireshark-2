@@ -23,6 +23,8 @@
 #include <epan/exceptions.h>
 #include <epan/expert.h>
 #include <epan/proto_data.h>
+#include <wsutil/crc32.h> // CRC32C_PRELOAD
+#include <epan/crc32-tvb.h> // crc32c_tvb_offset_calculate
 #include "packet-tcp.h"
 #include "packet-tls.h"
 #ifdef HAVE_SNAPPY
@@ -96,11 +98,13 @@ static const value_string section_kind_vals[] = {
 #define MONGO_COMPRESSOR_NOOP    0
 #define MONGO_COMPRESSOR_SNAPPY  1
 #define MONGO_COMPRESSOR_ZLIB    2
+#define MONGO_COMPRESSOR_ZSTD    3
 
 static const value_string compressor_vals[] = {
   { MONGO_COMPRESSOR_NOOP,   "Noop (Uncompressed)" },
   { MONGO_COMPRESSOR_SNAPPY, "Snappy" },
   { MONGO_COMPRESSOR_ZLIB,   "Zlib" },
+  { MONGO_COMPRESSOR_ZSTD,   "Zstd" },
   { 0,  NULL }
 };
 
@@ -124,6 +128,7 @@ static const value_string compressor_vals[] = {
 #define BSON_ELEMENT_TYPE_INT32         16  /* 0x10 */
 #define BSON_ELEMENT_TYPE_TIMESTAMP     17  /* 0x11 */
 #define BSON_ELEMENT_TYPE_INT64         18  /* 0x12 */
+#define BSON_ELEMENT_TYPE_DECIMAL128    19  /* 0x13 */
 #define BSON_ELEMENT_TYPE_MIN_KEY      255  /* 0xFF */
 #define BSON_ELEMENT_TYPE_MAX_KEY      127  /* 0x7F */
 
@@ -146,6 +151,7 @@ static const value_string element_type_vals[] = {
   { BSON_ELEMENT_TYPE_INT32,          "Int32" },
   { BSON_ELEMENT_TYPE_TIMESTAMP,      "Timestamp" },
   { BSON_ELEMENT_TYPE_INT64,          "Int64" },
+  { BSON_ELEMENT_TYPE_DECIMAL128,     "128-bit decimal floating point" },
   { BSON_ELEMENT_TYPE_MIN_KEY,        "Min Key" },
   { BSON_ELEMENT_TYPE_MAX_KEY,        "Max Key" },
   { 0, NULL }
@@ -221,6 +227,7 @@ static int hf_mongo_element_length = -1;
 static int hf_mongo_element_value_boolean = -1;
 static int hf_mongo_element_value_int32 = -1;
 static int hf_mongo_element_value_int64 = -1;
+static int hf_mongo_element_value_decimal128 = -1;
 static int hf_mongo_element_value_double = -1;
 static int hf_mongo_element_value_string = -1;
 static int hf_mongo_element_value_string_length = -1;
@@ -260,6 +267,8 @@ static int hf_mongo_msg_sections_section_body = -1;
 static int hf_mongo_msg_sections_section_doc_sequence = -1;
 static int hf_mongo_msg_sections_section_size = -1;
 static int hf_mongo_msg_sections_section_doc_sequence_id = -1;
+static int hf_mongo_msg_checksum = -1;
+static int hf_mongo_msg_checksum_status = -1;
 
 static gint ett_mongo = -1;
 static gint ett_mongo_doc = -1;
@@ -281,6 +290,7 @@ static expert_field ei_mongo_document_length_bad = EI_INIT;
 static expert_field ei_mongo_unknown = EI_INIT;
 static expert_field ei_mongo_unsupported_compression = EI_INIT;
 static expert_field ei_mongo_too_large_compressed = EI_INIT;
+static expert_field ei_mongo_msg_checksum = EI_INIT;
 
 static int
 dissect_fullcollectionname(tvbuff_t *tvb, guint offset, proto_tree *tree)
@@ -290,16 +300,16 @@ dissect_fullcollectionname(tvbuff_t *tvb, guint offset, proto_tree *tree)
   proto_tree *fcn_tree;
 
   fcn_length = tvb_strsize(tvb, offset);
-  ti = proto_tree_add_item(tree, hf_mongo_fullcollectionname, tvb, offset, fcn_length, ENC_ASCII|ENC_NA);
+  ti = proto_tree_add_item(tree, hf_mongo_fullcollectionname, tvb, offset, fcn_length, ENC_ASCII);
 
   /* If this doesn't find anything, we'll just throw an exception below */
   dbn_length = tvb_find_guint8(tvb, offset, fcn_length, '.') - offset;
 
   fcn_tree = proto_item_add_subtree(ti, ett_mongo_fcn);
 
-  proto_tree_add_item(fcn_tree, hf_mongo_database_name, tvb, offset, dbn_length, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(fcn_tree, hf_mongo_database_name, tvb, offset, dbn_length, ENC_ASCII);
 
-  proto_tree_add_item(fcn_tree, hf_mongo_collection_name, tvb, offset + 1 + dbn_length, fcn_length - dbn_length - 2, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(fcn_tree, hf_mongo_collection_name, tvb, offset + 1 + dbn_length, fcn_length - dbn_length - 2, ENC_ASCII);
 
   return fcn_length;
 }
@@ -323,14 +333,6 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
 
   proto_tree_add_item(doc_tree, hf_mongo_document_length, tvb, offset, 4, ENC_LITTLE_ENDIAN);
 
-  unsigned nest_level = p_get_proto_depth(pinfo, proto_mongo);
-  if (++nest_level > BSON_MAX_NESTING) {
-      expert_add_info_format(pinfo, ti, &ei_mongo_document_recursion_exceeded, "BSON document recursion exceeds %u", BSON_MAX_NESTING);
-      /* return the number of bytes we consumed, these are at least the 4 bytes for the length field */
-      return MAX(4, document_length);
-  }
-  p_set_proto_depth(pinfo, proto_mongo, nest_level);
-
   if (document_length < 5) {
       expert_add_info_format(pinfo, ti, &ei_mongo_document_length_bad, "BSON document length too short: %u", document_length);
       return MAX(4, document_length); /* see the comment above */
@@ -348,6 +350,14 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
     return document_length;
   }
 
+  unsigned nest_level = p_get_proto_depth(pinfo, proto_mongo);
+  if (++nest_level > BSON_MAX_NESTING) {
+      expert_add_info_format(pinfo, ti, &ei_mongo_document_recursion_exceeded, "BSON document recursion exceeds %u", BSON_MAX_NESTING);
+      /* return the number of bytes we consumed, these are at least the 4 bytes for the length field */
+      return MAX(4, document_length);
+  }
+  p_set_proto_depth(pinfo, proto_mongo, nest_level);
+
   final_offset = offset + document_length;
   offset += 4;
 
@@ -362,9 +372,9 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
     gint doc_len = -1;   /* Document length */
 
     e_type = tvb_get_guint8(tvb, offset);
-    tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset+1, &str_len, ENC_ASCII);
+    tvb_get_stringz_enc(pinfo->pool, tvb, offset+1, &str_len, ENC_ASCII);
 
-    element = proto_tree_add_item(elements_tree, hf_mongo_element_name, tvb, offset+1, str_len-1, ENC_UTF_8|ENC_NA);
+    element = proto_tree_add_item(elements_tree, hf_mongo_element_name, tvb, offset+1, str_len-1, ENC_UTF_8);
     element_sub_tree = proto_item_add_subtree(element, ett_mongo_element);
     proto_tree_add_item(element_sub_tree, hf_mongo_element_type, tvb, offset, 1, ENC_LITTLE_ENDIAN);
 
@@ -380,7 +390,7 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
       case BSON_ELEMENT_TYPE_SYMBOL:
         str_len = tvb_get_letohl(tvb, offset);
         proto_tree_add_item(element_sub_tree, hf_mongo_element_value_string_length, tvb, offset, 4, ENC_LITTLE_ENDIAN);
-        proto_tree_add_item(element_sub_tree, hf_mongo_element_value_string, tvb, offset+4, str_len, ENC_UTF_8|ENC_NA);
+        proto_tree_add_item(element_sub_tree, hf_mongo_element_value_string, tvb, offset+4, str_len, ENC_UTF_8);
         offset += str_len+4;
         break;
       case BSON_ELEMENT_TYPE_DOC:
@@ -420,18 +430,18 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
         break;
       case BSON_ELEMENT_TYPE_REGEX:
         /* regex pattern */
-        tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &str_len, ENC_ASCII);
-        proto_tree_add_item(element_sub_tree, hf_mongo_element_value_regex_pattern, tvb, offset, str_len, ENC_UTF_8|ENC_NA);
+        tvb_get_stringz_enc(pinfo->pool, tvb, offset, &str_len, ENC_ASCII);
+        proto_tree_add_item(element_sub_tree, hf_mongo_element_value_regex_pattern, tvb, offset, str_len, ENC_UTF_8);
         offset += str_len;
         /* regex options */
-        tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &str_len, ENC_ASCII);
-        proto_tree_add_item(element_sub_tree, hf_mongo_element_value_regex_options, tvb, offset, str_len, ENC_UTF_8|ENC_NA);
+        tvb_get_stringz_enc(pinfo->pool, tvb, offset, &str_len, ENC_ASCII);
+        proto_tree_add_item(element_sub_tree, hf_mongo_element_value_regex_options, tvb, offset, str_len, ENC_UTF_8);
         offset += str_len;
         break;
       case BSON_ELEMENT_TYPE_DB_PTR:
         str_len = tvb_get_letohl(tvb, offset);
         proto_tree_add_item(element_sub_tree, hf_mongo_element_value_string_length, tvb, offset, 4, ENC_LITTLE_ENDIAN);
-        proto_tree_add_item(element_sub_tree, hf_mongo_element_value_string, tvb, offset+4, str_len, ENC_UTF_8|ENC_NA);
+        proto_tree_add_item(element_sub_tree, hf_mongo_element_value_string, tvb, offset+4, str_len, ENC_UTF_8);
         offset += str_len;
         proto_tree_add_item(element_sub_tree, hf_mongo_element_value_db_ptr, tvb, offset, 12, ENC_NA);
         offset += 12;
@@ -445,7 +455,7 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
         js_code = proto_tree_add_item(element_sub_tree, hf_mongo_element_value_js_code, tvb, offset, str_len+4, ENC_NA);
         js_code_sub_tree = proto_item_add_subtree(js_code, ett_mongo_code);
         proto_tree_add_item(js_code_sub_tree, hf_mongo_element_value_string_length, tvb, offset, 4, ENC_LITTLE_ENDIAN);
-        proto_tree_add_item(js_code_sub_tree, hf_mongo_element_value_string, tvb, offset+4, str_len, ENC_UTF_8|ENC_NA);
+        proto_tree_add_item(js_code_sub_tree, hf_mongo_element_value_string, tvb, offset+4, str_len, ENC_UTF_8);
         offset += str_len+4;
         doc_len = e_len - (str_len + 8);
         js_scope = proto_tree_add_item(element_sub_tree, hf_mongo_element_value_js_scope, tvb, offset, doc_len, ENC_NA);
@@ -464,10 +474,20 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
         proto_tree_add_item(element_sub_tree, hf_mongo_element_value_int64, tvb, offset, 8, ENC_LITTLE_ENDIAN);
         offset += 8;
         break;
+      case BSON_ELEMENT_TYPE_DECIMAL128:
+        /* TODO Implement routine to convert to decimal128 for now, simply display bytes */
+        /* https://github.com/mongodb/specifications/blob/master/source/bson-decimal128/decimal128.rst */
+        proto_tree_add_item(element_sub_tree, hf_mongo_element_value_decimal128, tvb, offset, 16, ENC_NA);
+        offset += 16;
+        break;
       default:
         break;
     }  /* end switch() */
   } while (offset < final_offset-1);
+
+  // Restore depth.
+  nest_level--;
+  p_set_proto_depth(pinfo, proto_mongo, nest_level);
 
   return document_length;
 }
@@ -507,7 +527,7 @@ dissect_mongo_reply(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tree 
 static int
 dissect_mongo_msg(tvbuff_t *tvb, guint offset, proto_tree *tree)
 {
-  proto_tree_add_item(tree, hf_mongo_message, tvb, offset, -1, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(tree, hf_mongo_message, tvb, offset, -1, ENC_ASCII);
   offset += tvb_strsize(tvb, offset);
 
   return offset;
@@ -652,11 +672,11 @@ dissect_mongo_op_command(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_
   gint32 db_length, cmd_length;
 
   db_length = tvb_strsize(tvb, offset);
-  proto_tree_add_item(tree, hf_mongo_database, tvb, offset, db_length, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(tree, hf_mongo_database, tvb, offset, db_length, ENC_ASCII);
   offset += db_length;
 
   cmd_length = tvb_strsize(tvb, offset);
-  proto_tree_add_item(tree, hf_mongo_commandname, tvb, offset, cmd_length, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(tree, hf_mongo_commandname, tvb, offset, cmd_length, ENC_ASCII);
   offset += cmd_length;
 
   offset += dissect_bson_document(tvb, pinfo, offset, tree, hf_mongo_metadata);
@@ -748,6 +768,22 @@ dissect_mongo_op_compressed(tvbuff_t *tvb, packet_info *pinfo, guint offset, pro
   } break;
 #endif
 
+#ifdef HAVE_ZSTD
+  case MONGO_COMPRESSOR_ZSTD:
+  {
+    tvbuff_t *uncompressed_tvb = tvb_child_uncompress_zstd (tvb, tvb, offset, tvb_captured_length_remaining (tvb, offset));
+    if (!uncompressed_tvb) {
+      expert_add_info_format(pinfo, ti, &ei_mongo_unsupported_compression, "Error uncompressing zstd data");
+    } else {
+      add_new_data_source(pinfo, uncompressed_tvb, "Decompressed Data");
+      dissect_opcode_types(uncompressed_tvb, pinfo, 0, tree, opcode, effective_opcode);
+    }
+
+    offset = tvb_reported_length(tvb);
+  }
+  break;
+#endif
+
   case MONGO_COMPRESSOR_ZLIB: {
     tvbuff_t* compressed_tvb = NULL;
 
@@ -806,7 +842,7 @@ dissect_op_msg_section(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tr
       to_read -= 4;
 
       dsi_length = tvb_strsize(tvb, offset);
-      proto_tree_add_item(section_tree, hf_mongo_msg_sections_section_doc_sequence_id, tvb, offset, dsi_length, ENC_ASCII|ENC_NA);
+      proto_tree_add_item(section_tree, hf_mongo_msg_sections_section_doc_sequence_id, tvb, offset, dsi_length, ENC_ASCII);
       offset += dsi_length;
       to_read -= dsi_length;
 
@@ -836,12 +872,24 @@ dissect_mongo_op_msg(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tree
     &hf_mongo_msg_flags_exhaustallowed,
     NULL
   };
+  gint64 op_msg_flags;
+  bool checksum_present = false;
 
-  proto_tree_add_bitmask(tree, tvb, offset, hf_mongo_msg_flags, ett_mongo_msg_flags, mongo_msg_flags, ENC_LITTLE_ENDIAN);
+  proto_tree_add_bitmask_ret_uint64 (tree, tvb, offset, hf_mongo_msg_flags, ett_mongo_msg_flags, mongo_msg_flags, ENC_LITTLE_ENDIAN, &op_msg_flags);
+  if (op_msg_flags & 0x00000001) {
+    checksum_present = true;
+  }
+
   offset += 4;
 
-  while (tvb_reported_length_remaining(tvb, offset) > 0){
+  while (tvb_reported_length_remaining(tvb, offset) > (checksum_present ? 4 : 0)){
     offset += dissect_op_msg_section(tvb, pinfo, offset, tree);
+  }
+
+  if (checksum_present) {
+    guint32 calculated_checksum = ~crc32c_tvb_offset_calculate (tvb, 0, tvb_reported_length (tvb) - 4, CRC32C_PRELOAD);
+    proto_tree_add_checksum(tree, tvb, offset, hf_mongo_msg_checksum, hf_mongo_msg_checksum_status, &ei_mongo_msg_checksum, pinfo, calculated_checksum, ENC_BIG_ENDIAN, PROTO_CHECKSUM_VERIFY);
+    offset += 4;
   }
 
   return offset;
@@ -1268,6 +1316,16 @@ proto_register_mongo(void)
       FT_STRING, BASE_NONE, NULL, 0x0,
       "Document sequence identifier", HFILL }
     },
+    { &hf_mongo_msg_checksum,
+      { "Checksum", "mongo.msg.checksum",
+      FT_UINT32, BASE_HEX, NULL, 0x0,
+      "CRC32C checksum.", HFILL }
+    },
+    { &hf_mongo_msg_checksum_status,
+      { "Checksum Status", "mongo.msg.checksum.status",
+      FT_UINT8, BASE_NONE, VALS(proto_checksum_vals), 0x0,
+      NULL, HFILL }
+    },
     { &hf_mongo_number_of_cursor_ids,
       { "Number of Cursor IDS", "mongo.number_to_cursor_ids",
       FT_INT32, BASE_DEC, NULL, 0x0,
@@ -1306,6 +1364,11 @@ proto_register_mongo(void)
     { &hf_mongo_element_value_int64,
       { "Value", "mongo.element.value.int64",
       FT_INT64, BASE_DEC, NULL, 0x0,
+      "Element Value", HFILL }
+    },
+    { &hf_mongo_element_value_decimal128,
+      { "Value", "mongo.element.value.decimal128",
+      FT_BYTES, BASE_NONE, NULL, 0x0,
       "Element Value", HFILL }
     },
     { &hf_mongo_element_value_double,
@@ -1448,6 +1511,7 @@ proto_register_mongo(void)
      { &ei_mongo_unknown, { "mongo.unknown.expert", PI_UNDECODED, PI_WARN, "Unknown Data (not interpreted)", EXPFILL }},
      { &ei_mongo_unsupported_compression, { "mongo.unsupported_compression.expert", PI_UNDECODED, PI_WARN, "This packet was compressed with an unsupported compressor", EXPFILL }},
      { &ei_mongo_too_large_compressed, { "mongo.too_large_compressed.expert", PI_UNDECODED, PI_WARN, "The size of the uncompressed packet exceeded the maximum allowed value", EXPFILL }},
+     { &ei_mongo_msg_checksum, { "mongo.bad_checksum.expert", PI_UNDECODED, PI_ERROR, "Bad checksum", EXPFILL }},
   };
 
   proto_mongo = proto_register_protocol("Mongo Wire Protocol", "MONGO", "mongo");

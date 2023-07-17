@@ -248,7 +248,7 @@ static const value_string cr_formats_ipluss[] = {
 };
 
 /* CRC24 table - FCS */
-guint32 tbl_crc24[256] = {
+static guint32 tbl_crc24[256] = {
 	0x00000000, 0x00d6a776, 0x00f64557, 0x0020e221, 0x00b78115, 0x00612663, 0x0041c442, 0x00976334,
 	0x00340991, 0x00e2aee7, 0x00c24cc6, 0x0014ebb0, 0x00838884, 0x00552ff2, 0x0075cdd3, 0x00a36aa5,
 	0x00681322, 0x00beb454, 0x009e5675, 0x0048f103, 0x00df9237, 0x00093541, 0x0029d760, 0x00ff7016,
@@ -401,13 +401,13 @@ llc_gprs_dissect_xid(tvbuff_t *tvb, packet_info *pinfo, proto_item *llcgprs_tree
 				}
 				uinfo_tree = proto_tree_add_subtree_format(xid_tree, tvb, location, item_len,
 					ett_llcgprs_ui, NULL, "XID Parameter Type: %s - Value: %u",
-					val_to_str_ext_const(tmp, &xid_param_type_str_ext, "Reserved Type:%X"), value);
+					val_to_str_ext(tmp, &xid_param_type_str_ext, "Reserved Type:%X"), value);
 			}
 			else
 			{
 				uinfo_tree = proto_tree_add_subtree_format(xid_tree, tvb, location, item_len,
 					ett_llcgprs_ui, NULL, "XID Parameter Type: %s",
-					val_to_str_ext_const(tmp, &xid_param_type_str_ext, "Reserved Type:%X"));
+					val_to_str_ext(tmp, &xid_param_type_str_ext, "Reserved Type:%X"));
 			}
 			proto_tree_add_uint(uinfo_tree, hf_llcgprs_xid_xl, tvb, location,
 				1, byte1);
@@ -505,7 +505,7 @@ dissect_llcgprs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data 
 
 	sapi = addr_fld & 0xF;
 
-	col_add_fstr(pinfo->cinfo, COL_INFO, "SAPI: %s", val_to_str_ext_const(sapi, &sapi_abrv_ext, "Unknown (%d)"));
+	col_add_fstr(pinfo->cinfo, COL_INFO, "SAPI: %s", val_to_str_ext(sapi, &sapi_abrv_ext, "Unknown (%u)"));
 
 	/* In the interest of speed, if "tree" is NULL, don't do any work not
 		necessary to generate protocol tree items. */
@@ -513,13 +513,13 @@ dissect_llcgprs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data 
 	{
 		ti = proto_tree_add_protocol_format(tree, proto_llcgprs, tvb, 0, -1,
 						    "MS-SGSN LLC (Mobile Station - Serving GPRS Support Node Logical Link Control)  SAPI: %s",
-						    val_to_str_ext_const(sapi, &sapi_t_ext, "Unknown (%u)"));
+						    val_to_str_ext(sapi, &sapi_t_ext, "Unknown (%u)"));
 
 		llcgprs_tree = proto_item_add_subtree(ti, ett_llcgprs);
 
 		/* add an item to the subtree, see section 1.6 for more information */
 		addres_field_item = proto_tree_add_uint_format(llcgprs_tree, hf_llcgprs_sapi,
-		     tvb, 0, 1, sapi, "Address field  SAPI: %s", val_to_str_ext_const(sapi, &sapi_abrv_ext, "Unknown (%d)"));
+		     tvb, 0, 1, sapi, "Address field  SAPI: %s", val_to_str_ext(sapi, &sapi_abrv_ext, "Unknown (%u)"));
 
 		ad_f_tree = proto_item_add_subtree(addres_field_item, ett_llcgprs_adf);
 		proto_tree_add_boolean(ad_f_tree, hf_llcgprs_pd, tvb, 0, 1, addr_fld );
@@ -1167,7 +1167,7 @@ proto_register_llcgprs(void)
 
 		{ &hf_llcgprs_As,
 		  { "Ackn request bit", "llcgprs.as", FT_BOOLEAN, 16,
-		    TFS(&a_bit), 0x2000 , "Acknowledgement request bit A", HFILL }},
+		    TFS(&a_bit), 0x2000, "Acknowledgement request bit A", HFILL }},
 
 		{ &hf_llcgprs_PF,
 		  { "P/F bit", "llcgprs.pf", FT_BOOLEAN, 8,

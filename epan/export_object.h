@@ -1,4 +1,4 @@
-/* export_object.h
+/** @file
  * GUI independent helper routines common to all export object taps.
  *
  * Wireshark - Network traffic analyzer
@@ -12,7 +12,7 @@
 #define __EXPORT_OBJECT_H__
 
 #include "tap.h"
-#include "wmem/wmem.h"
+#include <epan/wmem_scopes.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,15 +23,7 @@ typedef struct _export_object_entry_t {
     gchar *hostname;
     gchar *content_type;
     gchar *filename;
-    /* We need to store a 64 bit integer to hold a file length
-      (was guint payload_len;)
-
-      XXX - we store the entire object in the program's address space,
-      so the *real* maximum object size is size_t; if we were to export
-      objects by going through all of the packets containing data from
-      the object, one packet at a time, and write the object incrementally,
-      we could support objects that don't fit into the address space. */
-    gint64 payload_len;
+    size_t payload_len;
     guint8 *payload_data;
 } export_object_entry_t;
 
@@ -98,9 +90,9 @@ WS_DLL_PUBLIC tap_packet_cb get_eo_packet_func(register_eo_t* eo);
  */
 WS_DLL_PUBLIC export_object_gui_reset_cb get_eo_reset_func(register_eo_t* eo);
 
-/** Get Export Object by its short protocol name
+/** Get Export Object by its protocol filter name
  *
- * @param name short protocol name to fetch.
+ * @param name protocol filter name to fetch.
  * @return Export Object handler pointer or NULL.
  */
 WS_DLL_PUBLIC register_eo_t* get_eo_by_name(const char* name);

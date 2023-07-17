@@ -16,6 +16,8 @@
 void proto_register_cpha(void);
 void proto_reg_handoff_cpha(void);
 
+static dissector_handle_t cpha_handle;
+
 static int proto_cphap = -1;
 
 static int hf_magic_number = -1;
@@ -273,8 +275,7 @@ dissect_cpha(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
   if (tree) {
     ti = proto_tree_add_item(tree, proto_cphap, tvb, offset, -1, ENC_NA);
     cpha_tree = proto_item_add_subtree(ti, ett_cphap);
-  }
-  if (tree) {
+
     proto_tree_add_item(cpha_tree, hf_magic_number, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
 
@@ -513,14 +514,13 @@ proto_register_cpha(void)
   proto_cphap = proto_register_protocol("Check Point High Availability Protocol", "CPHA", "cpha");
   proto_register_field_array(proto_cphap, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
+
+  cpha_handle = register_dissector("cpha", dissect_cpha, proto_cphap);
 }
 
 void
 proto_reg_handoff_cpha(void)
 {
-  dissector_handle_t cpha_handle;
-
-  cpha_handle = create_dissector_handle(dissect_cpha, proto_cphap);
   dissector_add_uint_with_preference("udp.port", UDP_PORT_CPHA, cpha_handle);
 }
 /*

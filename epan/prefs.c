@@ -9,12 +9,16 @@
  */
 
 #include "config.h"
+#define WS_LOG_DOMAIN LOG_DOMAIN_EPAN
 
 #include "ws_diag_control.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include <glib.h>
 
@@ -30,17 +34,22 @@
 #include <epan/strutil.h>
 #include <epan/column.h>
 #include <epan/decode_as.h>
+#include <capture_opts.h>
 #include "print.h"
 #include <wsutil/file_util.h>
 #include <wsutil/report_message.h>
+#include <wsutil/wslog.h>
+#include <wsutil/ws_assert.h>
 
 #include <epan/prefs-int.h>
 #include <epan/uat-int.h>
 
 #include "epan/filter_expressions.h"
 
-#include "epan/wmem/wmem.h"
+#include "epan/wmem_scopes.h"
 #include <epan/stats_tree.h>
+
+#define REG_HKCU_WIRESHARK_KEY "Software\\Wireshark"
 
 /*
  * Module alias.
@@ -61,10 +70,9 @@ static prefs_set_pref_e set_pref(gchar*, const gchar*, void *, gboolean);
 static void free_col_info(GList *);
 static void pre_init_prefs(void);
 static gboolean prefs_is_column_visible(const gchar *cols_hidden, fmt_data *cfmt);
-static gboolean parse_column_format(fmt_data *cfmt, const char *fmt);
-static void try_convert_to_custom_column(gpointer *el_data);
 static guint prefs_module_list_foreach(wmem_tree_t *module_list, module_cb callback,
                           gpointer user_data, gboolean skip_obsolete);
+static gint find_val_for_string(const char *needle, const enum_val_t *haystack, gint default_value);
 
 #define IS_PREF_OBSOLETE(p) ((p) & PREF_OBSOLETE)
 #define SET_PREF_OBSOLETE(p) ((p) |= PREF_OBSOLETE)
@@ -90,9 +98,9 @@ static int mgcp_udp_port_count;
 e_prefs prefs;
 
 static const enum_val_t gui_console_open_type[] = {
-    {"NEVER", "NEVER", console_open_never},
-    {"AUTOMATIC", "AUTOMATIC", console_open_auto},
-    {"ALWAYS", "ALWAYS", console_open_always},
+    {"NEVER", "NEVER", LOG_CONSOLE_OPEN_NEVER},
+    {"AUTOMATIC", "AUTOMATIC", LOG_CONSOLE_OPEN_AUTO},
+    {"ALWAYS", "ALWAYS", LOG_CONSOLE_OPEN_ALWAYS},
     {NULL, NULL, -1}
 };
 
@@ -197,7 +205,6 @@ struct preference {
     int type;                        /**< type of that preference */
     unsigned int effect_flags;       /**< Flags of types effected by preference (PREF_TYPE_DISSECTION, PREF_EFFECT_CAPTURE, etc).
                                           Flags must be non-zero to ensure saving to disk */
-    gui_type_t gui;                  /**< type of the GUI (QT, GTK or both) the preference is registered for */
     union {                          /* The Qt preference code assumes that these will all be pointers (and unique) */
         guint *uint;
         gboolean *boolp;
@@ -253,11 +260,6 @@ const char* prefs_get_title(pref_t *pref)
 int prefs_get_type(pref_t *pref)
 {
     return pref->type;
-}
-
-gui_type_t prefs_get_gui_type(pref_t *pref)
-{
-    return pref->gui;
 }
 
 const char* prefs_get_name(pref_t *pref)
@@ -330,6 +332,7 @@ free_pref(gpointer data, gpointer user_data _U_)
     case PREF_SAVE_FILENAME:
     case PREF_OPEN_FILENAME:
     case PREF_DIRNAME:
+    case PREF_PASSWORD:
         free_string_like_preference(pref);
         break;
     case PREF_RANGE:
@@ -343,6 +346,9 @@ free_pref(gpointer data, gpointer user_data _U_)
         if (strcmp(pref->name, "columns") == 0)
           pref->stashed_val.boolval = TRUE;
         pref->custom_cbs.free_cb(pref);
+        break;
+    /* non-generic preferences */
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
         break;
     }
 
@@ -452,8 +458,6 @@ prefs_register_module_or_subtree(module_t *parent, const char *name,
                                  gboolean use_gui)
 {
     module_t *module;
-    const char *p;
-    guchar c;
 
     /* this module may have been created as a subtree item previously */
     if ((module = find_subtree(parent, title))) {
@@ -489,21 +493,11 @@ prefs_register_module_or_subtree(module_t *parent, const char *name,
      * Do we have a module name?
      */
     if (name != NULL) {
-        /*
-         * Yes.
-         * Make sure that only lower-case ASCII letters, numbers,
-         * underscores, hyphens, and dots appear in the name.
-         *
-         * Crash if there is, as that's an error in the code;
-         * you can make the title a nice string with capitalization,
-         * white space, punctuation, etc., but the name can be used
-         * on the command line, and shouldn't require quoting,
-         * shifting, etc.
-         */
-        for (p = name; (c = *p) != '\0'; p++) {
-            if (!(g_ascii_islower(c) || g_ascii_isdigit(c) || c == '_' ||
-                  c == '-' || c == '.'))
-                g_error("Preference module \"%s\" contains invalid characters", name);
+
+        /* Accept any letter case to conform with protocol names. ASN1 protocols
+         * don't use lower case names, so we can't require lower case. */
+        if (module_check_valid_name(name, FALSE) != '\0') {
+                ws_error("Preference module \"%s\" contains invalid characters", name);
         }
 
         /*
@@ -518,7 +512,8 @@ prefs_register_module_or_subtree(module_t *parent, const char *name,
          * protocol preferences to have a bogus "protocol.", or
          * something such as that, to be added to all their names).
          */
-        g_assert(prefs_find_module(name) == NULL);
+        if (prefs_find_module(name) != NULL)
+            ws_error("Preference module \"%s\" is being registered twice", name);
 
         /*
          * Insert this module in the list of all modules.
@@ -529,7 +524,8 @@ prefs_register_module_or_subtree(module_t *parent, const char *name,
          * This has no name, just a title; check to make sure it's a
          * subtree, and crash if it's not.
          */
-        g_assert(is_subtree);
+        if (!is_subtree)
+            ws_error("Preferences module with no name is being registered at the top level");
     }
 
     /*
@@ -576,7 +572,7 @@ prefs_register_module_alias(const char *name, module_t *module)
     for (p = name; (c = *p) != '\0'; p++) {
         if (!(g_ascii_isalpha(c) || g_ascii_isdigit(c) || c == '_' ||
               c == '-' || c == '.'))
-            g_error("Preference module alias \"%s\" contains invalid characters", name);
+            ws_error("Preference module alias \"%s\" contains invalid characters", name);
     }
 
     /*
@@ -587,7 +583,8 @@ prefs_register_module_alias(const char *name, module_t *module)
      *
      * We search the list of all aliases.
      */
-    g_assert(prefs_find_module_alias(name) == NULL);
+    if (prefs_find_module_alias(name) != NULL)
+        ws_error("Preference module alias \"%s\" is being registered twice", name);
 
     alias = wmem_new(wmem_epan_scope(), module_alias_t);
     alias->name = name;
@@ -622,7 +619,7 @@ prefs_register_protocol(int id, void (*apply_cb)(void))
     }
     protocol = find_protocol_by_id(id);
     if (protocol == NULL)
-        g_error("Protocol preferences being registered with an invalid protocol ID");
+        ws_error("Protocol preferences being registered with an invalid protocol ID");
     return prefs_register_module(protocols_module,
                                  proto_get_protocol_filter_name(id),
                                  proto_get_protocol_short_name(protocol),
@@ -634,7 +631,7 @@ prefs_deregister_protocol (int id)
 {
     protocol_t *protocol = find_protocol_by_id(id);
     if (protocol == NULL)
-        g_error("Protocol preferences being de-registered with an invalid protocol ID");
+        ws_error("Protocol preferences being de-registered with an invalid protocol ID");
     prefs_deregister_module (protocols_module,
                              proto_get_protocol_filter_name(id),
                              proto_get_protocol_short_name(protocol));
@@ -694,7 +691,7 @@ prefs_register_protocol_subtree(const char *subtree, int id, void (*apply_cb)(vo
 
     protocol = find_protocol_by_id(id);
     if (protocol == NULL)
-        g_error("Protocol subtree being registered with an invalid protocol ID");
+        ws_error("Protocol subtree being registered with an invalid protocol ID");
     return prefs_register_module(subtree_module,
                                  proto_get_protocol_filter_name(id),
                                  proto_get_protocol_short_name(protocol),
@@ -725,7 +722,7 @@ prefs_register_protocol_obsolete(int id)
     }
     protocol = find_protocol_by_id(id);
     if (protocol == NULL)
-        g_error("Protocol being registered with an invalid protocol ID");
+        ws_error("Protocol being registered with an invalid protocol ID");
     module = prefs_register_module(protocols_module,
                                    proto_get_protocol_filter_name(id),
                                    proto_get_protocol_short_name(protocol),
@@ -830,7 +827,7 @@ typedef struct {
     gboolean skip_obsolete;
 } call_foreach_t;
 
-static gboolean
+static bool
 call_foreach_cb(const void *key _U_, void *value, void *data)
 {
     module_t *module = (module_t*)value;
@@ -907,7 +904,7 @@ prefs_modules_foreach_submodules(module_t *module, module_cb callback,
     return prefs_module_list_foreach((module)?module->submodules:prefs_top_level_modules, callback, user_data, TRUE);
 }
 
-static gboolean
+static bool
 call_apply_cb(const void *key _U_, void *value, void *data _U_)
 {
     module_t *module = (module_t *)value;
@@ -983,7 +980,6 @@ register_preference(module_t *module, const char *name, const char *title,
     /* Default to module's preference effects */
     preference->effect_flags = module->effect_flags;
 
-    preference->gui = GUI_ALL;  /* default */
     if (title != NULL)
         preference->ordinal = module->numprefs;
     else
@@ -1001,7 +997,7 @@ register_preference(module_t *module, const char *name, const char *title,
      */
     for (p = name; *p != '\0'; p++)
         if (!(g_ascii_islower(*p) || g_ascii_isdigit(*p) || *p == '_' || *p == '.'))
-            g_error("Preference \"%s.%s\" contains invalid characters", module->name, name);
+            ws_error("Preference \"%s.%s\" contains invalid characters", module->name, name);
 
     /*
      * Make sure there's not already a preference with that
@@ -1010,7 +1006,7 @@ register_preference(module_t *module, const char *name, const char *title,
      * more than one preference with the same name.
      */
     if (prefs_find_preference(module, name) != NULL)
-        g_error("Preference %s has already been registered", name);
+        ws_error("Preference %s has already been registered", name);
 
     if ((!IS_PREF_OBSOLETE(type)) &&
         /* Don't compare if it's a subtree */
@@ -1021,30 +1017,30 @@ register_preference(module_t *module, const char *name, const char *title,
          */
         if (!((strncmp(name, module->name, strlen(module->name)) != 0) ||
             (((name[strlen(module->name)]) != '.') && ((name[strlen(module->name)]) != '_'))))
-            g_error("Preference %s begins with the module name", name);
+            ws_error("Preference %s begins with the module name", name);
     }
 
     /* The title shows up in the preferences dialog. Make sure it's UI-friendly. */
     if (preference->title) {
         const char *cur_char;
         if (preference->type != PREF_STATIC_TEXT && g_utf8_strlen(preference->title, -1) > 80) { // Arbitrary.
-            g_error("Title for preference %s.%s is too long: %s", name_prefix, preference->name, preference->title);
+            ws_error("Title for preference %s.%s is too long: %s", name_prefix, preference->name, preference->title);
         }
 
         if (!g_utf8_validate(preference->title, -1, NULL)) {
-            g_error("Title for preference %s.%s isn't valid UTF-8.", name_prefix, preference->name);
+            ws_error("Title for preference %s.%s isn't valid UTF-8.", name_prefix, preference->name);
         }
 
         for (cur_char = preference->title; *cur_char; cur_char = g_utf8_next_char(cur_char)) {
             if (!g_unichar_isprint(g_utf8_get_char(cur_char))) {
-                g_error("Title for preference %s.%s isn't printable UTF-8.", name_prefix, preference->name);
+                ws_error("Title for preference %s.%s isn't printable UTF-8.", name_prefix, preference->name);
             }
         }
     }
 
     if (preference->description) {
         if (!g_utf8_validate(preference->description, -1, NULL)) {
-            g_error("Description for preference %s.%s isn't valid UTF-8.", name_prefix, preference->name);
+            ws_error("Description for preference %s.%s isn't valid UTF-8.", name_prefix, preference->name);
         }
     }
 
@@ -1077,7 +1073,7 @@ preference_match(gconstpointer a, gconstpointer b)
     return strcmp(name, pref->name);
 }
 
-static gboolean
+static bool
 module_find_pref_cb(const void *key _U_, void *value, void *data)
 {
     find_pref_arg_t* arg = (find_pref_arg_t*)data;
@@ -1177,7 +1173,7 @@ prefs_register_uint_preference(module_t *module, const char *name,
                                      PREF_UINT);
     preference->varp.uint = var;
     preference->default_val.uint = *var;
-    g_assert(base > 0 && base != 1 && base < 37);
+    ws_assert(base > 0 && base != 1 && base < 37);
     preference->info.base = base;
 }
 
@@ -1247,7 +1243,7 @@ unsigned int prefs_set_bool_value(pref_t *pref, gboolean value, pref_source_t so
         }
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -1268,7 +1264,7 @@ void prefs_invert_bool_value(pref_t *pref, pref_source_t source)
         *pref->varp.boolp = !(*pref->varp.boolp);
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 }
@@ -1287,7 +1283,7 @@ gboolean prefs_get_bool_value(pref_t *pref, pref_source_t source)
         return *pref->varp.boolp;
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -1342,11 +1338,18 @@ unsigned int prefs_set_enum_value(pref_t *pref, gint value, pref_source_t source
         }
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
     return changed;
+}
+
+unsigned int prefs_set_enum_string_value(pref_t *pref, const gchar *value, pref_source_t source)
+{
+    gint enum_val = find_val_for_string(value, pref->info.enum_info.enumvals, *pref->varp.enump);
+
+    return prefs_set_enum_value(pref, enum_val, source);
 }
 
 gint prefs_get_enum_value(pref_t *pref, pref_source_t source)
@@ -1363,7 +1366,7 @@ gint prefs_get_enum_value(pref_t *pref, pref_source_t source)
         return *pref->varp.enump;
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -1426,7 +1429,7 @@ register_string_like_preference(module_t *module, const char *name,
     pref->default_val.string = g_strdup(*var);
     pref->stashed_val.string = NULL;
     if (type == PREF_CUSTOM) {
-        g_assert(custom_cbs);
+        ws_assert(custom_cbs);
         pref->custom_cbs = *custom_cbs;
     }
 }
@@ -1486,7 +1489,7 @@ prefs_set_string_value(pref_t *pref, const char* value, pref_source_t source)
         }
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -1504,7 +1507,7 @@ char* prefs_get_string_value(pref_t *pref, pref_source_t source)
     case pref_current:
         return *pref->varp.string;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -1673,7 +1676,7 @@ gboolean prefs_set_range_value(pref_t *pref, range_t *value, pref_source_t sourc
         }
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -1693,7 +1696,7 @@ range_t* prefs_get_range_value_real(pref_t *pref, pref_source_t source)
         return *pref->varp.range;
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -1758,8 +1761,6 @@ prefs_register_uat_preference_qt(module_t *module, const char *name,
     pref_t* preference = register_preference(module, name, title, description, PREF_UAT);
 
     preference->varp.uat = uat;
-
-    preference->gui = GUI_QT;
 }
 
 struct epan_uat* prefs_get_uat_value(pref_t *pref)
@@ -1812,7 +1813,7 @@ gboolean prefs_set_color_value(pref_t *pref, color_t value, pref_source_t source
         }
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -1832,7 +1833,7 @@ color_t* prefs_get_color_value(pref_t *pref, pref_source_t source)
         return pref->varp.colorp;
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -1877,6 +1878,28 @@ prefs_register_custom_preference(module_t *module, const char *name,
 }
 
 /*
+ * Register a dedicated TCP preference for SEQ analysis overriding.
+ * We are reusing the data structure from enum preference, as they are
+ * similar in practice.
+
+ */
+void
+prefs_register_custom_preference_TCP_Analysis(module_t *module, const char *name,
+                               const char *title, const char *description,
+                               gint *var, const enum_val_t *enumvals,
+                               gboolean radio_buttons)
+{
+    pref_t *preference;
+
+    preference = register_preference(module, name, title, description,
+                                     PREF_PROTO_TCP_SNDAMB_ENUM);
+    preference->varp.enump = var;
+    preference->default_val.enumval = *var;
+    preference->info.enum_info.enumvals = enumvals;
+    preference->info.enum_info.radio_buttons = radio_buttons;
+}
+
+/*
  * Register a (internal) "Decode As" preference with a ranged value.
  */
 void prefs_register_decode_as_range_preference(module_t *module, const char *name,
@@ -1888,21 +1911,19 @@ void prefs_register_decode_as_range_preference(module_t *module, const char *nam
 }
 
 /*
- * Register a (internal) "Decode As" preference with an unsigned integral value
- * for a dissector table.
+ * Register a preference with password value.
  */
-void prefs_register_decode_as_preference(module_t *module, const char *name,
-    const char *title, const char *description, guint *var)
+void
+prefs_register_password_preference(module_t *module, const char *name,
+                                 const char *title, const char *description,
+                                 const char **var)
 {
-    pref_t *preference;
-
-    preference = register_preference(module, name, title, description,
-                                     PREF_DECODE_AS_UINT);
-    preference->varp.uint = var;
-    preference->default_val.uint = *var;
-    /* XXX - Presume base 10 for now */
-    preference->info.base = 10;
+DIAG_OFF(cast-qual)
+    register_string_like_preference(module, name, title, description,
+                                    (char **)var, PREF_PASSWORD, NULL, FALSE);
+DIAG_ON(cast-qual)
 }
+
 
 gboolean prefs_add_decode_as_value(pref_t *pref, guint value, gboolean replace)
 {
@@ -2017,6 +2038,7 @@ pref_stash(pref_t *pref, gpointer unused _U_)
         break;
 
     case PREF_ENUM:
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
         pref->stashed_val.enumval = *pref->varp.enump;
         break;
 
@@ -2024,6 +2046,7 @@ pref_stash(pref_t *pref, gpointer unused _U_)
     case PREF_SAVE_FILENAME:
     case PREF_OPEN_FILENAME:
     case PREF_DIRNAME:
+    case PREF_PASSWORD:
         g_free(pref->stashed_val.string);
         pref->stashed_val.string = g_strdup(*pref->varp.string);
         break;
@@ -2044,7 +2067,7 @@ pref_stash(pref_t *pref, gpointer unused _U_)
         break;
 
     case PREF_OBSOLETE:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
     return 0;
@@ -2105,10 +2128,20 @@ pref_unstash(pref_t *pref, gpointer unstash_data_p)
         }
         break;
 
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
+        /*if (*pref->varp.enump != pref->stashed_val.enumval) {
+            unstash_data->module->prefs_changed_flags |= prefs_get_effect_flags(pref);
+            //unstash_data->module->prefs_changed_flags = 1;
+            *pref->varp.enump = pref->stashed_val.enumval;
+        }*/
+        unstash_data->module->prefs_changed_flags = 1;
+        break;
+
     case PREF_STRING:
     case PREF_SAVE_FILENAME:
     case PREF_OPEN_FILENAME:
     case PREF_DIRNAME:
+    case PREF_PASSWORD:
         if (strcmp(*pref->varp.string, pref->stashed_val.string) != 0) {
             unstash_data->module->prefs_changed_flags |= prefs_get_effect_flags(pref);
             g_free(*pref->varp.string);
@@ -2185,7 +2218,7 @@ pref_unstash(pref_t *pref, gpointer unstash_data_p)
         break;
 
     case PREF_OBSOLETE:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
     return 0;
@@ -2208,6 +2241,7 @@ reset_stashed_pref(pref_t *pref) {
         break;
 
     case PREF_ENUM:
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
         pref->stashed_val.enumval = pref->default_val.enumval;
         break;
 
@@ -2215,6 +2249,7 @@ reset_stashed_pref(pref_t *pref) {
     case PREF_SAVE_FILENAME:
     case PREF_OPEN_FILENAME:
     case PREF_DIRNAME:
+    case PREF_PASSWORD:
         g_free(pref->stashed_val.string);
         pref->stashed_val.string = g_strdup(pref->default_val.string);
         break;
@@ -2235,7 +2270,7 @@ reset_stashed_pref(pref_t *pref) {
         break;
 
     case PREF_OBSOLETE:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 }
@@ -2253,12 +2288,14 @@ pref_clean_stash(pref_t *pref, gpointer unused _U_)
         break;
 
     case PREF_ENUM:
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
         break;
 
     case PREF_STRING:
     case PREF_SAVE_FILENAME:
     case PREF_OPEN_FILENAME:
     case PREF_DIRNAME:
+    case PREF_PASSWORD:
         if (pref->stashed_val.string != NULL) {
             g_free(pref->stashed_val.string);
             pref->stashed_val.string = NULL;
@@ -2280,7 +2317,7 @@ pref_clean_stash(pref_t *pref, gpointer unused _U_)
         break;
 
     case PREF_OBSOLETE:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
     return 0;
@@ -2376,6 +2413,25 @@ gui_callback(void)
     /* Ensure there is at least one display filter entry */
     if (prefs.gui_recent_df_entries_max == 0)
       prefs.gui_recent_df_entries_max = 10;
+
+    /* number of decimal places should be between 2 and 10 */
+    if (prefs.gui_decimal_places1 < 2) {
+        prefs.gui_decimal_places1 = 2;
+    } else if (prefs.gui_decimal_places1 > 10) {
+        prefs.gui_decimal_places1 = 10;
+    }
+    /* number of decimal places should be between 2 and 10 */
+    if (prefs.gui_decimal_places2 < 2) {
+        prefs.gui_decimal_places2 = 2;
+    } else if (prefs.gui_decimal_places2 > 10) {
+        prefs.gui_decimal_places2 = 10;
+    }
+    /* number of decimal places should be between 2 and 10 */
+    if (prefs.gui_decimal_places3 < 2) {
+        prefs.gui_decimal_places3 = 2;
+    } else if (prefs.gui_decimal_places3 > 10) {
+        prefs.gui_decimal_places3 = 10;
+    }
 }
 
 static void
@@ -2385,7 +2441,7 @@ gui_layout_callback(void)
         prefs.gui_layout_type >= layout_type_max) {
       /* XXX - report an error?  It's not a syntax error - we'd need to
          add a way of reporting a *semantic* error. */
-      prefs.gui_layout_type = layout_type_5;
+      prefs.gui_layout_type = layout_type_2;
     }
 }
 
@@ -2393,64 +2449,6 @@ gui_layout_callback(void)
  * All custom preference function callbacks
  ******************************************************/
 static void custom_pref_no_cb(pref_t* pref _U_) {}
-
-
-/*
- * Console log level custom preference functions
- */
-static void
-console_log_level_reset_cb(pref_t* pref)
-{
-    *pref->varp.uint = pref->default_val.uint;
-}
-
-static prefs_set_pref_e
-console_log_level_set_cb(pref_t* pref, const gchar* value, unsigned int* changed_flags)
-{
-    guint    uval;
-
-    if (!ws_strtou32(value, NULL, &uval))
-        return PREFS_SET_SYNTAX_ERR;        /* number was bad */
-
-    if (*pref->varp.uint != uval) {
-        *changed_flags = prefs_get_effect_flags(pref);
-        *pref->varp.uint = uval;
-    }
-
-    if (*pref->varp.uint & (G_LOG_LEVEL_INFO|G_LOG_LEVEL_DEBUG)) {
-      /*
-       * GLib >= 2.32 drops INFO and DEBUG messages by default. Tell
-       * it not to do that.
-       */
-       g_setenv("G_MESSAGES_DEBUG", "all", TRUE);
-    }
-
-    return PREFS_SET_OK;
-}
-
-static const char * console_log_level_type_name_cb(void) {
-    return "Log level";
-}
-
-static char * console_log_level_type_description_cb(void) {
-    return g_strdup_printf(
-        "Console log level (for debugging)\n"
-        "A bitmask of log levels:\n"
-        "ERROR    = 4\n"
-        "CRITICAL = 8\n"
-        "WARNING  = 16\n"
-        "MESSAGE  = 32\n"
-        "INFO     = 64\n"
-        "DEBUG    = 128");
-}
-
-static gboolean console_log_level_is_default_cb(pref_t* pref) {
-    return *pref->varp.uint == pref->default_val.uint;
-}
-
-static char * console_log_level_to_str_cb(pref_t* pref, gboolean default_val) {
-    return g_strdup_printf("%u",  default_val ? pref->default_val.uint : *pref->varp.uint);
-}
 
 /*
  * Column preference functions
@@ -2514,7 +2512,7 @@ column_hidden_to_str_cb(pref_t* pref, gboolean default_val)
         gchar *prefs_fmt;
         cfmt = (fmt_data *) clp->data;
         if ((cfmt->fmt == COL_CUSTOM) && (cfmt->custom_fields)) {
-            prefs_fmt = g_strdup_printf("%s:%s:%d:%c",
+            prefs_fmt = ws_strdup_printf("%s:%s:%d:%c",
                     col_format_to_string(cfmt->fmt),
                     cfmt->custom_fields,
                     cfmt->custom_occurrence,
@@ -2650,7 +2648,7 @@ column_format_reset_cb(pref_t* pref)
     }
 
     col_num_pref = prefs_find_preference(gui_column_module, PRS_COL_NUM);
-    g_assert(col_num_pref != NULL); /* Should never happen */
+    ws_assert(col_num_pref != NULL); /* Should never happen */
     column_num_reset_cb(col_num_pref);
 }
 
@@ -2678,17 +2676,17 @@ column_format_set_cb(pref_t* pref, const gchar* value, unsigned int* changed_fla
       /* Go past the title.  */
       col_l_elt = col_l_elt->next;
 
+      /* Some predefined columns have been migrated to use custom columns.
+       * We'll convert these silently here */
+      try_convert_to_custom_column((char **)&col_l_elt->data);
+
       /* Parse the format to see if it's valid.  */
       if (!parse_column_format(&cfmt_check, (char *)col_l_elt->data)) {
         /* It's not a valid column format.  */
         prefs_clear_string_list(col_l);
         return PREFS_SET_SYNTAX_ERR;
       }
-      if (cfmt_check.fmt != COL_CUSTOM) {
-        /* Some predefined columns have been migrated to use custom columns.
-         * We'll convert these silently here */
-        try_convert_to_custom_column(&col_l_elt->data);
-      } else {
+      if (cfmt_check.fmt == COL_CUSTOM) {
         /* We don't need the custom column field on this pass. */
         g_free(cfmt_check.custom_fields);
       }
@@ -2701,9 +2699,9 @@ column_format_set_cb(pref_t* pref, const gchar* value, unsigned int* changed_fla
     free_col_info(*pref->varp.list);
     *pref->varp.list = NULL;
     hidden_pref = prefs_find_preference(gui_column_module, PRS_COL_HIDDEN);
-    g_assert(hidden_pref != NULL); /* Should never happen */
+    ws_assert(hidden_pref != NULL); /* Should never happen */
     col_num_pref = prefs_find_preference(gui_column_module, PRS_COL_NUM);
-    g_assert(col_num_pref != NULL); /* Should never happen */
+    ws_assert(col_num_pref != NULL); /* Should never happen */
     llen             = g_list_length(col_l);
     *col_num_pref->varp.uint = llen / 2;
     col_l_elt = g_list_first(col_l);
@@ -2785,7 +2783,7 @@ column_format_to_str_cb(pref_t* pref, gboolean default_val)
         cfmt = (fmt_data *) clp->data;
         col_l = g_list_append(col_l, g_strdup(cfmt->title));
         if ((cfmt->fmt == COL_CUSTOM) && (cfmt->custom_fields)) {
-            prefs_fmt = g_strdup_printf("%s:%s:%d:%c",
+            prefs_fmt = ws_strdup_printf("%s:%s:%d:%c",
                     col_format_to_string(cfmt->fmt),
                     cfmt->custom_fields,
                     cfmt->custom_occurrence,
@@ -3064,13 +3062,15 @@ prefs_register_modules(void)
     gui_module = prefs_register_module(NULL, "gui", "User Interface",
         "User Interface", &gui_callback, FALSE);
 
-    /* gui.console_open is placed first in the list so that any problems encountered
-     *  in the following prefs can be displayed in the console window.
+    /*
+     * gui.console_open is stored in the registry in addition to the
+     * preferences file. It is also read independently by ws_log_init()
+     * for early log initialization of the console.
      */
     prefs_register_enum_preference(gui_module, "console_open",
                        "Open a console window",
                        "Open a console window (Windows only)",
-                       (gint*)(void*)(&prefs.gui_console_open), gui_console_open_type, FALSE);
+                       (int *)&ws_log_console_open, gui_console_open_type, FALSE);
 
     prefs_register_obsolete_preference(gui_module, "scrollbar_on_right");
     prefs_register_obsolete_preference(gui_module, "packet_list_sel_browse");
@@ -3089,6 +3089,8 @@ prefs_register_modules(void)
     prefs_register_obsolete_preference(gui_module, "protocol_tree_expander_style");
 
     prefs_register_obsolete_preference(gui_module, "hex_dump_highlight_style");
+
+    prefs_register_obsolete_preference(gui_module, "packet_editor.enabled");
 
     gui_column_module = prefs_register_subtree(gui_module, "Columns", "Columns", NULL);
     /* For reading older preference files with "column." preferences */
@@ -3139,7 +3141,7 @@ prefs_register_modules(void)
 
     register_string_like_preference(gui_font_module, "qt.font_name", "Font name",
         "Font name for packet list, protocol tree, and hex dump panes. (Qt)",
-        &prefs.gui_qt_font_name, PREF_STRING, NULL, TRUE);
+        &prefs.gui_font_name, PREF_STRING, NULL, TRUE);
 
     /* User Interface : Colors */
     gui_color_module = prefs_register_subtree(gui_module, "Colors", "Colors", NULL);
@@ -3310,6 +3312,18 @@ prefs_register_modules(void)
                                    10,
                                    &prefs.gui_update_interval);
 
+    prefs_register_uint_preference(gui_module, "debounce.timer",
+                                   "How long to wait before processing computationally intensive user input",
+                                   "How long to wait (in milliseconds) before processing\
+                                   computationally intensive user input.\
+                                   If you type quickly, consider lowering the value for a 'snappier'\
+                                   experience.\
+                                   If you type slowly, consider increasing the value to avoid performance issues.\
+                                   This is currently used to delay searches in View -> Internals -> Supported Protocols\
+                                   and Preferences -> Advanced menu.",
+                                   10,
+                                   &prefs.gui_debounce_timer);
+
     register_string_like_preference(gui_module, "window_title", "Custom window title",
         "Custom window title to be appended to the existing title\n"
         "%F = file path of the capture file\n"
@@ -3343,6 +3357,16 @@ prefs_register_modules(void)
                                    "The maximum number of objects that can be exported",
                                    10,
                                    &prefs.gui_max_export_objects);
+    prefs_register_uint_preference(gui_module, "max_tree_items",
+                                   "Maximum number of tree items",
+                                   "The maximum number of items that can be added to the dissection tree (Increase with caution)",
+                                   10,
+                                   &prefs.gui_max_tree_items);
+    prefs_register_uint_preference(gui_module, "max_tree_depth",
+                                   "Maximum tree depth",
+                                   "The maximum depth of the dissection tree (Increase with caution)",
+                                   10,
+                                   &prefs.gui_max_tree_depth);
 
 
     /* User Interface : Layout */
@@ -3380,32 +3404,73 @@ prefs_register_modules(void)
     prefs_register_bool_preference(gui_layout_module, "packet_list_separator.enabled",
                                    "Enable Packet List Separator",
                                    "Enable Packet List Separator",
-                                   &prefs.gui_qt_packet_list_separator);
+                                   &prefs.gui_packet_list_separator);
 
     prefs_register_bool_preference(gui_layout_module, "packet_header_column_definition.enabled",
                                     "Show column definition in packet list header",
                                     "Show column definition in packet list header",
-                                    &prefs.gui_qt_packet_header_column_definition);
+                                    &prefs.gui_packet_header_column_definition);
+
+    prefs_register_bool_preference(gui_layout_module, "packet_list_hover_style.enabled",
+                                   "Enable Packet List mouse-over colorization",
+                                   "Enable Packet List mouse-over colorization",
+                                   &prefs.gui_packet_list_hover_style);
 
     prefs_register_bool_preference(gui_layout_module, "show_selected_packet.enabled",
                                    "Show selected packet in the Status Bar",
                                    "Show selected packet in the Status Bar",
-                                   &prefs.gui_qt_show_selected_packet);
+                                   &prefs.gui_show_selected_packet);
 
     prefs_register_bool_preference(gui_layout_module, "show_file_load_time.enabled",
                                    "Show file load time in the Status Bar",
                                    "Show file load time in the Status Bar",
-                                   &prefs.gui_qt_show_file_load_time);
-
-    prefs_register_bool_preference(gui_module, "packet_editor.enabled",
-                                   "Enable Packet Editor",
-                                   "Enable Packet Editor (Experimental)",
-                                   &prefs.gui_packet_editor);
+                                   &prefs.gui_show_file_load_time);
 
     prefs_register_enum_preference(gui_module, "packet_list_elide_mode",
                        "Elide mode",
                        "The position of \"...\" in packet list text.",
                        (gint*)(void*)(&prefs.gui_packet_list_elide_mode), gui_packet_list_elide_mode, FALSE);
+    prefs_register_uint_preference(gui_module, "decimal_places1",
+            "Count of decimal places for values of type 1",
+            "Sets the count of decimal places for values of type 1."
+            "Type 1 values are defined by authors."
+            "Value can be in range 2 to 10.",
+            10,&prefs.gui_decimal_places1);
+
+    prefs_register_uint_preference(gui_module, "decimal_places2",
+            "Count of decimal places for values of type 2",
+            "Sets the count of decimal places for values of type 2."
+            "Type 2 values are defined by authors."
+            "Value can be in range 2 to 10.",
+            10,&prefs.gui_decimal_places2);
+
+    prefs_register_uint_preference(gui_module, "decimal_places3",
+            "Count of decimal places for values of type 3",
+            "Sets the count of decimal places for values of type 3."
+            "Type 3 values are defined by authors."
+            "Value can be in range 2 to 10.",
+            10,&prefs.gui_decimal_places3);
+
+    prefs_register_bool_preference(gui_module, "rtp_player_use_disk1",
+            "RTP Player saves temporary data to disk",
+            "If set to true, RTP Player saves temporary data to "
+            "temp files on disk. If not set, it uses memory."
+            "Every stream uses one file therefore you might touch "
+            "OS limit for count of opened files."
+            "When ui.rtp_player_use_disk2 is set to true too, it uses "
+            " two files per RTP stream together."
+            ,&prefs.gui_rtp_player_use_disk1);
+
+    prefs_register_bool_preference(gui_module, "rtp_player_use_disk2",
+            "RTP Player saves temporary dictionary for data to disk",
+            "If set to true, RTP Player saves temporary dictionary to "
+            "temp files on disk. If not set, it uses memory."
+            "Every stream uses one file therefore you might touch "
+            "OS limit for count of opened files."
+            "When ui.rtp_player_use_disk1 is set to true too, it uses "
+            " two files per RTP stream."
+            ,&prefs.gui_rtp_player_use_disk2);
+
 
     prefs_register_bool_preference(gui_layout_module, "packet_list_show_related",
                                    "Show Related Packets",
@@ -3417,6 +3482,16 @@ prefs_register_modules(void)
                                    "Show the intelligent scroll bar (a minimap of packet list colors in the scrollbar)",
                                    &prefs.gui_packet_list_show_minimap);
 
+    prefs_register_bool_preference(gui_module, "packet_list_is_sortable",
+                                   "Allow packet list to be sortable",
+                                   "To prevent sorting by mistake (which can take some time to calculate), it can be disabled",
+                                   &prefs.gui_packet_list_sortable);
+
+    prefs_register_uint_preference(gui_module, "packet_list_cached_rows_max",
+                                   "Maximum cached rows",
+                                   "Maximum number of rows that can be sorted by columns that require dissection. Increasing this increases memory consumption by caching column text",
+                                   10,
+                                   &prefs.gui_packet_list_cached_rows_max);
 
     prefs_register_bool_preference(gui_module, "interfaces_show_hidden",
                                    "Show hidden interfaces",
@@ -3443,6 +3518,21 @@ prefs_register_modules(void)
          "9 = Virtual",
         &prefs.gui_interfaces_hide_types, PREF_STRING, NULL, TRUE);
 
+    prefs_register_bool_preference(gui_module, "io_graph_automatic_update",
+        "Enables automatic updates for IO Graph",
+        "Enables automatic updates for IO Graph",
+        &prefs.gui_io_graph_automatic_update);
+
+    prefs_register_bool_preference(gui_module, "io_graph_enable_legend",
+        "Enables the legend of IO Graph",
+        "Enables the legend of IO Graph",
+        &prefs.gui_io_graph_enable_legend);
+
+    prefs_register_bool_preference(gui_module, "show_byteview_in_dialog",
+        "Show the byte view in the packet details dialog",
+        "Show the byte view in the packet details dialog",
+        &prefs.gui_packet_details_show_byteview);
+
     /* Console
      * These are preferences that can be read/written using the
      * preference module API.  These preferences still use their own
@@ -3452,15 +3542,7 @@ prefs_register_modules(void)
     console_module = prefs_register_module(NULL, "console", "Console",
         "Console logging and debugging output", NULL, FALSE);
 
-    custom_cbs.free_cb = custom_pref_no_cb;
-    custom_cbs.reset_cb = console_log_level_reset_cb;
-    custom_cbs.set_cb = console_log_level_set_cb;
-    custom_cbs.type_name_cb = console_log_level_type_name_cb;
-    custom_cbs.type_description_cb = console_log_level_type_description_cb;
-    custom_cbs.is_default_cb = console_log_level_is_default_cb;
-    custom_cbs.to_str_cb = console_log_level_to_str_cb;
-    prefs_register_uint_custom_preference(console_module, "log.level", "logging level",
-        "A bitmask of GLib log levels", &custom_cbs, &prefs.console_log_level);
+    prefs_register_obsolete_preference(console_module, "log.level");
 
     prefs_register_bool_preference(console_module, "incomplete_dissectors_check_debug",
                                    "Print debug line for incomplete dissectors",
@@ -3531,6 +3613,12 @@ prefs_register_modules(void)
     prefs_register_bool_preference(capture_module, "real_time_update", "Update packet list in real time during capture",
         "Update packet list in real time during capture?", &prefs.capture_real_time);
 
+    prefs_register_uint_preference(capture_module, "update_interval",
+                                   "Capture update interval",
+                                   "Capture update interval in ms",
+                                   10,
+                                   &prefs.capture_update_interval);
+
     prefs_register_bool_preference(capture_module, "no_interface_load", "Don't load interfaces on startup",
         "Don't automatically load capture interfaces on startup", &prefs.capture_no_interface_load);
 
@@ -3586,8 +3674,6 @@ prefs_register_modules(void)
                                    "Determines time between tap updates",
                                    10,
                                    &prefs.tap_update_interval);
-
-    prefs_register_obsolete_preference(stats_module, "rtp_player_max_visible");
 
     prefs_register_bool_preference(stats_module, "st_enable_burstinfo",
             "Enable the calculation of burst information",
@@ -3678,9 +3764,20 @@ prefs_register_modules(void)
 
     prefs_register_bool_preference(protocols_module, "strict_conversation_tracking_heuristics",
                                    "Enable stricter conversation tracking heuristics",
-                                   "Protocols may use things like VLAN ID or interface ID to narrow the potential for duplicate conversations."
-                                   "Currently only ICMP and ICMPv6 use this preference to add VLAN ID to conversation tracking",
+                                   "Protocols may use things like VLAN ID or interface ID to narrow the potential for duplicate conversations. "
+                                   "Currently ICMP and ICMPv6 use this preference to add VLAN ID to conversation tracking, and IPv4 uses this preference to take VLAN ID into account during reassembly",
                                    &prefs.strict_conversation_tracking_heuristics);
+
+    prefs_register_bool_preference(protocols_module, "ignore_dup_frames",
+                                   "Ignore duplicate frames",
+                                   "Ignore frames that are exact duplicates of any previous frame.",
+                                   &prefs.ignore_dup_frames);
+
+    prefs_register_uint_preference(protocols_module, "ignore_dup_frames_cache_entries",
+            "The max number of hashes to keep in memory for determining duplicates frames",
+            "If \"Ignore duplicate frames\" is set, this setting sets the maximum number "
+            "of cache entries to maintain. A 0 means no limit.",
+            10, &prefs.ignore_dup_frames_cache_entries);
 
     /* Obsolete preferences
      * These "modules" were reorganized/renamed to correspond to their GUI
@@ -3703,15 +3800,15 @@ prefs_get_string_list(const gchar *str)
 {
     enum { PRE_STRING, IN_QUOT, NOT_IN_QUOT };
 
-    gint      state = PRE_STRING, i = 0, j = 0;
+    gint      state = PRE_STRING, i = 0;
     gboolean  backslash = FALSE;
     guchar    cur_c;
-    gchar    *slstr = NULL;
+    const gsize default_size = 64;
+    GString  *slstr = NULL;
     GList    *sl = NULL;
 
     /* Allocate a buffer for the first string.   */
-    slstr = (gchar *) g_malloc(sizeof(gchar) * COL_MAX_LEN);
-    j = 0;
+    slstr = g_string_sized_new(default_size);
 
     for (;;) {
         cur_c = str[i];
@@ -3721,18 +3818,17 @@ prefs_get_string_list(const gchar *str)
             if (state == IN_QUOT || backslash) {
                 /* We were in the middle of a quoted string or backslash escape,
                    and ran out of characters; that's an error.  */
-                g_free(slstr);
+                g_string_free(slstr, TRUE);
                 prefs_clear_string_list(sl);
                 return NULL;
             }
-            slstr[j] = '\0';
-            if (j > 0)
-                sl = g_list_append(sl, slstr);
+            if (slstr->len > 0)
+                sl = g_list_append(sl, g_string_free(slstr, FALSE));
             else
-                g_free(slstr);
+                g_string_free(slstr, TRUE);
             break;
         }
-        if (cur_c == '"' && ! backslash) {
+        if (cur_c == '"' && !backslash) {
             switch (state) {
             case PRE_STRING:
                 /* We hadn't yet started processing a string; this starts the
@@ -3752,7 +3848,7 @@ prefs_get_string_list(const gchar *str)
             default:
                 break;
             }
-        } else if (cur_c == '\\' && ! backslash) {
+        } else if (cur_c == '\\' && !backslash) {
             /* We saw a backslash, and the previous character wasn't a
                backslash; escape the next character.
 
@@ -3760,30 +3856,24 @@ prefs_get_string_list(const gchar *str)
             backslash = TRUE;
             if (state == PRE_STRING)
                 state = NOT_IN_QUOT;
-        } else if (cur_c == ',' && state != IN_QUOT && ! backslash) {
+        } else if (cur_c == ',' && state != IN_QUOT && !backslash) {
             /* We saw a comma, and we're not in the middle of a quoted string
                and it wasn't preceded by a backslash; it's the end of
                the string we were working on...  */
-            slstr[j] = '\0';
-            if (j > 0) {
-                sl = g_list_append(sl, slstr);
-                slstr = (gchar *) g_malloc(sizeof(gchar) * COL_MAX_LEN);
+            if (slstr->len > 0) {
+                sl = g_list_append(sl, g_string_free(slstr, FALSE));
+                slstr = g_string_sized_new(default_size);
             }
 
             /* ...and the beginning of a new string.  */
             state = PRE_STRING;
-            j = 0;
         } else if (!g_ascii_isspace(cur_c) || state != PRE_STRING) {
             /* Either this isn't a white-space character, or we've started a
                string (i.e., already seen a non-white-space character for that
                string and put it into the string).
 
-               The character is to be put into the string; do so if there's
-               room.  */
-            if (j < COL_MAX_LEN) {
-                slstr[j] = cur_c;
-                j++;
-            }
+               The character is to be put into the string; do so.  */
+            g_string_append_c(slstr, cur_c);
 
             /* If it was backslash-escaped, we're done with the backslash escape.  */
             backslash = FALSE;
@@ -3877,45 +3967,6 @@ find_val_for_string(const char *needle, const enum_val_t *haystack,
     return default_value;
 }
 
-
-/* Array of columns that have been migrated to custom columns */
-struct deprecated_columns {
-    const gchar *col_fmt;
-    const gchar *col_expr;
-};
-static struct deprecated_columns migrated_columns[] = {
-    { /* COL_COS_VALUE */ "%U", "vlan.priority" },
-    { /* COL_CIRCUIT_ID */ "%c", "iax2.call" },
-    { /* COL_BSSGP_TLLI */ "%l", "bssgp.tlli" },
-    { /* COL_HPUX_SUBSYS */ "%H", "nettl.subsys" },
-    { /* COL_HPUX_DEVID */ "%P", "nettl.devid" },
-    { /* COL_FR_DLCI */ "%C", "fr.dlci" },
-    { /* COL_REL_CONV_TIME */ "%rct", "tcp.time_relative" },
-    { /* COL_DELTA_CONV_TIME */ "%dct", "tcp.time_delta" },
-    { /* COL_OXID */ "%XO", "fc.ox_id" },
-    { /* COL_RXID */ "%XR", "fc.rx_id" },
-    { /* COL_SRCIDX */ "%Xd", "mdshdr.srcidx" },
-    { /* COL_DSTIDX */ "%Xs", "mdshdr.dstidx" },
-    { /* COL_DCE_CTX */ "%z", "dcerpc.cn_ctx_id" }
-};
-
-static gboolean
-is_deprecated_column_format(const gchar* fmt)
-{
-    guint haystack_idx;
-
-    for (haystack_idx = 0;
-         haystack_idx < G_N_ELEMENTS(migrated_columns);
-         ++haystack_idx) {
-
-        if (strcmp(migrated_columns[haystack_idx].col_fmt, fmt) == 0) {
-            return TRUE;
-        }
-    }
-
-    return FALSE;
-}
-
 /* Preferences file format:
  * - Configuration directives start at the beginning of the line, and
  *   are terminated with a colon.
@@ -3932,56 +3983,6 @@ print.file: /a/very/long/path/
  */
 
 #define DEF_NUM_COLS    7
-
-/*
- * Parse a column format, filling in the relevant fields of a fmt_data.
- */
-static gboolean
-parse_column_format(fmt_data *cfmt, const char *fmt)
-{
-    const gchar *cust_format = col_format_to_string(COL_CUSTOM);
-    size_t cust_format_len = strlen(cust_format);
-    gchar **cust_format_info;
-    char *p;
-    int col_fmt;
-    gchar *col_custom_fields = NULL;
-    long col_custom_occurrence = 0;
-    gboolean col_resolved = TRUE;
-
-    /*
-     * Is this a custom column?
-     */
-    if ((strlen(fmt) > cust_format_len) && (fmt[cust_format_len] == ':') &&
-        strncmp(fmt, cust_format, cust_format_len) == 0) {
-        /* Yes. */
-        col_fmt = COL_CUSTOM;
-        cust_format_info = g_strsplit(&fmt[cust_format_len+1],":",3); /* add 1 for ':' */
-        col_custom_fields = g_strdup(cust_format_info[0]);
-        if (col_custom_fields && cust_format_info[1]) {
-            col_custom_occurrence = strtol(cust_format_info[1], &p, 10);
-            if (p == cust_format_info[1] || *p != '\0') {
-                /* Not a valid number. */
-                g_free(col_custom_fields);
-                g_strfreev(cust_format_info);
-                return FALSE;
-            }
-        }
-        if (col_custom_fields && cust_format_info[1] && cust_format_info[2]) {
-            col_resolved = (cust_format_info[2][0] == 'U') ? FALSE : TRUE;
-        }
-        g_strfreev(cust_format_info);
-    } else {
-        col_fmt = get_column_format_from_str(fmt);
-        if ((col_fmt == -1) && (!is_deprecated_column_format(fmt)))
-            return FALSE;
-    }
-
-    cfmt->fmt = col_fmt;
-    cfmt->custom_fields = col_custom_fields;
-    cfmt->custom_occurrence = (int)col_custom_occurrence;
-    cfmt->resolved = col_resolved;
-    return TRUE;
-}
 
 /* Initialize non-dissector preferences to wired-in default values Called
  * at program startup and any time the profile changes. (The dissector
@@ -4030,8 +4031,8 @@ pre_init_prefs(void)
     prefs.restore_filter_after_following_stream = FALSE;
     prefs.gui_toolbar_main_style = TB_STYLE_ICONS;
     /* We try to find the best font in the Qt code */
-    g_free(prefs.gui_qt_font_name);
-    prefs.gui_qt_font_name           = g_strdup("");
+    g_free(prefs.gui_font_name);
+    prefs.gui_font_name              = g_strdup("");
     prefs.gui_active_fg.red          =         0;
     prefs.gui_active_fg.green        =         0;
     prefs.gui_active_fg.blue         =         0;
@@ -4102,7 +4103,6 @@ pre_init_prefs(void)
     prefs.gui_geometry_save_position = TRUE;
     prefs.gui_geometry_save_size     = TRUE;
     prefs.gui_geometry_save_maximized= TRUE;
-    prefs.gui_console_open           = console_open_never;
     prefs.gui_fileopen_style         = FO_STYLE_LAST_OPENED;
     prefs.gui_recent_df_entries_max  = 10;
     prefs.gui_recent_files_count_max = 10;
@@ -4115,6 +4115,7 @@ pre_init_prefs(void)
     prefs.gui_update_enabled         = TRUE;
     prefs.gui_update_channel         = UPDATE_CHANNEL_STABLE;
     prefs.gui_update_interval        = 60*60*24; /* Seconds */
+    prefs.gui_debounce_timer         = 400; /* milliseconds */
     g_free(prefs.gui_window_title);
     prefs.gui_window_title           = g_strdup("");
     g_free(prefs.gui_prepend_window_title);
@@ -4122,23 +4123,30 @@ pre_init_prefs(void)
     g_free(prefs.gui_start_title);
     prefs.gui_start_title            = g_strdup("The World's Most Popular Network Protocol Analyzer");
     prefs.gui_version_placement      = version_both;
-    prefs.gui_layout_type            = layout_type_5;
+    prefs.gui_layout_type            = layout_type_2;
     prefs.gui_layout_content_1       = layout_pane_content_plist;
     prefs.gui_layout_content_2       = layout_pane_content_pdetails;
     prefs.gui_layout_content_3       = layout_pane_content_pbytes;
-    prefs.gui_packet_editor          = FALSE;
     prefs.gui_packet_list_elide_mode = ELIDE_RIGHT;
     prefs.gui_packet_list_show_related = TRUE;
     prefs.gui_packet_list_show_minimap = TRUE;
+    prefs.gui_packet_list_sortable     = TRUE;
+    prefs.gui_packet_list_cached_rows_max = 10000;
     g_free (prefs.gui_interfaces_hide_types);
     prefs.gui_interfaces_hide_types = g_strdup("");
     prefs.gui_interfaces_show_hidden = FALSE;
     prefs.gui_interfaces_remote_display = TRUE;
-    prefs.gui_qt_packet_list_separator = FALSE;
-    prefs.gui_qt_packet_header_column_definition = TRUE;
-    prefs.gui_qt_show_selected_packet = FALSE;
-    prefs.gui_qt_show_file_load_time = FALSE;
+    prefs.gui_packet_list_separator = FALSE;
+    prefs.gui_packet_header_column_definition = TRUE;
+    prefs.gui_packet_list_hover_style = TRUE;
+    prefs.gui_show_selected_packet = FALSE;
+    prefs.gui_show_file_load_time = FALSE;
     prefs.gui_max_export_objects     = 1000;
+    prefs.gui_max_tree_items = 1 * 1000 * 1000;
+    prefs.gui_max_tree_depth = 5 * 100;
+    prefs.gui_decimal_places1 = DEF_GUI_DECIMAL_PLACES1;
+    prefs.gui_decimal_places2 = DEF_GUI_DECIMAL_PLACES2;
+    prefs.gui_decimal_places3 = DEF_GUI_DECIMAL_PLACES3;
 
     if (prefs.col_list) {
         free_col_info(prefs.col_list);
@@ -4160,6 +4168,7 @@ pre_init_prefs(void)
     prefs.capture_prom_mode             = TRUE;
     prefs.capture_pcap_ng               = TRUE;
     prefs.capture_real_time             = TRUE;
+    prefs.capture_update_interval       = DEFAULT_UPDATE_INTERVAL;
     prefs.capture_no_extcap             = FALSE;
     prefs.capture_auto_scroll           = TRUE;
     prefs.capture_show_info             = FALSE;
@@ -4171,9 +4180,6 @@ pre_init_prefs(void)
             prefs.capture_columns = g_list_append(prefs.capture_columns, col_name);
         }
     }
-
-    prefs.console_log_level          =
-        G_LOG_LEVEL_WARNING | G_LOG_LEVEL_CRITICAL | G_LOG_LEVEL_ERROR;
 
 /* set the default values for the tap/statistics dialog box */
     prefs.tap_update_interval    = TAP_UPDATE_DEFAULT_INTERVAL;
@@ -4187,8 +4193,19 @@ pre_init_prefs(void)
     prefs.st_sort_defcolflag = ST_SORT_COL_COUNT;
     prefs.st_sort_defdescending = TRUE;
     prefs.st_sort_showfullname = FALSE;
+
+    /* protocols */
     prefs.display_hidden_proto_items = FALSE;
     prefs.display_byte_fields_with_spaces = FALSE;
+    prefs.ignore_dup_frames = FALSE;
+    prefs.ignore_dup_frames_cache_entries = 10000;
+
+    /* set the default values for the io graph dialog */
+    prefs.gui_io_graph_automatic_update = TRUE;
+    prefs.gui_io_graph_enable_legend = TRUE;
+
+    /* set the default values for the packet dialog */
+    prefs.gui_packet_details_show_byteview = TRUE;
 }
 
 /*
@@ -4225,6 +4242,7 @@ reset_pref(pref_t *pref)
         break;
 
     case PREF_ENUM:
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
         /*
          * For now, we save the "description" value, so that if we
          * save the preferences older versions of Wireshark can at
@@ -4239,6 +4257,7 @@ reset_pref(pref_t *pref)
     case PREF_SAVE_FILENAME:
     case PREF_OPEN_FILENAME:
     case PREF_DIRNAME:
+    case PREF_PASSWORD:
         reset_string_like_preference(pref);
         break;
 
@@ -4289,7 +4308,7 @@ reset_pref_cb(gpointer data, gpointer user_data)
 /*
  * Reset all preferences for a module.
  */
-static gboolean
+static bool
 reset_module_prefs(const void *key _U_, void *value, void *data _U_)
 {
     module_t *module = (module_t *)value;
@@ -4326,6 +4345,35 @@ prefs_reset(void)
     wmem_tree_foreach(prefs_modules, reset_module_prefs, NULL);
 }
 
+#ifdef _WIN32
+static void
+read_registry(void)
+{
+    HKEY hTestKey;
+    DWORD data;
+    DWORD data_size = sizeof(DWORD);
+    DWORD ret;
+
+    ret = RegOpenKeyExA(HKEY_CURRENT_USER, REG_HKCU_WIRESHARK_KEY, 0, KEY_READ, &hTestKey);
+    if (ret != ERROR_SUCCESS && ret != ERROR_FILE_NOT_FOUND) {
+        ws_noisy("Cannot open HKCU "REG_HKCU_WIRESHARK_KEY": 0x%lx", ret);
+        return;
+    }
+
+    ret = RegQueryValueExA(hTestKey, LOG_HKCU_CONSOLE_OPEN, NULL, NULL, (LPBYTE)&data, &data_size);
+    if (ret == ERROR_SUCCESS) {
+        ws_log_console_open = (ws_log_console_open_pref)data;
+        ws_noisy("Got "LOG_HKCU_CONSOLE_OPEN" from Windows registry: %d", ws_log_console_open);
+    }
+    else if (ret != ERROR_FILE_NOT_FOUND) {
+        ws_noisy("Error reading registry key "LOG_HKCU_CONSOLE_OPEN": 0x%lx", ret);
+    }
+
+    RegCloseKey(hTestKey);
+}
+#endif
+
+
 /* Read the preferences file, fill in "prefs", and return a pointer to it.
 
    If we got an error (other than "it doesn't exist") we report it through
@@ -4341,6 +4389,10 @@ read_prefs(void)
     oids_cleanup();
 
     init_prefs();
+
+#ifdef _WIN32
+    read_registry();
+#endif
 
     /*
      * If we don't already have the pathname of the global preferences
@@ -4500,7 +4552,7 @@ read_prefs_file(const char *pf_path, FILE *pf,
                                  * If the pref has a trailing comma, eliminate it.
                                  */
                                 cur_val->str[cur_val->len-1] = '\0';
-                                g_warning ("%s line %d: trailing comma in \"%s\" %s", pf_path, pline, cur_var->str, hint);
+                                ws_warning("%s line %d: trailing comma in \"%s\" %s", pf_path, pline, cur_var->str, hint);
                             }
                         }
                         /* Call the routine to set the preference; it will parse
@@ -4516,12 +4568,12 @@ read_prefs_file(const char *pf_path, FILE *pf,
                             break;
 
                         case PREFS_SET_SYNTAX_ERR:
-                            g_warning ("Syntax error in preference \"%s\" at line %d of\n%s %s",
+                            report_warning("Syntax error in preference \"%s\" at line %d of\n%s %s",
                                        cur_var->str, pline, pf_path, hint);
                             break;
 
                         case PREFS_SET_NO_SUCH_PREF:
-                            g_warning ("No such preference \"%s\" at line %d of\n%s %s",
+                            ws_warning("No such preference \"%s\" at line %d of\n%s %s",
                                        cur_var->str, pline, pf_path, hint);
                             prefs.unknown_prefs = TRUE;
                             break;
@@ -4538,13 +4590,13 @@ read_prefs_file(const char *pf_path, FILE *pf,
                              * in the console window so that the
                              * user can make an informed choice.
                              */
-                            g_warning ("Obsolete preference \"%s\" at line %d of\n%s %s",
+                            ws_warning("Obsolete preference \"%s\" at line %d of\n%s %s",
                                        cur_var->str, pline, pf_path, hint);
                             prefs.unknown_prefs = TRUE;
                             break;
                         }
                     } else {
-                        g_warning ("Incomplete preference at line %d: of\n%s %s", pline, pf_path, hint);
+                        ws_warning("Incomplete preference at line %d: of\n%s %s", pline, pf_path, hint);
                     }
                 }
                 state      = IN_VAR;
@@ -4557,7 +4609,7 @@ read_prefs_file(const char *pf_path, FILE *pf,
             } else if (got_c == '#') {
                 state = IN_SKIP;
             } else {
-                g_warning ("Malformed preference at line %d of\n%s %s", fline, pf_path, hint);
+                ws_warning("Malformed preference at line %d of\n%s %s", fline, pf_path, hint);
             }
             break;
         case IN_VAR:
@@ -4602,12 +4654,12 @@ read_prefs_file(const char *pf_path, FILE *pf,
                 break;
 
             case PREFS_SET_SYNTAX_ERR:
-                g_warning ("Syntax error in preference %s at line %d of\n%s %s",
+                ws_warning("Syntax error in preference %s at line %d of\n%s %s",
                            cur_var->str, pline, pf_path, hint);
                 break;
 
             case PREFS_SET_NO_SUCH_PREF:
-                g_warning ("No such preference \"%s\" at line %d of\n%s %s",
+                ws_warning("No such preference \"%s\" at line %d of\n%s %s",
                            cur_var->str, pline, pf_path, hint);
                 prefs.unknown_prefs = TRUE;
                 break;
@@ -4617,7 +4669,7 @@ read_prefs_file(const char *pf_path, FILE *pf,
                 break;
             }
         } else {
-            g_warning("Incomplete preference at line %d of\n%s %s",
+            ws_warning("Incomplete preference at line %d of\n%s %s",
                        pline, pf_path, hint);
         }
     }
@@ -4714,15 +4766,15 @@ prefs_set_pref(char *prefarg, char **errmsg)
      */
     while (g_ascii_isspace(*p))
         p++;
-    if (*p == '\0') {
-        /*
-         * Put the colon back, so if our caller uses, in an
-         * error message, the string they passed us, the message
-         * looks correct.
-         */
-        *colonp = ':';
-        return PREFS_SET_SYNTAX_ERR;
-    }
+    /* The empty string is a legal value for range preferences (PREF_RANGE,
+     * PREF_DECODE_AS_RANGE), and string-like preferences (PREF_STRING,
+     * PREF_SAVE_FILENAME, PREF_OPEN_FILENAME, PREF_DIRNAME), indeed often
+     * not just useful but the default. A user might have a value saved
+     * to their preference file but want to override it to default behavior.
+     * Individual preference handlers of those types should be prepared to
+     * deal with an empty string. For other types, it is up to set_pref() to
+     * test for the empty string and set PREFS_SET_SYNTAX_ERROR there.
+     */
     if (strcmp(prefarg, "uat")) {
         ret = set_pref(prefarg, p, NULL, TRUE);
     } else {
@@ -4746,7 +4798,7 @@ guint prefs_get_uint_value_real(pref_t *pref, pref_source_t source)
         return *pref->varp.uint;
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
@@ -4757,6 +4809,12 @@ guint prefs_get_uint_value(const char *module_name, const char* pref_name)
 {
     return prefs_get_uint_value_real(prefs_find_preference(prefs_find_module(module_name), pref_name), pref_current);
 }
+
+char* prefs_get_password_value(pref_t *pref, pref_source_t source)
+{
+    return prefs_get_string_value(pref, source);
+}
+
 
 unsigned int prefs_set_uint_value(pref_t *pref, guint value, pref_source_t source)
 {
@@ -4782,12 +4840,22 @@ unsigned int prefs_set_uint_value(pref_t *pref, guint value, pref_source_t sourc
         }
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
         break;
     }
 
     return changed;
 }
+
+/*
+ * For use by UI code that sets preferences.
+ */
+unsigned int
+prefs_set_password_value(pref_t *pref, const char* value, pref_source_t source)
+{
+    return prefs_set_string_value(pref, value, source);
+}
+
 
 guint prefs_get_uint_base(pref_t *pref)
 {
@@ -4969,6 +5037,9 @@ string_to_name_resolve(const char *string, e_addr_resolve *name_resolve)
     memset(name_resolve, 0, sizeof(e_addr_resolve));
     while ((c = *string++) != '\0') {
         switch (c) {
+        case 'g':
+            name_resolve->maxmind_geoip = TRUE;
+            break;
         case 'm':
             name_resolve->mac_name = TRUE;
             break;
@@ -4995,27 +5066,6 @@ string_to_name_resolve(const char *string, e_addr_resolve *name_resolve)
         }
     }
     return '\0';
-}
-
-static void
-try_convert_to_custom_column(gpointer *el_data)
-{
-    guint haystack_idx;
-
-    gchar **fmt = (gchar **) el_data;
-
-    for (haystack_idx = 0;
-         haystack_idx < G_N_ELEMENTS(migrated_columns);
-         ++haystack_idx) {
-
-        if (strcmp(migrated_columns[haystack_idx].col_fmt, *fmt) == 0) {
-            gchar *cust_col = g_strdup_printf("%%Cus:%s:0",
-                                migrated_columns[haystack_idx].col_expr);
-
-            g_free(*fmt);
-            *fmt = cust_col;
-        }
-    }
 }
 
 static gboolean
@@ -5140,93 +5190,138 @@ deprecated_port_pref(gchar *pref_name, const gchar *value)
         const char* pref_name;
     };
 
-    /* For now this is only supporting TCP/UDP port dissector preferences
-       which are assumed to be decimal */
+    /* For now this is only supporting TCP/UDP port and RTP payload
+     * types dissector preferences, which are assumed to be decimal */
+    /* module_name is the filter name of the destination port preference,
+     * which is usually the same as the original module but not
+     * necessarily (e.g., if the preference is for what is now a PINO.)
+     * XXX:  Most of these were changed pre-2.0. Can we end support
+     * for migrating legacy preferences at some point?
+     */
     struct port_pref_name port_prefs[] = {
         /* TCP */
-        {"cmp.tcp_alternate_port", "CMP", "tcp.port", 10},
-        {"h248.tcp_port", "H248", "tcp.port", 10},
-        {"cops.tcp.cops_port", "COPS", "tcp.port", 10},
-        {"dhcpfo.tcp_port", "DHCPFO", "tcp.port", 10},
-        {"enttec.tcp_port", "ENTTEC", "tcp.port", 10},
-        {"forces.tcp_alternate_port", "ForCES", "tcp.port", 10},
-        {"ged125.tcp_port", "GED125", "tcp.port", 10},
-        {"hpfeeds.dissector_port", "HPFEEDS", "tcp.port", 10},
-        {"lsc.port", "LSC", "tcp.port", 10},
-        {"megaco.tcp.txt_port", "MEGACO", "tcp.port", 10},
-        {"netsync.tcp_port", "Netsync", "tcp.port", 10},
-        {"osi.tpkt_port", "OSI", "tcp.port", 10},
-        {"rsync.tcp_port", "RSYNC", "tcp.port", 10},
-        {"sametime.tcp_port", "SAMETIME", "tcp.port", 10},
-        {"sigcomp.tcp.port2", "SIGCOMP", "tcp.port", 10},
+        {"cmp.tcp_alternate_port", "cmp", "tcp.port", 10},
+        {"h248.tcp_port", "h248", "tcp.port", 10},
+        {"cops.tcp.cops_port", "cops", "tcp.port", 10},
+        {"dhcpfo.tcp_port", "dhcpfo", "tcp.port", 10},
+        {"enttec.tcp_port", "enttec", "tcp.port", 10},
+        {"forces.tcp_alternate_port", "forces", "tcp.port", 10},
+        {"ged125.tcp_port", "ged125", "tcp.port", 10},
+        {"hpfeeds.dissector_port", "hpfeeds", "tcp.port", 10},
+        {"lsc.port", "lsc", "tcp.port", 10},
+        {"megaco.tcp.txt_port", "megaco", "tcp.port", 10},
+        {"netsync.tcp_port", "netsync", "tcp.port", 10},
+        {"osi.tpkt_port", "osi", "tcp.port", 10},
+        {"rsync.tcp_port", "rsync", "tcp.port", 10},
+        {"sametime.tcp_port", "sametime", "tcp.port", 10},
+        {"sigcomp.tcp.port2", "sigcomp", "tcp.port", 10},
         {"synphasor.tcp_port", "synphasor", "tcp.port", 10},
-        {"tipc.alternate_port", "TIPC", "tcp.port", 10},
-        {"vnc.alternate_port", "VNC", "tcp.port", 10},
-        {"scop.port", "SCoP", "tcp.port", 10},
-        {"scop.port_secure", "SCoP", "tcp.port", 10},
-        {"tpncp.tcp.trunkpack_port", "TPNCP", "tcp.port", 10},
+        {"tipc.alternate_port", "tipc", "tcp.port", 10},
+        {"vnc.alternate_port", "vnc", "tcp.port", 10},
+        {"scop.port", "scop", "tcp.port", 10},
+        {"scop.port_secure", "scop", "tcp.port", 10},
+        {"tpncp.tcp.trunkpack_port", "tpncp", "tcp.port", 10},
         /* UDP */
-        {"h248.udp_port", "H248", "udp.port", 10},
-        {"actrace.udp_port", "ACtrace", "udp.port", 10},
-        {"brp.port", "BRP", "udp.port", 10},
-        {"bvlc.additional_udp_port", "BVLC", "udp.port", 10},
+        {"h248.udp_port", "h248", "udp.port", 10},
+        {"actrace.udp_port", "actrace", "udp.port", 10},
+        {"brp.port", "brp", "udp.port", 10},
+        {"bvlc.additional_udp_port", "bvlc", "udp.port", 10},
         {"capwap.udp.port.control", "capwap", "udp.port", 10},
         {"capwap.udp.port.data", "capwap", "udp.port", 10},
-        {"coap.udp_port", "CoAP", "udp.port", 10},
-        {"enttec.udp_port", "ENTTEC", "udp.port", 10},
-        {"forces.udp_alternate_port", "ForCES", "udp.port", 10},
-        {"ldss.udp_port", "LDSS", "udp.port", 10},
-        {"lmp.udp_port", "LMP", "udp.port", 10},
-        {"ltp.port", "LTP", "udp.port", 10},
-        {"lwres.udp.lwres_port", "LWRES", "udp.port", 10},
-        {"megaco.udp.txt_port", "MEGACO", "udp.port", 10},
-        {"pgm.udp.encap_ucast_port", "PGM", "udp.port", 10},
-        {"pgm.udp.encap_mcast_port", "PGM", "udp.port", 10},
-        {"quic.udp.quic.port", "QUIC", "udp.port", 10},
-        {"quic.udp.quics.port", "QUIC", "udp.port", 10},
-        {"radius.alternate_port", "RADIUS", "udp.port", 10},
-        {"rdt.default_udp_port", "RDT", "udp.port", 10},
-        {"alc.default.udp_port", "ALC", "udp.port", 10},
-        {"sigcomp.udp.port2", "SIGCOMP", "udp.port", 10},
+        {"coap.udp_port", "coap", "udp.port", 10},
+        {"enttec.udp_port", "enttec", "udp.port", 10},
+        {"forces.udp_alternate_port", "forces", "udp.port", 10},
+        {"ldss.udp_port", "ldss", "udp.port", 10},
+        {"lmp.udp_port", "lmp", "udp.port", 10},
+        {"ltp.port", "ltp", "udp.port", 10},
+        {"lwres.udp.lwres_port", "lwres", "udp.port", 10},
+        {"megaco.udp.txt_port", "megaco", "udp.port", 10},
+        {"pfcp.port_pfcp", "pfcp", "udp.port", 10},
+        {"pgm.udp.encap_ucast_port", "pgm", "udp.port", 10},
+        {"pgm.udp.encap_mcast_port", "pgm", "udp.port", 10},
+        {"quic.udp.quic.port", "quic", "udp.port", 10},
+        {"quic.udp.quics.port", "quic", "udp.port", 10},
+        {"radius.alternate_port", "radius", "udp.port", 10},
+        {"rdt.default_udp_port", "rdt", "udp.port", 10},
+        {"alc.default.udp_port", "alc", "udp.port", 10},
+        {"sigcomp.udp.port2", "sigcomp", "udp.port", 10},
         {"synphasor.udp_port", "synphasor", "udp.port", 10},
-        {"tdmop.udpport", "TDMoP", "udp.port", 10},
-        {"uaudp.port1", "UAUDP", "udp.port", 10},
-        {"uaudp.port2", "UAUDP", "udp.port", 10},
-        {"uaudp.port3", "UAUDP", "udp.port", 10},
-        {"uaudp.port4", "UAUDP", "udp.port", 10},
-        {"uhd.dissector_port", "UHD", "udp.port", 10},
+        {"tdmop.udpport", "tdmop", "udp.port", 10},
+        {"uaudp.port1", "uaudp", "udp.port", 10},
+        {"uaudp.port2", "uaudp", "udp.port", 10},
+        {"uaudp.port3", "uaudp", "udp.port", 10},
+        {"uaudp.port4", "uaudp", "udp.port", 10},
+        {"uhd.dissector_port", "uhd", "udp.port", 10},
         {"vrt.dissector_port", "vrt", "udp.port", 10},
-        {"tpncp.udp.trunkpack_port", "TPNCP", "udp.port", 10},
+        {"tpncp.udp.trunkpack_port", "tpncp", "udp.port", 10},
+        /* SCTP */
+        {"hnbap.port", "hnbap", "sctp.port", 10},
+        {"m2pa.port", "m2pa", "sctp.port", 10},
+        {"megaco.sctp.txt_port", "megaco", "sctp.port", 10},
+        {"rua.port", "rua", "sctp.port", 10},
+        /* SCTP PPI */
+        {"lapd.sctp_payload_protocol_identifier", "lapd", "sctp.ppi", 10},
+        /* SCCP SSN */
+        {"ranap.sccp_ssn", "ranap", "sccp.ssn", 10},
     };
 
     struct port_pref_name port_range_prefs[] = {
         /* TCP */
-        {"couchbase.tcp.ports", "Couchbase", "tcp.port", 10},
-        {"gsm_ipa.tcp_ports", "GSM over IP", "tcp.port", 10},
-        {"kafka.tcp.ports", "Kafka", "tcp.port", 10},
-        {"kt.tcp.ports", "Kyoto Tycoon", "tcp.port", 10},
-        {"memcache.tcp.ports", "MEMCACHE", "tcp.port", 10},
-        {"mrcpv2.tcp.port_range", "MRCPv2", "tcp.port", 10},
-        {"rtsp.tcp.port_range", "RTSP", "tcp.port", 10},
-        {"sip.tcp.ports", "SIP", "tcp.port", 10},
-        {"tds.tcp_ports", "TDS", "tcp.port", 10},
-        {"uma.tcp.ports", "UMA", "tcp.port", 10},
+        {"couchbase.tcp.ports", "couchbase", "tcp.port", 10},
+        {"gsm_ipa.tcp_ports", "gsm_ipa", "tcp.port", 10},
+        {"kafka.tcp.ports", "kafka", "tcp.port", 10},
+        {"kt.tcp.ports", "kt", "tcp.port", 10},
+        {"memcache.tcp.ports", "memcache", "tcp.port", 10},
+        {"mrcpv2.tcp.port_range", "mrcpv2", "tcp.port", 10},
+        {"pdu_transport.ports.tcp", "pdu_transport", "tcp.port", 10},
+        {"rtsp.tcp.port_range", "rtsp", "tcp.port", 10},
+        {"sip.tcp.ports", "sip", "tcp.port", 10},
+        {"someip.ports.tcp", "someip", "tcp.port", 10},
+        {"tds.tcp_ports", "tds", "tcp.port", 10},
+        {"tpkt.tcp.ports", "tpkt", "tcp.port", 10},
+        {"uma.tcp.ports", "uma", "tcp.port", 10},
         /* UDP */
-        {"aruba_erm.udp.ports", "ARUBA_ERM", "udp.port", 10},
-        {"diameter.udp.ports", "DIAMETER", "udp.port", 10},
-        {"dmp.udp_ports", "DMP", "udp.port", 10},
-        {"dns.udp.ports", "DNS", "udp.port", 10},
-        {"gsm_ipa.udp_ports", "GSM over IP", "udp.port", 10},
-        {"hcrt.dissector_udp_port", "HCrt", "udp.port", 10},
-        {"memcache.udp.ports", "MEMCACHE", "udp.port", 10},
-        {"nb_rtpmux.udp_ports", "NB_RTPMUX", "udp.port", 10},
-        {"gprs-ns.udp.ports", "GPRS-NS", "udp.port", 10},
-        {"p_mul.udp_ports", "P_MUL", "udp.port", 10},
-        {"radius.ports", "RADIUS", "udp.port", 10},
-        {"sflow.ports", "sFlow", "udp.port", 10},
-        {"sscop.udp.ports", "SSCOP", "udp.port", 10},
-        {"tftp.udp_ports", "TFTP", "udp.port", 10},
-        {"tipc.udp.ports", "TIPC", "udp.port", 10},
+        {"aruba_erm.udp.ports", "arubs_erm", "udp.port", 10},
+        {"diameter.udp.ports", "diameter", "udp.port", 10},
+        {"dmp.udp_ports", "dmp", "udp.port", 10},
+        {"dns.udp.ports", "dns", "udp.port", 10},
+        {"gsm_ipa.udp_ports", "gsm_ipa", "udp.port", 10},
+        {"hcrt.dissector_udp_port", "hcrt", "udp.port", 10},
+        {"memcache.udp.ports", "memcache", "udp.port", 10},
+        {"nb_rtpmux.udp_ports", "nb_rtpmux", "udp.port", 10},
+        {"gprs-ns.udp.ports", "gprs-ns", "udp.port", 10},
+        {"p_mul.udp_ports", "p_mul", "udp.port", 10},
+        {"pdu_transport.ports.udp", "pdu_transport", "udp.port", 10},
+        {"radius.ports", "radius", "udp.port", 10},
+        {"sflow.ports", "sflow", "udp.port", 10},
+        {"someip.ports.udp", "someip", "udp.port", 10},
+        {"sscop.udp.ports", "sscop", "udp.port", 10},
+        {"tftp.udp_ports", "tftp", "udp.port", 10},
+        {"tipc.udp.ports", "tipc", "udp.port", 10},
+        /* RTP */
+        {"amr.dynamic.payload.type", "amr", "rtp.pt", 10},
+        {"amr.wb.dynamic.payload.type", "amr_wb", "rtp.pt", 10},
+        {"dvb-s2_modeadapt.dynamic.payload.type", "dvb-s2_modeadapt", "rtp.pt", 10},
+        {"evs.dynamic.payload.type", "evs", "rtp.pt", 10},
+        {"h263p.dynamic.payload.type", "h263p", "rtp.pt", 10},
+        {"h264.dynamic.payload.type", "h264", "rtp.pt", 10},
+        {"h265.dynamic.payload.type", "h265", "rtp.pt", 10},
+        {"ismacryp.dynamic.payload.type", "ismacryp", "rtp.pt", 10},
+        {"iuup.dynamic.payload.type", "iuup", "rtp.pt", 10},
+        {"lapd.rtp_payload_type", "lapd", "rtp.pt", 10},
+        {"mp4ves.dynamic.payload.type", "mp4ves", "rtp.pt", 10},
+        {"mtp2.rtp_payload_type", "mtp2", "rtp.pt", 10},
+        {"opus.dynamic.payload.type", "opus", "rtp.pt", 10},
+        {"rtp.rfc2198_payload_type", "rtp_rfc2198", "rtp.pt", 10},
+        {"rtpevent.event_payload_type_value", "rtpevent", "rtp.pt", 10},
+        {"rtpevent.cisco_nse_payload_type_value", "rtpevent", "rtp.pt", 10},
+        {"rtpmidi.midi_payload_type_value", "rtpmidi", "rtp.pt", 10},
+        {"vp8.dynamic.payload.type", "vp8", "rtp.pt", 10},
+        /* SCTP */
+        {"diameter.sctp.ports", "diameter", "sctp.port", 10},
+        {"sgsap.sctp_ports", "sgsap", "sctp.port", 10},
+        /* SCCP SSN */
+        {"pcap.ssn", "pcap", "sccp.ssn", 10},
     };
 
     /* These are subdissectors of TPKT/OSITP that used to have a
@@ -5234,13 +5329,13 @@ deprecated_port_pref(gchar *pref_name, const gchar *value)
        directly on TCP.  Convert them to use Decode As
        with the TPKT dissector handle */
     struct port_pref_name tpkt_subdissector_port_prefs[] = {
-        {"dap.tcp.port", "DAP", "tcp.port", 10},
-        {"disp.tcp.port", "DISP", "tcp.port", 10},
-        {"dop.tcp.port", "DOP", "tcp.port", 10},
-        {"dsp.tcp.port", "DSP", "tcp.port", 10},
-        {"p1.tcp.port", "P1", "tcp.port", 10},
-        {"p7.tcp.port", "P7", "tcp.port", 10},
-        {"rdp.tcp.port", "RDP", "tcp.port", 10},
+        {"dap.tcp.port", "dap", "tcp.port", 10},
+        {"disp.tcp.port", "disp", "tcp.port", 10},
+        {"dop.tcp.port", "dop", "tcp.port", 10},
+        {"dsp.tcp.port", "dsp", "tcp.port", 10},
+        {"p1.tcp.port", "p1", "tcp.port", 10},
+        {"p7.tcp.port", "p7", "tcp.port", 10},
+        {"rdp.tcp.port", "rdp", "tcp.port", 10},
     };
 
     /* These are obsolete preferences from the dissectors' view,
@@ -5270,16 +5365,16 @@ deprecated_port_pref(gchar *pref_name, const gchar *value)
         for (i = 0; i < G_N_ELEMENTS(port_prefs); i++) {
             module = prefs_find_module(port_prefs[i].module_name);
             if (!module) {
-                g_warning("Deprecated ports pref check - module '%s' not found", port_prefs[i].module_name);
+                ws_warning("Deprecated ports pref check - module '%s' not found", port_prefs[i].module_name);
                 continue;
             }
             pref = prefs_find_preference(module, port_prefs[i].table_name);
             if (!pref) {
-                g_warning("Deprecated ports pref '%s.%s' not found", module->name, port_prefs[i].table_name);
+                ws_warning("Deprecated ports pref '%s.%s' not found", module->name, port_prefs[i].table_name);
                 continue;
             }
             if (pref->type != PREF_DECODE_AS_UINT && pref->type != PREF_DECODE_AS_RANGE) {
-                g_warning("Deprecated ports pref '%s.%s' has wrong type: %#x (%s)", module->name, port_prefs[i].table_name, pref->type, prefs_pref_type_name(pref));
+                ws_warning("Deprecated ports pref '%s.%s' has wrong type: %#x (%s)", module->name, port_prefs[i].table_name, pref->type, prefs_pref_type_name(pref));
             }
         }
     }
@@ -5309,7 +5404,7 @@ deprecated_port_pref(gchar *pref_name, const gchar *value)
             {
                 sub_dissectors = find_dissector_table(port_prefs[i].table_name);
                 if (sub_dissectors != NULL) {
-                    handle = dissector_table_get_dissector_handle(sub_dissectors, port_prefs[i].module_name);
+                    handle = dissector_table_get_dissector_handle(sub_dissectors, module->title);
                     if (handle != NULL) {
                         dissector_change_uint(port_prefs[i].table_name, uval, handle);
                         decode_build_reset_list(port_prefs[i].table_name, dissector_table_get_type(sub_dissectors), GUINT_TO_POINTER(uval), NULL, NULL);
@@ -5337,8 +5432,8 @@ deprecated_port_pref(gchar *pref_name, const gchar *value)
                     break;
 
                 default:
-                    g_error("The dissector table %s (%s) is not an integer type - are you using a buggy plugin?", port_range_prefs[i].table_name, get_dissector_table_ui_name(port_range_prefs[i].table_name));
-                    g_assert_not_reached();
+                    ws_error("The dissector table %s (%s) is not an integer type - are you using a buggy plugin?", port_range_prefs[i].table_name, get_dissector_table_ui_name(port_range_prefs[i].table_name));
+                    ws_assert_not_reached();
                 }
 
                 module = prefs_find_module(port_range_prefs[i].module_name);
@@ -5350,7 +5445,7 @@ deprecated_port_pref(gchar *pref_name, const gchar *value)
                         return FALSE;        /* number was bad */
                     }
 
-                    handle = dissector_table_get_dissector_handle(sub_dissectors, port_range_prefs[i].module_name);
+                    handle = dissector_table_get_dissector_handle(sub_dissectors, module->title);
                     if (handle != NULL) {
 
                         for (range_i = 0; range_i < (*pref->varp.range)->nranges; range_i++) {
@@ -5416,6 +5511,7 @@ set_pref(gchar *pref_name, const gchar *value, void *private_data _U_,
     module_t *module, *containing_module;
     pref_t   *pref;
     int type;
+    gboolean converted_pref = FALSE;
 
     //The PRS_GUI field names are here for backwards compatibility
     //display filters have been converted to a UAT.
@@ -5471,6 +5567,9 @@ set_pref(gchar *pref_name, const gchar *value, void *private_data _U_,
          /* Handled within deprecated_enable_dissector_pref() if found */
     } else if (deprecated_port_pref(pref_name, value)) {
          /* Handled within deprecated_port_pref() if found */
+    } else if (strcmp(pref_name, "console.log.level") == 0) {
+        /* Handled on the command line within ws_log_parse_args() */
+        return PREFS_SET_OK;
     } else {
         /* Handle deprecated "global" options that don't have a module
          * associated with them
@@ -5547,9 +5646,7 @@ set_pref(gchar *pref_name, const gchar *value, void *private_data _U_,
                         }
                     }
                     if (module) {
-                        g_warning ("Preference \"%s.%s\" has been converted to \"%s.%s\"\n"
-                                   "Save your preferences to make this change permanent.",
-                                   pref_name, dotp+1, module->name, dotp+1);
+                        converted_pref = TRUE;
                         prefs.unknown_prefs = TRUE;
                     }
                 }
@@ -5717,6 +5814,8 @@ set_pref(gchar *pref_name, const gchar *value, void *private_data _U_,
                     pref = prefs_find_preference(module, "analyze_sequence_numbers");
                 else if (strcmp(dotp, "tcp_relative_sequence_numbers") == 0)
                     pref = prefs_find_preference(module, "relative_sequence_numbers");
+                else if (strcmp(dotp, "dissect_experimental_options_with_magic") == 0)
+                    pref = prefs_find_preference(module, "dissect_experimental_options_rfc6994");
             } else if (strcmp(module->name, "udp") == 0) {
                 /* Handle old names for UDP preferences. */
                 if (strcmp(dotp, "udp_summary_in_tree") == 0)
@@ -5827,16 +5926,44 @@ set_pref(gchar *pref_name, const gchar *value, void *private_data _U_,
                 } else if (strcmp(pref_name, "name_resolve_suppress_smi_errors") == 0) {
                     pref = prefs_find_preference(nameres_module, "suppress_smi_errors");
                 }
+            } else if (strcmp(module->name, "extcap") == 0) {
+                /* Handle the old "sshdump.remotesudo" preference; map it to the new
+                  "sshdump.remotepriv" preference, and map the boolean values to the
+                  appropriate strings of the new preference. */
+                if (strcmp(dotp, "sshdump.remotesudo") == 0) {
+                    pref = prefs_find_preference(module, "sshdump.remotepriv");
+                    if (g_ascii_strcasecmp(value, "true") == 0)
+                        value = "sudo";
+                    else
+                        value = "none";
+                }
+            }
+            if (pref) {
+                converted_pref = TRUE;
             }
         }
-        if (pref == NULL)
-            return PREFS_SET_NO_SUCH_PREF;        /* no such preference */
+        if (pref == NULL ) {
+            if (strcmp(module->name, "extcap") == 0 && g_list_length(module->prefs) <= 1) {
+                    /*
+                    * Assume that we've skipped extcap preference registration
+                    * and that only extcap.gui_save_on_start is loaded.
+                    */
+                    return PREFS_SET_OK;
+                }
+            return PREFS_SET_NO_SUCH_PREF;    /* no such preference */
+        }
 
         type = pref->type;
         if (IS_PREF_OBSOLETE(type)) {
             return PREFS_SET_OBSOLETE;        /* no such preference any more */
         } else {
             RESET_PREF_OBSOLETE(type);
+        }
+
+        if (converted_pref) {
+            ws_warning("Preference \"%s\" has been converted to \"%s.%s\"\n"
+                       "Save your preferences to make this change permanent.",
+                       pref_name, module->name ? module->name : module->parent->name, prefs_get_name(pref));
         }
 
         switch (type) {
@@ -5897,6 +6024,7 @@ set_pref(gchar *pref_name, const gchar *value, void *private_data _U_,
             break;
 
         case PREF_ENUM:
+        case PREF_PROTO_TCP_SNDAMB_ENUM:
             /* XXX - give an error if it doesn't match? */
             enum_val = find_val_for_string(value, pref->info.enum_info.enumvals,
                                            *pref->varp.enump);
@@ -5911,6 +6039,11 @@ set_pref(gchar *pref_name, const gchar *value, void *private_data _U_,
         case PREF_OPEN_FILENAME:
         case PREF_DIRNAME:
             containing_module->prefs_changed_flags |= prefs_set_string_value(pref, value, pref_current);
+            break;
+
+        case PREF_PASSWORD:
+            /* Read value is everytime empty */
+            containing_module->prefs_changed_flags |= prefs_set_string_value(pref, "", pref_current);
             break;
 
         case PREF_RANGE:
@@ -6052,6 +6185,7 @@ prefs_pref_type_name(pref_t *pref)
         break;
 
     case PREF_ENUM:
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
         type_name = "Choice";
         break;
 
@@ -6096,6 +6230,10 @@ prefs_pref_type_name(pref_t *pref)
 
     case PREF_UAT:
         type_name = "UAT";
+        break;
+
+    case PREF_PASSWORD:
+        type_name = "Password";
         break;
     }
     return type_name;
@@ -6148,7 +6286,7 @@ prefs_pref_type_description(pref_t *pref)
     int type;
 
     if (!pref) {
-        return g_strdup_printf("%s.", type_desc); /* ...or maybe assert? */
+        return ws_strdup_printf("%s.", type_desc); /* ...or maybe assert? */
     }
 
     type = pref->type;
@@ -6183,6 +6321,7 @@ prefs_pref_type_description(pref_t *pref)
         break;
 
     case PREF_ENUM:
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
     {
         const enum_val_t *enum_valp = pref->info.enum_info.enumvals;
         GString *enum_str = g_string_new("One of: ");
@@ -6243,6 +6382,10 @@ prefs_pref_type_description(pref_t *pref)
         type_desc = "Configuration data stored in its own file";
         break;
 
+    case PREF_PASSWORD:
+        type_desc = "Password (never stored on disk)";
+        break;
+
     default:
         break;
     }
@@ -6280,6 +6423,7 @@ prefs_pref_is_default(pref_t *pref)
         break;
 
     case PREF_ENUM:
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
         if (pref->default_val.enumval == *pref->varp.enump)
             return TRUE;
         break;
@@ -6288,6 +6432,7 @@ prefs_pref_is_default(pref_t *pref)
     case PREF_SAVE_FILENAME:
     case PREF_OPEN_FILENAME:
     case PREF_DIRNAME:
+    case PREF_PASSWORD:
         if (!(g_strcmp0(pref->default_val.string, *pref->varp.string)))
             return TRUE;
         break;
@@ -6315,7 +6460,7 @@ prefs_pref_is_default(pref_t *pref)
     case PREF_STATIC_TEXT:
     case PREF_UAT:
         return FALSE;
-        /* g_assert_not_reached(); */
+        /* ws_assert_not_reached(); */
         break;
     }
     return FALSE;
@@ -6369,13 +6514,13 @@ prefs_pref_to_str(pref_t *pref, pref_source_t source) {
         switch (pref->info.base) {
 
         case 10:
-            return g_strdup_printf("%u", pref_uint);
+            return ws_strdup_printf("%u", pref_uint);
 
         case 8:
-            return g_strdup_printf("%#o", pref_uint);
+            return ws_strdup_printf("%#o", pref_uint);
 
         case 16:
-            return g_strdup_printf("%#x", pref_uint);
+            return ws_strdup_printf("%#x", pref_uint);
         }
         break;
     }
@@ -6384,6 +6529,7 @@ prefs_pref_to_str(pref_t *pref, pref_source_t source) {
         return g_strdup((*(gboolean *) valp) ? "TRUE" : "FALSE");
 
     case PREF_ENUM:
+    case PREF_PROTO_TCP_SNDAMB_ENUM:
     {
         gint pref_enumval = *(gint *) valp;
         /*
@@ -6417,7 +6563,7 @@ prefs_pref_to_str(pref_t *pref, pref_source_t source) {
         return ret_value;
 
     case PREF_COLOR:
-        return g_strdup_printf("%02x%02x%02x",
+        return ws_strdup_printf("%02x%02x%02x",
                    (pref_color->red * 255 / 65535),
                    (pref_color->green * 255 / 65535),
                    (pref_color->blue * 255 / 65535));
@@ -6436,11 +6582,14 @@ prefs_pref_to_str(pref_t *pref, pref_source_t source) {
     {
         uat_t *uat = pref->varp.uat;
         if (uat && uat->filename)
-            return g_strdup_printf("[Managed in the file \"%s\"]", uat->filename);
+            return ws_strdup_printf("[Managed in the file \"%s\"]", uat->filename);
         else
             pref_text = "[Managed in an unknown file]";
         break;
     }
+
+    case PREF_PASSWORD:
+        return g_strdup(*(const char **) valp);
 
     default:
         break;
@@ -6497,14 +6646,15 @@ write_pref(gpointer data, gpointer user_data)
         char *type_desc, *pref_text;
         const char * def_prefix = prefs_pref_is_default(pref) ? "#" : "";
 
-        if (pref->type == PREF_CUSTOM) fprintf(arg->pf, "\n# %s", pref->custom_cbs.type_name_cb());
+        if (pref->type == PREF_CUSTOM)
+            fprintf(arg->pf, "\n# %s", pref->custom_cbs.type_name_cb());
         fprintf(arg->pf, "\n");
         if (pref->description &&
                 (g_ascii_strncasecmp(pref->description,"", 2) != 0)) {
             if (pref->type != PREF_CUSTOM) {
                 /* We get duplicate lines otherwise. */
 
-                desc_lines = g_strsplit(pref->description,"\n",0);
+                desc_lines = g_strsplit(pref->description, "\n", 0);
                 for (i = 0; desc_lines[i] != NULL; ++i) {
                     fprintf(arg->pf, "# %s\n", desc_lines[i]);
                 }
@@ -6515,7 +6665,7 @@ write_pref(gpointer data, gpointer user_data)
         }
 
         type_desc = prefs_pref_type_description(pref);
-        desc_lines = g_strsplit(type_desc,"\n",0);
+        desc_lines = g_strsplit(type_desc, "\n", 0);
         for (i = 0; desc_lines[i] != NULL; ++i) {
             fprintf(arg->pf, "# %s\n", desc_lines[i]);
         }
@@ -6524,12 +6674,19 @@ write_pref(gpointer data, gpointer user_data)
 
         pref_text = prefs_pref_to_str(pref, pref_current);
         fprintf(arg->pf, "%s%s.%s: ", def_prefix, name_prefix, pref->name);
-        desc_lines = g_strsplit(pref_text,"\n",0);
-        for (i = 0; desc_lines[i] != NULL; ++i) {
-            fprintf(arg->pf, "%s%s\n", i == 0 ? "" : def_prefix, desc_lines[i]);
+        if (pref->type != PREF_PASSWORD)
+        {
+            desc_lines = g_strsplit(pref_text, "\n", 0);
+            for (i = 0; desc_lines[i] != NULL; ++i) {
+                fprintf(arg->pf, "%s%s\n", i == 0 ? "" : def_prefix, desc_lines[i]);
+            }
+            if (i == 0)
+                fprintf(arg->pf, "\n");
+            g_strfreev(desc_lines);
+        } else {
+            /* We never store password value */
+            fprintf(arg->pf, "\n");
         }
-        if (i == 0) fprintf(arg->pf, "\n");
-        g_strfreev(desc_lines);
         g_free(pref_text);
     }
 
@@ -6600,6 +6757,37 @@ write_module_prefs(module_t *module, gpointer user_data)
     return 0;
 }
 
+#ifdef _WIN32
+static void
+write_registry(void)
+{
+    HKEY hTestKey;
+    DWORD data;
+    DWORD data_size;
+    DWORD ret;
+
+    ret = RegCreateKeyExA(HKEY_CURRENT_USER, REG_HKCU_WIRESHARK_KEY, 0, NULL,
+                            REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL,
+                            &hTestKey, NULL);
+    if (ret != ERROR_SUCCESS) {
+        ws_noisy("Cannot open HKCU "REG_HKCU_WIRESHARK_KEY": 0x%lx", ret);
+        return;
+    }
+
+    data = ws_log_console_open;
+    data_size = sizeof(DWORD);
+    ret = RegSetValueExA(hTestKey, LOG_HKCU_CONSOLE_OPEN, 0, REG_DWORD, (const BYTE *)&data, data_size);
+    if (ret == ERROR_SUCCESS) {
+        ws_noisy("Wrote "LOG_HKCU_CONSOLE_OPEN" to Windows registry: 0x%lu", data);
+    }
+    else {
+        ws_noisy("Error writing registry key "LOG_HKCU_CONSOLE_OPEN": 0x%lx", ret);
+    }
+
+    RegCloseKey(hTestKey);
+}
+#endif
+
 /* Write out "prefs" to the user's preferences file, and return 0.
 
    If the preferences file path is NULL, write to stdout.
@@ -6615,6 +6803,10 @@ write_prefs(char **pf_path_return)
 
     /* Needed for "-G defaultprefs" */
     init_prefs();
+
+#ifdef _WIN32
+    write_registry();
+#endif
 
     /* To do:
      * - Split output lines longer than MAX_VAL_LEN
@@ -6642,7 +6834,7 @@ write_prefs(char **pf_path_return)
             char *err = NULL;
             prefs.filter_expressions_old = FALSE;
             if (!uat_save(uat_get_table_by_name("Display expressions"), &err)) {
-                g_warning("Unable to save Display expressions: %s", err);
+                ws_warning("Unable to save Display expressions: %s", err);
                 g_free(err);
             }
         }

@@ -771,6 +771,10 @@ static const value_string apdu_ins_vals[] = {
 	{ 0x70, "MANAGE CHANNEL" },
 	{ 0x73, "MANAGE SECURE CHANNEL" },
 	{ 0x75, "TRANSACT DATA" },
+	/* TS 102 221 v15.11.0 */
+	{ 0x78, "GET IDENTITY" },
+	/* GSMA SGP.02 v4.2 */
+	{ 0xCA, "GET DATA" },
 	/* TS TS 102 222 */
 	{ 0xE0, "CREATE FILE" },
 	{ 0xE4, "DELETE FILE" },
@@ -904,7 +908,7 @@ static const value_string df_gsm_dfs[] = {
 	{ 0x5f32, "DF.ICO" },
 	{ 0x5f33, "DF.ACeS" },
 	{ 0x5f3c, "DF.MExE" },
-	{ 0x5f40, "DF.EIA/TIA-533" },
+	{ 0x5f40, "DF.EIA/TIA-533/DF.WLAN" },
 	{ 0x5f60, "DF.CTS" },
 	{ 0x5f70, "DF.SoLSA" },
 #if 0
@@ -915,9 +919,9 @@ static const value_string adf_usim_dfs[] = {
 #endif
 	{ 0x5f3a, "DF.PHONEBOOK" },
 	{ 0x5f3b, "DF.GSM-ACCESS" },
-	{ 0x5f3c, "DF.MexE" },
-	{ 0x5f70, "DF.SoLSA" },
-	{ 0x5f40, "DF.WLAN" },
+//	{ 0x5f3c, "DF.MexE" },
+//	{ 0x5f70, "DF.SoLSA" },
+//	{ 0x5f40, "DF.WLAN" },
 	{ 0x5f50, "DF.HNB" },
 	{ 0x5f90, "DF.ProSe" },
 	{ 0x5fa0, "DF.ACDC" },
@@ -1043,8 +1047,8 @@ static const value_string adf_5gs_efs[] = {
 	{ 0x4f06, "EF.UAC_AIC" },
 	{ 0x4f07, "EF.SUCI_Calc_Info" },
 	{ 0x4f08, "EF.OPL5G" },
-	{ 0x4f09, "EF.EFSUPI_NAI" },
-	{ 0x4f0a, "EF.Routing_Indicator" },
+	{ 0x4f09, "EF.EFSUPI_NAI/EF.PBC" },
+	{ 0x4f0a, "EF.Routing_Indicator/EF.PBC1" },
 	{ 0x4f0b, "EF.URSP" },
 	{ 0x4f0c, "EF.TN3GPPSNN" },
 #if 0
@@ -1053,8 +1057,8 @@ static const value_string adf_5gs_efs[] = {
 
 static const value_string df_phonebook_efs[] = {
 #endif
-	{ 0x4f09, "EF.PBC" },
-	{ 0x4f0a, "EF.PBC1" },
+//	{ 0x4f09, "EF.PBC" },
+//	{ 0x4f0a, "EF.PBC1" },
 	{ 0x4f11, "EF.ANRA" },
 	{ 0x4f12, "EF.ANRA1" },
 	{ 0x4f13, "EF.ANRB" },
@@ -1178,7 +1182,7 @@ static const gchar *get_sw_string(guint16 sw)
 	case 0x6f:
 		return "Technical problem with no diagnostic";
 	}
-	return val_to_str(sw, sw_vals, "%04x");
+	return val_to_str(sw, sw_vals, "Unknown status word: %04x");
 }
 
 static int
@@ -1243,7 +1247,6 @@ static int
 dissect_gsm_apdu(guint8 ins, guint8 p1, guint8 p2, guint8 p3, tvbuff_t *tvb,
 		 int offset, packet_info *pinfo, proto_tree *tree, gboolean isSIMtrace)
 {
-	guint8 g8;
 	guint16 g16;
 	tvbuff_t *subtvb;
 	int i, start_offset;
@@ -1399,24 +1402,23 @@ dissect_gsm_apdu(guint8 ins, guint8 p1, guint8 p2, guint8 p3, tvbuff_t *tvb,
 		call_dissector_with_data(sub_handle_cap, subtvb, pinfo, tree, GUINT_TO_POINTER(0x14));
 		break;
 	case 0x70: /* MANAGE CHANNEL */
-		proto_tree_add_item(tree, hf_chan_op, tvb, offset-3, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(tree, hf_chan_op, tvb, offset+P1_OFFS, 1, ENC_BIG_ENDIAN);
 		col_append_fstr(pinfo->cinfo, COL_INFO, "Operation=%s ",
 				val_to_str(p1, chan_op_vals, "%02x"));
-		switch (p1) {
-		case 0x00: /* OPEN */
-			/* Logical channels are assigned by the card, so in 'open' they are
-			 * in the DATA, whereas in close their number is in P2 */
-			proto_tree_add_item(tree, hf_chan_nr, tvb, offset+DATA_OFFS, 1, ENC_BIG_ENDIAN);
-			g8 = tvb_get_guint8(tvb, offset+DATA_OFFS);
-			col_append_fstr(pinfo->cinfo, COL_INFO, "Channel=%d ", g8);
-			break;
-		case 0x80: /* CLOSE */
-			proto_tree_add_item(tree, hf_chan_nr, tvb, offset-2, 1, ENC_BIG_ENDIAN);
-			col_append_fstr(pinfo->cinfo, COL_INFO, "Channel=%d ", p2);
-			break;
+		proto_tree_add_item(tree, hf_chan_nr, tvb, offset+P2_OFFS, 1, ENC_BIG_ENDIAN);
+		if (p1 == 0) { /* OPEN */
+			proto_tree_add_item(tree, hf_le, tvb, offset+P3_OFFS, 1, ENC_BIG_ENDIAN);
+		}
+		if (p1 == 0 && p2 == 0) {
+			/* Logical channels are assigned by the card when P2 is 0. */
+			col_append_fstr(pinfo->cinfo, COL_INFO, "(assign channel) ");
+		} else {
+			col_append_fstr(pinfo->cinfo, COL_INFO, "(channel: %d) ", p2);
 		}
 		break;
+	case 0x78: /* GET IDENTITY */
 	case 0xC0: /* GET RESPONSE */
+	case 0xCA: /* GET DATA */
 		proto_tree_add_item(tree, hf_le, tvb, offset+P3_OFFS, 1, ENC_BIG_ENDIAN);
 		if (isSIMtrace) {
 			proto_tree_add_item(tree, hf_apdu_data, tvb, offset+DATA_OFFS, p3, ENC_NA);
@@ -1441,7 +1443,7 @@ static gint
 dissect_rsp_apdu_tvb(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree, proto_tree *sim_tree)
 {
 	guint16 sw;
-	proto_item *ti;
+	proto_item *ti = NULL;
 	guint tvb_len = tvb_reported_length(tvb);
 
 	if (tree && !sim_tree) {
@@ -1456,21 +1458,25 @@ dissect_rsp_apdu_tvb(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree 
 
 	/* obtain status word */
 	sw = tvb_get_ntohs(tvb, offset);
-	/* proto_tree_add_item(sim_tree, hf_apdu_sw, tvb, offset, 2, ENC_BIG_ENDIAN); */
 	proto_tree_add_uint_format(sim_tree, hf_apdu_sw, tvb, offset, 2, sw,
 							"Status Word: %04x %s", sw, get_sw_string(sw));
 	offset += 2;
 
-	switch (sw >> 8) {
-	case 0x90:
-	case 0x91:
-	case 0x92:
-	case 0x9e:
-	case 0x9f:
-		break;
-	default:
-		col_append_fstr(pinfo->cinfo, COL_INFO, ": %s ", get_sw_string(sw));
-		break;
+	if (ti) {
+		/* Always show status in info column when response only */
+		col_add_fstr(pinfo->cinfo, COL_INFO, "Response, %s ", get_sw_string(sw));
+	} else {
+		switch (sw >> 8) {
+		case 0x90:
+		case 0x91:
+		case 0x92:
+		case 0x9e:
+		case 0x9f:
+			break;
+		default:
+			col_append_fstr(pinfo->cinfo, COL_INFO, ": %s ", get_sw_string(sw));
+			break;
+		}
 	}
 
 	return offset;
@@ -1489,7 +1495,13 @@ dissect_cmd_apdu_tvb(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree 
 	ins = tvb_get_guint8(tvb, offset+1);
 	p1 = tvb_get_guint8(tvb, offset+2);
 	p2 = tvb_get_guint8(tvb, offset+3);
-	p3 = tvb_get_guint8(tvb, offset+4);
+
+	if (tvb_reported_length_remaining(tvb, offset+3) > 1) {
+		p3 = tvb_get_guint8(tvb, offset+4);
+	} else {
+		/* Parameter 3 not present. */
+		p3 = 0;
+	}
 
 	if (tree) {
 		ti = proto_tree_add_item(tree, proto_gsm_sim, tvb, 0, -1, ENC_NA);

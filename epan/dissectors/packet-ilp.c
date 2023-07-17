@@ -1,11 +1,8 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-ilp.c                                                               */
-/* asn2wrs.py -p ilp -c ./ilp.cnf -s ./packet-ilp-template -D . -O ../.. ILP.asn ILP-Components.asn */
+/* asn2wrs.py -L -p ilp -c ./ilp.cnf -s ./packet-ilp-template -D . -O ../.. ILP.asn ILP-Components.asn */
 
-/* Input file: packet-ilp-template.c */
-
-#line 1 "./asn1/ilp/packet-ilp-template.c"
 /* packet-ilp.c
  * Routines for OMA Internal Location Protocol packet dissection
  * Copyright 2006, e.yimjia <jy.m12.0@gmail.com>
@@ -41,7 +38,7 @@ void proto_register_ilp(void);
 
 static dissector_handle_t rrlp_handle;
 static dissector_handle_t lpp_handle;
-static dissector_handle_t ilp_handle;
+static dissector_handle_t ilp_tcp_handle;
 
 
 /* IANA Registered Ports
@@ -57,9 +54,6 @@ static int proto_ilp = -1;
 
 static gboolean ilp_desegment = TRUE;
 
-
-/*--- Included file: packet-ilp-hf.c ---*/
-#line 1 "./asn1/ilp/packet-ilp-hf.c"
 static int hf_ilp_ILP_PDU_PDU = -1;               /* ILP_PDU */
 static int hf_ilp_length = -1;                    /* INTEGER_0_65535 */
 static int hf_ilp_version = -1;                   /* Version */
@@ -345,7 +339,7 @@ static int hf_ilp_cellGlobalId = -1;              /* CellGlobalIdEUTRA */
 static int hf_ilp_measResult = -1;                /* T_measResult */
 static int hf_ilp_neighbourInformation5G = -1;    /* NeighbourInformation5G */
 static int hf_ilp_plmn_Identity = -1;             /* PLMN_Identity */
-static int hf_ilp_cellIdentity = -1;              /* CellIdentity */
+static int hf_ilp_eutra_cellIdentity = -1;        /* CellIdentity */
 static int hf_ilp_mcc = -1;                       /* MCC */
 static int hf_ilp_mnc = -1;                       /* MNC */
 static int hf_ilp_MCC_item = -1;                  /* MCC_MNC_Digit */
@@ -383,12 +377,12 @@ static int hf_ilp_locationValue = -1;             /* OCTET_STRING_SIZE_1_128 */
 static int hf_ilp_lciLocData = -1;                /* LciLocData */
 static int hf_ilp_locationDataLCI = -1;           /* LocationDataLCI */
 static int hf_ilp_latitudeResolution = -1;        /* BIT_STRING_SIZE_6 */
-static int hf_ilp_latitude_01 = -1;               /* BIT_STRING_SIZE_34 */
+static int hf_ilp_LocationDataLCI_latitude = -1;  /* BIT_STRING_SIZE_34 */
 static int hf_ilp_longitudeResolution = -1;       /* BIT_STRING_SIZE_6 */
-static int hf_ilp_longitude_01 = -1;              /* BIT_STRING_SIZE_34 */
+static int hf_ilp_LocationDataLCI_longitude = -1;  /* BIT_STRING_SIZE_34 */
 static int hf_ilp_altitudeType = -1;              /* BIT_STRING_SIZE_4 */
 static int hf_ilp_altitudeResolution = -1;        /* BIT_STRING_SIZE_6 */
-static int hf_ilp_altitude_01 = -1;               /* BIT_STRING_SIZE_30 */
+static int hf_ilp_LocationDataLCI_altitude = -1;  /* BIT_STRING_SIZE_30 */
 static int hf_ilp_datum = -1;                     /* BIT_STRING_SIZE_8 */
 static int hf_ilp_wimaxBsID = -1;                 /* WimaxBsID */
 static int hf_ilp_wimaxRTD = -1;                  /* WimaxRTD */
@@ -434,7 +428,7 @@ static int hf_ilp_MeasuredResultsList_item = -1;  /* MeasuredResults */
 static int hf_ilp_utra_CarrierRSSI = -1;          /* UTRA_CarrierRSSI */
 static int hf_ilp_cellMeasuredResultsList = -1;   /* CellMeasuredResultsList */
 static int hf_ilp_CellMeasuredResultsList_item = -1;  /* CellMeasuredResults */
-static int hf_ilp_cellIdentity_01 = -1;           /* INTEGER_0_268435455 */
+static int hf_ilp_cellIdentity = -1;              /* INTEGER_0_268435455 */
 static int hf_ilp_modeSpecificInfo_02 = -1;       /* T_modeSpecificInfo_02 */
 static int hf_ilp_fdd_02 = -1;                    /* T_fdd_02 */
 static int hf_ilp_primaryCPICH_Info = -1;         /* PrimaryCPICH_Info */
@@ -499,17 +493,11 @@ static int hf_ilp_GANSSSignals_signal8 = -1;
 static int hf_ilp_T_addPosMode_standalone = -1;
 static int hf_ilp_T_addPosMode_setBased = -1;
 static int hf_ilp_T_addPosMode_setAssisted = -1;
-
-/*--- End of included file: packet-ilp-hf.c ---*/
-#line 53 "./asn1/ilp/packet-ilp-template.c"
 static int hf_ilp_mobile_directory_number = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_ilp = -1;
 static gint ett_ilp_setid = -1;
-
-/*--- Included file: packet-ilp-ett.c ---*/
-#line 1 "./asn1/ilp/packet-ilp-ett.c"
 static gint ett_ilp_ILP_PDU = -1;
 static gint ett_ilp_IlpMessage = -1;
 static gint ett_ilp_PREQ = -1;
@@ -662,13 +650,7 @@ static gint ett_ilp_MultiPosPayLoad = -1;
 static gint ett_ilp_T_lPPPayload = -1;
 static gint ett_ilp_T_tia801Payload = -1;
 
-/*--- End of included file: packet-ilp-ett.c ---*/
-#line 59 "./asn1/ilp/packet-ilp-template.c"
-
 /* Include constants */
-
-/*--- Included file: packet-ilp-val.h ---*/
-#line 1 "./asn1/ilp/packet-ilp-val.h"
 #define maxGANSS                       16
 #define maxGANSSSat                    32
 #define maxLidSize                     64
@@ -681,13 +663,7 @@ static gint ett_ilp_T_tia801Payload = -1;
 #define maxTS                          14
 #define maxPosSize                     1024
 
-/*--- End of included file: packet-ilp-val.h ---*/
-#line 62 "./asn1/ilp/packet-ilp-template.c"
 
-
-
-/*--- Included file: packet-ilp-fn.c ---*/
-#line 1 "./asn1/ilp/packet-ilp-fn.c"
 
 
 static int
@@ -818,7 +794,6 @@ dissect_ilp_SlcSessionID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 static int
 dissect_ilp_T_msisdn(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 70 "./asn1/ilp/ilp.cnf"
   tvbuff_t *msisdn_tvb;
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
                                        8, 8, FALSE, &msisdn_tvb);
@@ -831,7 +806,6 @@ dissect_ilp_T_msisdn(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
   }
 
 
-
   return offset;
 }
 
@@ -839,7 +813,6 @@ dissect_ilp_T_msisdn(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
 
 static int
 dissect_ilp_T_mdn(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 80 "./asn1/ilp/ilp.cnf"
   tvbuff_t *mdn_tvb;
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
                                        8, 8, FALSE, &mdn_tvb);
@@ -850,7 +823,6 @@ dissect_ilp_T_mdn(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto
     subtree = proto_item_add_subtree(actx->created_item, ett_ilp_setid);
     proto_tree_add_item(subtree, hf_ilp_mobile_directory_number, mdn_tvb, 0, 8, ENC_BCD_DIGITS_0_9);
   }
-
 
 
   return offset;
@@ -870,7 +842,6 @@ dissect_ilp_BIT_STRING_SIZE_34(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 
 static int
 dissect_ilp_T_imsi(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 90 "./asn1/ilp/ilp.cnf"
   tvbuff_t *imsi_tvb;
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
                                        8, 8, FALSE, &imsi_tvb);
@@ -883,7 +854,6 @@ dissect_ilp_T_imsi(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, prot
   }
 
 
-
   return offset;
 }
 
@@ -892,7 +862,8 @@ dissect_ilp_T_imsi(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, prot
 static int
 dissect_ilp_IA5String_SIZE_1_1000(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_IA5String(tvb, offset, actx, tree, hf_index,
-                                          1, 1000, FALSE);
+                                          1, 1000, FALSE,
+                                          NULL);
 
   return offset;
 }
@@ -1521,7 +1492,7 @@ dissect_ilp_T_modeSpecificInfo_02(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t 
 
 
 static const per_sequence_t CellMeasuredResults_sequence[] = {
-  { &hf_ilp_cellIdentity_01 , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_ilp_INTEGER_0_268435455 },
+  { &hf_ilp_cellIdentity    , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_ilp_INTEGER_0_268435455 },
   { &hf_ilp_modeSpecificInfo_02, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_ilp_T_modeSpecificInfo_02 },
   { NULL, 0, 0, NULL }
 };
@@ -1834,7 +1805,7 @@ dissect_ilp_CellIdentity(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 static const per_sequence_t CellGlobalIdEUTRA_sequence[] = {
   { &hf_ilp_plmn_Identity   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_PLMN_Identity },
-  { &hf_ilp_cellIdentity    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_CellIdentity },
+  { &hf_ilp_eutra_cellIdentity, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_CellIdentity },
   { NULL, 0, 0, NULL }
 };
 
@@ -2270,12 +2241,12 @@ dissect_ilp_BIT_STRING_SIZE_8(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
 
 static const per_sequence_t LocationDataLCI_sequence[] = {
   { &hf_ilp_latitudeResolution, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_6 },
-  { &hf_ilp_latitude_01     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_34 },
+  { &hf_ilp_LocationDataLCI_latitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_34 },
   { &hf_ilp_longitudeResolution, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_6 },
-  { &hf_ilp_longitude_01    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_34 },
+  { &hf_ilp_LocationDataLCI_longitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_34 },
   { &hf_ilp_altitudeType    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_4 },
   { &hf_ilp_altitudeResolution, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_6 },
-  { &hf_ilp_altitude_01     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_30 },
+  { &hf_ilp_LocationDataLCI_altitude, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_30 },
   { &hf_ilp_datum           , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_ilp_BIT_STRING_SIZE_8 },
   { NULL, 0, 0, NULL }
 };
@@ -2769,7 +2740,8 @@ dissect_ilp_MultipleLocationIds(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
 static int
 dissect_ilp_UTCTime(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_VisibleString(tvb, offset, actx, tree, hf_index,
-                                        NO_BOUND, NO_BOUND, FALSE);
+                                        NO_BOUND, NO_BOUND, FALSE,
+                                        NULL);
 
   return offset;
 }
@@ -3965,7 +3937,6 @@ dissect_ilp_OCTET_STRING_SIZE_1_8192(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
 
 static int
 dissect_ilp_T_rrlpPayload(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 52 "./asn1/ilp/ilp.cnf"
   tvbuff_t *rrlp_tvb;
 
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
@@ -3977,7 +3948,6 @@ dissect_ilp_T_rrlpPayload(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
   }
 
 
-
   return offset;
 }
 
@@ -3985,7 +3955,6 @@ dissect_ilp_T_rrlpPayload(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 
 static int
 dissect_ilp_T_lPPPayload_item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 61 "./asn1/ilp/ilp.cnf"
   tvbuff_t *lpp_tvb;
 
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
@@ -3995,7 +3964,6 @@ dissect_ilp_T_lPPPayload_item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
   if (lpp_tvb && lpp_handle) {
     call_dissector(lpp_handle, lpp_tvb, actx->pinfo, tree);
   }
-
 
 
   return offset;
@@ -4655,7 +4623,6 @@ static const per_choice_t IlpMessage_choice[] = {
 
 static int
 dissect_ilp_IlpMessage(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 42 "./asn1/ilp/ilp.cnf"
 
 guint32 IlpMessage;
 
@@ -4664,8 +4631,7 @@ guint32 IlpMessage;
                                  &IlpMessage);
 
 
-  col_append_fstr(actx->pinfo->cinfo, COL_INFO, "%s ", val_to_str(IlpMessage,ilp_IlpMessage_vals,"Unknown"));
-
+  col_append_fstr(actx->pinfo->cinfo, COL_INFO, "%s ", val_to_str_const(IlpMessage,ilp_IlpMessage_vals,"Unknown"));
 
 
   return offset;
@@ -4682,7 +4648,6 @@ static const per_sequence_t ILP_PDU_sequence[] = {
 
 static int
 dissect_ilp_ILP_PDU(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 27 "./asn1/ilp/ilp.cnf"
   proto_item *it;
   proto_tree *ilp_tree;
 
@@ -4691,11 +4656,8 @@ dissect_ilp_ILP_PDU(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pro
 
   col_set_str(actx->pinfo->cinfo, COL_PROTOCOL, PSNAME);
   col_clear(actx->pinfo->cinfo, COL_INFO);
-
-#line 38 "./asn1/ilp/ilp.cnf"
   offset = dissect_per_sequence(tvb, offset, actx, ilp_tree, hf_index,
                                    ett_ilp_ILP_PDU, ILP_PDU_sequence);
-
 
 
   return offset;
@@ -4712,9 +4674,6 @@ static int dissect_ILP_PDU_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_
   return offset;
 }
 
-
-/*--- End of included file: packet-ilp-fn.c ---*/
-#line 65 "./asn1/ilp/packet-ilp-template.c"
 
 
 static guint
@@ -4740,9 +4699,6 @@ void proto_register_ilp(void) {
   /* List of fields */
   static hf_register_info hf[] = {
 
-
-/*--- Included file: packet-ilp-hfarr.c ---*/
-#line 1 "./asn1/ilp/packet-ilp-hfarr.c"
     { &hf_ilp_ILP_PDU_PDU,
       { "ILP-PDU", "ilp.ILP_PDU_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -5260,7 +5216,7 @@ void proto_register_ilp(void) {
         FT_BYTES, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_ilp_minsi,
-      { "min", "ilp.min",
+      { "min", "ilp.minsi",
         FT_BYTES, BASE_NONE, NULL, 0,
         "BIT_STRING_SIZE_34", HFILL }},
     { &hf_ilp_imsi,
@@ -5883,8 +5839,8 @@ void proto_register_ilp(void) {
       { "plmn-Identity", "ilp.plmn_Identity_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
-    { &hf_ilp_cellIdentity,
-      { "cellIdentity", "ilp.cellIdentity",
+    { &hf_ilp_eutra_cellIdentity,
+      { "cellIdentity", "ilp.cellglobalideutra.cellIdentity",
         FT_BYTES, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_ilp_mcc,
@@ -6035,15 +5991,15 @@ void proto_register_ilp(void) {
       { "latitudeResolution", "ilp.latitudeResolution",
         FT_BYTES, BASE_NONE, NULL, 0,
         "BIT_STRING_SIZE_6", HFILL }},
-    { &hf_ilp_latitude_01,
-      { "latitude", "ilp.latitude",
+    { &hf_ilp_LocationDataLCI_latitude,
+      { "latitude", "ilp.locationdatalci.latitude",
         FT_BYTES, BASE_NONE, NULL, 0,
         "BIT_STRING_SIZE_34", HFILL }},
     { &hf_ilp_longitudeResolution,
       { "longitudeResolution", "ilp.longitudeResolution",
         FT_BYTES, BASE_NONE, NULL, 0,
         "BIT_STRING_SIZE_6", HFILL }},
-    { &hf_ilp_longitude_01,
+    { &hf_ilp_LocationDataLCI_longitude,
       { "longitude", "ilp.longitude",
         FT_BYTES, BASE_NONE, NULL, 0,
         "BIT_STRING_SIZE_34", HFILL }},
@@ -6055,8 +6011,8 @@ void proto_register_ilp(void) {
       { "altitudeResolution", "ilp.altitudeResolution",
         FT_BYTES, BASE_NONE, NULL, 0,
         "BIT_STRING_SIZE_6", HFILL }},
-    { &hf_ilp_altitude_01,
-      { "altitude", "ilp.altitude",
+    { &hf_ilp_LocationDataLCI_altitude,
+      { "altitude", "ilp.locationdatalci.altitude",
         FT_BYTES, BASE_NONE, NULL, 0,
         "BIT_STRING_SIZE_30", HFILL }},
     { &hf_ilp_datum,
@@ -6239,7 +6195,7 @@ void proto_register_ilp(void) {
       { "CellMeasuredResults", "ilp.CellMeasuredResults_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
-    { &hf_ilp_cellIdentity_01,
+    { &hf_ilp_cellIdentity,
       { "cellIdentity", "ilp.cellIdentity",
         FT_UINT32, BASE_DEC, NULL, 0,
         "INTEGER_0_268435455", HFILL }},
@@ -6495,9 +6451,6 @@ void proto_register_ilp(void) {
       { "setAssisted", "ilp.T.addPosMode.setAssisted",
         FT_BOOLEAN, 8, NULL, 0x20,
         NULL, HFILL }},
-
-/*--- End of included file: packet-ilp-hfarr.c ---*/
-#line 91 "./asn1/ilp/packet-ilp-template.c"
     { &hf_ilp_mobile_directory_number,
       { "Mobile Directory Number", "ilp.mobile_directory_number",
         FT_STRING, BASE_NONE, NULL, 0,
@@ -6508,9 +6461,6 @@ void proto_register_ilp(void) {
   static gint *ett[] = {
     &ett_ilp,
     &ett_ilp_setid,
-
-/*--- Included file: packet-ilp-ettarr.c ---*/
-#line 1 "./asn1/ilp/packet-ilp-ettarr.c"
     &ett_ilp_ILP_PDU,
     &ett_ilp_IlpMessage,
     &ett_ilp_PREQ,
@@ -6662,9 +6612,6 @@ void proto_register_ilp(void) {
     &ett_ilp_MultiPosPayLoad,
     &ett_ilp_T_lPPPayload,
     &ett_ilp_T_tia801Payload,
-
-/*--- End of included file: packet-ilp-ettarr.c ---*/
-#line 102 "./asn1/ilp/packet-ilp-template.c"
   };
 
   module_t *ilp_module;
@@ -6672,7 +6619,7 @@ void proto_register_ilp(void) {
 
   /* Register protocol */
   proto_ilp = proto_register_protocol(PNAME, PSNAME, PFNAME);
-  ilp_handle = register_dissector("ilp", dissect_ilp_tcp, proto_ilp);
+  ilp_tcp_handle = register_dissector("ilp", dissect_ilp_tcp, proto_ilp);
 
   /* Register fields and subtrees */
   proto_register_field_array(proto_ilp, hf, array_length(hf));
@@ -6692,9 +6639,12 @@ void proto_register_ilp(void) {
 void
 proto_reg_handoff_ilp(void)
 {
-  dissector_add_string("media_type","application/oma-supl-ilp", ilp_handle);
+  dissector_handle_t ilp_pdu_handle;
+
+  ilp_pdu_handle = create_dissector_handle(dissect_ILP_PDU_PDU, proto_ilp);
   rrlp_handle = find_dissector_add_dependency("rrlp", proto_ilp);
   lpp_handle = find_dissector_add_dependency("lpp", proto_ilp);
 
-  dissector_add_uint_with_preference("tcp.port", ILP_TCP_PORT, ilp_handle);
+  dissector_add_string("media_type","application/oma-supl-ilp", ilp_pdu_handle);
+  dissector_add_uint_with_preference("tcp.port", ILP_TCP_PORT, ilp_tcp_handle);
 }

@@ -22,13 +22,13 @@ TEST_TYPE="fuzz"
 # Sanity check to make sure we can find our plugins. Zero or less disables.
 MIN_PLUGINS=0
 
-# Did we catch a signal?
-DONE=0
+# Did we catch a signal or time out?
+DONE=false
 
 # Currently running children
 RUNNER_PIDS=
 
-# Perform a two pass analysis on the capture file?
+# Perform a two-pass analysis on the capture file?
 TWO_PASS=
 
 # Specific config profile ?
@@ -36,6 +36,9 @@ CONFIG_PROFILE=
 
 # Run under valgrind ?
 VALGRIND=0
+
+# Abort on UTF-8 encoding errors
+CHECK_UTF_8="--log-fatal-domains=UTF-8 "
 
 # Run under AddressSanitizer ?
 ASAN=$CONFIGURED_WITH_ASAN
@@ -48,8 +51,12 @@ CHANGE_OFFSET=0
 # Only has effect when running under valgrind.
 MAX_LEAK=$(( 1024 * 100 ))
 
+# Our maximum run time.
+RUN_START_SECONDS=$SECONDS
+RUN_MAX_SECONDS=$(( RUN_START_SECONDS + 86400 ))
+
 # To do: add options for file names and limits
-while getopts "2b:C:d:e:agp:P:o:" OPTCHAR ; do
+while getopts "2b:C:d:e:agp:P:o:t:U" OPTCHAR ; do
     case $OPTCHAR in
         a) ASAN=1 ;;
         2) TWO_PASS="-2 " ;;
@@ -61,7 +68,9 @@ while getopts "2b:C:d:e:agp:P:o:" OPTCHAR ; do
         p) MAX_PASSES=$OPTARG ;;
         P) MIN_PLUGINS=$OPTARG ;;
         o) CHANGE_OFFSET=$OPTARG ;;
-        *) printf "Unknown option %s" "$OPTCHAR"
+        t) RUN_MAX_SECONDS=$(( RUN_START_SECONDS + OPTARG )) ;;
+        U) CHECK_UTF_8= ;; # disable
+        *) printf "Unknown option %s\n" "$OPTCHAR"
     esac
 done
 shift $((OPTIND - 1))
@@ -71,7 +80,7 @@ shift $((OPTIND - 1))
 ws_bind_exec_paths
 ws_check_exec "$TSHARK" "$EDITCAP" "$CAPINFOS" "$DATE" "$TMP_DIR"
 
-COMMON_ARGS="${CONFIG_PROFILE}${TWO_PASS}"
+COMMON_ARGS="${CONFIG_PROFILE}${TWO_PASS}${CHECK_UTF_8}"
 KEEP=
 PACKET_RANGE=
 if [ $VALGRIND -eq 1 ]; then
@@ -139,14 +148,15 @@ if [ "$MAX_PASSES" -gt 0 ]; then
     HOWMANY="$MAX_PASSES passes"
 fi
 echo -n "Running $RUNNER $COMMON_ARGS with args: "
-printf "\"%s\" " "${RUNNER_ARGS[@]}"
+printf "\"%s\"\n" "${RUNNER_ARGS[@]}"
 echo "($HOWMANY)"
 echo ""
 
 # Clean up on <ctrl>C, etc
 trap_all() {
-    DONE=1
-    echo 'Caught signal'
+    printf '\n\nCaught signal. Exiting.\n'
+    rm -f "$TMP_DIR/$TMP_FILE" "$TMP_DIR/$ERR_FILE"*
+    exit 0
 }
 
 trap_abrt() {
@@ -161,14 +171,14 @@ trap trap_abrt ABRT
 
 # Iterate over our capture files.
 PASS=0
-while { [ $PASS -lt "$MAX_PASSES" ] || [ "$MAX_PASSES" -lt 1 ]; } && [ $DONE -ne 1 ] ; do
+while { [ $PASS -lt "$MAX_PASSES" ] || [ "$MAX_PASSES" -lt 1 ]; } && ! $DONE ; do
     PASS=$(( PASS+1 ))
-    echo "Starting pass $PASS:"
+    echo "Pass $PASS:"
     RUN=0
 
     for CF in "$@" ; do
-        if [ $DONE -eq 1 ]; then
-            break # We caught a signal
+        if $DONE; then
+            break # We caught a signal or timed out
         fi
         RUN=$(( RUN + 1 ))
         if [ $(( RUN % 50 )) -eq 0 ] ; then
@@ -177,7 +187,6 @@ while { [ $PASS -lt "$MAX_PASSES" ] || [ "$MAX_PASSES" -lt 1 ]; } && [ $DONE -ne
         if [ "$OSTYPE" == "cygwin" ] ; then
             CF=$( cygpath --windows "$CF" )
         fi
-        echo -n "    $CF: "
 
         "$CAPINFOS" "$CF" > /dev/null 2> "$TMP_DIR/$ERR_FILE"
         RETVAL=$?
@@ -185,17 +194,33 @@ while { [ $PASS -lt "$MAX_PASSES" ] || [ "$MAX_PASSES" -lt 1 ]; } && [ $DONE -ne
             echo "Not a valid capture file"
             rm -f "$TMP_DIR/$ERR_FILE"
             continue
-        elif [ $RETVAL -ne 0 ] && [ $DONE -ne 1 ] ; then
+        elif [ $RETVAL -ne 0 ] && ! $DONE ; then
             # Some other error
             ws_exit_error
+        fi
+
+        # Choose a random subset of large captures.
+        KEEP=
+        PACKET_RANGE=
+        CF_PACKETS=$( "$CAPINFOS" -T -r -c "$CF" | cut -f2 )
+        if [[ CF_PACKETS -gt $MAX_FUZZ_PACKETS ]] ; then
+            START_PACKET=$(( CF_PACKETS - MAX_FUZZ_PACKETS ))
+            START_PACKET=$( shuf --input-range=1-$START_PACKET --head-count=1 )
+            END_PACKET=$(( START_PACKET + MAX_FUZZ_PACKETS ))
+            KEEP=-r
+            PACKET_RANGE="$START_PACKET-$END_PACKET"
+            printf "    Fuzzing packets %d-%d of %d\n" "$START_PACKET" "$END_PACKET" "$CF_PACKETS"
         fi
 
         DISSECTOR_BUG=0
         VG_ERR_CNT=0
 
+        printf "    %s: " "$( basename "$CF" )"
+        # shellcheck disable=SC2086
         "$EDITCAP" -E "$ERR_PROB" -o "$CHANGE_OFFSET" $KEEP "$CF" "$TMP_DIR/$TMP_FILE" $PACKET_RANGE > /dev/null 2>&1
         RETVAL=$?
         if [ $RETVAL -ne 0 ] ; then
+            # shellcheck disable=SC2086
             "$EDITCAP" -E "$ERR_PROB" -o "$CHANGE_OFFSET" $KEEP -T ether "$CF" "$TMP_DIR/$TMP_FILE" $PACKET_RANGE \
                 > /dev/null 2>&1
             RETVAL=$?
@@ -205,10 +230,11 @@ while { [ $PASS -lt "$MAX_PASSES" ] || [ "$MAX_PASSES" -lt 1 ]; } && [ $DONE -ne
             fi
         fi
 
+        FILE_START_SECONDS=$SECONDS
         RUNNER_PIDS=
         RUNNER_ERR_FILES=
         for ARGS in "${RUNNER_ARGS[@]}" ; do
-            if [ $DONE -eq 1 ]; then
+            if $DONE; then
                 break # We caught a signal
             fi
             echo -n "($ARGS) "
@@ -242,6 +268,11 @@ while { [ $PASS -lt "$MAX_PASSES" ] || [ "$MAX_PASSES" -lt 1 ]; } && [ $DONE -ne
             RUNNER_PID=$!
             RUNNER_PIDS="$RUNNER_PIDS $RUNNER_PID"
             RUNNER_ERR_FILES="$RUNNER_ERR_FILES $TMP_DIR/$ERR_FILE.$RUNNER_PID"
+
+            if [ $SECONDS -ge $RUN_MAX_SECONDS ] ; then
+                printf "\nStopping after %d seconds.\n" $(( SECONDS - RUN_START_SECONDS ))
+                DONE=true
+            fi
         done
 
         for RUNNER_PID in $RUNNER_PIDS ; do
@@ -254,7 +285,7 @@ while { [ $PASS -lt "$MAX_PASSES" ] || [ "$MAX_PASSES" -lt 1 ]; } && [ $DONE -ne
             #grep -i "dissector bug" $TMP_DIR/$ERR_FILE \
                 #    > /dev/null 2>&1 && DISSECTOR_BUG=1
 
-            if [ $VALGRIND -eq 1 ] && [ $DONE -ne 1 ]; then
+            if [ $VALGRIND -eq 1 ] && ! $DONE; then
                 VG_ERR_CNT=$( grep "ERROR SUMMARY:" "$TMP_DIR/$ERR_FILE" | cut -f4 -d' ' )
                 VG_DEF_LEAKED=$( grep "definitely lost:" "$TMP_DIR/$ERR_FILE" | cut -f7 -d' ' | tr -d , )
                 VG_IND_LEAKED=$( grep "indirectly lost:" "$TMP_DIR/$ERR_FILE" | cut -f7 -d' ' | tr -d , )
@@ -273,14 +304,14 @@ while { [ $PASS -lt "$MAX_PASSES" ] || [ "$MAX_PASSES" -lt 1 ]; } && [ $DONE -ne
                 fi
             fi
 
-            if [ $DONE -ne 1 ] && { [ $RUNNER_RETVAL -ne 0 ] || [ $DISSECTOR_BUG -ne 0 ] || [ $VG_ERR_CNT -ne 0 ]; } ; then
+            if ! $DONE && { [ $RUNNER_RETVAL -ne 0 ] || [ $DISSECTOR_BUG -ne 0 ] || [ $VG_ERR_CNT -ne 0 ]; } ; then
                 # shellcheck disable=SC2086
                 rm -f $RUNNER_ERR_FILES
                 ws_exit_error
             fi
         done
 
-        echo " OK"
+        printf " OK (%s seconds)\\n" $(( SECONDS - FILE_START_SECONDS ))
         rm -f "$TMP_DIR/$TMP_FILE" "$TMP_DIR/$ERR_FILE"
     done
 done

@@ -1,4 +1,4 @@
-/* field_filter_edit.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -40,11 +40,9 @@ private slots:
 
 private:
     QString placeholder_text_;
-    QAction *save_action_;
-    QAction *remove_action_;
 
     void setDefaultPlaceholderText();
-    void buildCompletionList(const QString& field_word);
+    void buildCompletionList(const QString &field_word, const QString &preamble);
 
 signals:
     void pushFilterSyntaxStatus(const QString&);
@@ -54,16 +52,3 @@ signals:
 };
 
 #endif // FIELDFILTEREDIT_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

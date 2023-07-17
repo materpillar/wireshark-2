@@ -29,7 +29,7 @@ static void gcsna_message_GCSNAL2Ack(proto_item *item, tvbuff_t *tvb, proto_tree
 static void gcsna_message_GCSNAServiceReject(proto_item *item, tvbuff_t *tvb, proto_tree *tree, guint *offset);
 
 /*Initialize all the header parameters that are to be displayed*/
-int proto_gcsna = -1;
+static int proto_gcsna = -1;
 static int hf_gcsna_msghdr = -1;
 static int hf_gcsna_msgid = -1;
 static int hf_gcsna_rejSequence = -1;
@@ -437,7 +437,7 @@ proto_register_gcsna(void)
         "gcsna"     /* abbrev */
     );
 
-    register_dissector("gcsna", dissect_gcsna, proto_gcsna);
+    gcsna_handle = register_dissector("gcsna", dissect_gcsna, proto_gcsna);
 
     proto_register_field_array(proto_gcsna, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
@@ -450,12 +450,5 @@ proto_register_gcsna(void)
 void
 proto_reg_handoff_gcsna(void)
 {
-    static int once = 1;
-
-    if (once == 1)
-    {
-        cdma2k_handle = find_dissector("cdma2k");
-        gcsna_handle = create_dissector_handle(dissect_gcsna, proto_gcsna);
-        once = 0;
-    }
+    cdma2k_handle = find_dissector("cdma2k");
 }

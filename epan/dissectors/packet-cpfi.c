@@ -91,6 +91,7 @@ static gint ett_cpfi = -1;
 static gint ett_cpfi_header = -1;
 static gint ett_cpfi_footer = -1;
 
+static dissector_handle_t cpfi_handle;
 static dissector_handle_t fc_handle;
 
 
@@ -166,7 +167,7 @@ dissect_cpfi_header(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   tda = (word1 & CPFI_DEST_MASK) >> CPFI_DEST_SHIFT;
   if ( tda >= FIRST_TIO_CARD_ADDRESS )
   {
-    g_strlcpy(src_str, " CPFI", sizeof(src_str));
+    (void) g_strlcpy(src_str, " CPFI", sizeof(src_str));
     src = 0;                            /* Make it smallest */
   }
   else
@@ -181,14 +182,14 @@ dissect_cpfi_header(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     src_board = tda >> 4;
     src_port = tda & 0x0f;
     src = (1 << 24)  +  (src_instance << 16) + (src_board << 8) + src_port;
-    g_snprintf(src_str, sizeof(src_str), "%u.%u.%u", src_instance, src_board, src_port);
+    snprintf(src_str, sizeof(src_str), "%u.%u.%u", src_instance, src_board, src_port);
   }
 
   /* Figure out where the frame is going. srcTDA is destination of frame! */
   tda = (word1 & CPFI_SOURCE_MASK) >> CPFI_SOURCE_SHIFT;
   if ( tda >= FIRST_TIO_CARD_ADDRESS )
   {
-    g_strlcpy(dst_str, " CPFI", sizeof(dst_str));
+    (void) g_strlcpy(dst_str, " CPFI", sizeof(dst_str));
     dst = 0;                            /* Make it smallest */
   }
   else
@@ -203,7 +204,7 @@ dissect_cpfi_header(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     dst_board = tda >> 4;
     dst_port = tda & 0x0f;
     dst = (1 << 24)  +  (dst_instance << 16) + (dst_board << 8) + dst_port;
-    g_snprintf(dst_str, sizeof(dst_str), "%u.%u.%u", dst_instance, dst_board, dst_port);
+    snprintf(dst_str, sizeof(dst_str), "%u.%u.%u", dst_instance, dst_board, dst_port);
   }
 
   /* Set up the source and destination and arrow per user configuration. */
@@ -357,7 +358,7 @@ dissect_cpfi(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tree, void *
   dissect_cpfi_header(header_tvb, pinfo, cpfi_tree);
 
   body_tvb = tvb_new_subset_length_caplen(message_tvb, 8, body_length, reported_body_length);
-  fc_data.ethertype = 0;
+  fc_data.ethertype = ETHERTYPE_UNK;
   call_dissector_with_data(fc_handle, body_tvb, pinfo, tree, &fc_data);
 
   /* add more info, now that FC added its */
@@ -506,19 +507,18 @@ proto_register_cpfi(void)
                 " is always on the left.",
                 &cpfi_arrow_moves);
 
+    cpfi_handle = register_dissector("cpfi", dissect_cpfi, proto_cpfi);
 }
 
 void
 proto_reg_handoff_cpfi(void)
 {
   static gboolean cpfi_init_complete = FALSE;
-  static dissector_handle_t cpfi_handle;
   static guint cpfi_ttot_udp_port;
 
   if ( !cpfi_init_complete )
   {
-    fc_handle     = find_dissector_add_dependency("fc", proto_cpfi);
-    cpfi_handle   = create_dissector_handle(dissect_cpfi, proto_cpfi);
+    fc_handle = find_dissector_add_dependency("fc", proto_cpfi);
     dissector_add_uint_with_preference("udp.port", CPFI_DEFAULT_UDP_PORT, cpfi_handle);
     cpfi_init_complete = TRUE;
   }

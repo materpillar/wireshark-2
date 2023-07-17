@@ -25,6 +25,8 @@
 void proto_register_fcels(void);
 void proto_reg_handoff_fcels(void);
 
+static dissector_handle_t els_handle;
+
 #define FC_ELS_RPLY 0
 #define FC_ELS_REQ  1
 
@@ -1048,7 +1050,7 @@ dissect_fcels_logout (tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
         }
 
         proto_tree_add_item (logo_tree, hf_fcels_nportid, tvb, offset, 3, ENC_NA);
-        proto_tree_add_item (logo_tree, hf_fcels_npname, tvb, offset+3, 6, ENC_NA);
+        proto_tree_add_item (logo_tree, hf_fcels_npname, tvb, offset+3, 8, ENC_NA);
     }
 }
 
@@ -1592,7 +1594,7 @@ dissect_fcels_lirr (tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
     }
 }
 
-const true_false_string tfs_srl_flag = { "Scan only specified FL Port", "Scan all loops in domain" };
+static const true_false_string tfs_srl_flag = { "Scan only specified FL Port", "Scan all loops in domain" };
 
 static void
 dissect_fcels_srl (tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
@@ -1808,7 +1810,7 @@ dissect_fcels (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     conversation_t *conversation;
     fcels_conv_data_t *cdata;
     fcels_conv_key_t ckey, *req_key;
-    guint options;
+    guint find_options, new_options;
     address dstaddr;
     guint8 addrdata[3];
     fc_hdr *fchdr;
@@ -1846,23 +1848,26 @@ dissect_fcels (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
             srcfc = (const guint8 *)pinfo->src.data;
             if (srcfc[2]) {
                 /* If it is a loop port, we'll need to remember the ALPA */
-                options = NO_PORT2;
+                find_options = NO_PORT_B;
+                new_options = NO_PORT2;
             }
             else {
-                options = NO_PORT2 | NO_ADDR2;
+                find_options = NO_PORT_B | NO_ADDR_B;
+                new_options = NO_PORT2 | NO_ADDR2;
             }
         }
         else {
-            options = NO_PORT2;
+            find_options = NO_PORT_B;
+            new_options = NO_PORT2;
         }
         conversation = find_conversation (pinfo->num, &pinfo->dst, &pinfo->src,
-                                          conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
-                                          fchdr->rxid, options);
+                                          conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
+                                          fchdr->rxid, find_options);
 
         if (!conversation) {
             conversation = conversation_new (pinfo->num, &pinfo->dst, &pinfo->src,
-                                             conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
-                                             fchdr->rxid, options);
+                                             conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
+                                             fchdr->rxid, new_options);
         }
 
         ckey.conv_idx = conversation->conv_index;
@@ -1889,10 +1894,10 @@ dissect_fcels (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     else {
         isreq = FC_ELS_RPLY;
 
-        options = NO_PORT2;
+        find_options = NO_PORT_B;
         conversation = find_conversation (pinfo->num, &pinfo->dst, &pinfo->src,
-                                          conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
-                                          fchdr->rxid, options);
+                                          conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
+                                          fchdr->rxid, find_options);
         if (!conversation) {
             /* FLOGI has two ways to save state: without the src and using just
              * the port (ALPA) part of the address. Try both.
@@ -1913,16 +1918,16 @@ dissect_fcels (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
             addrdata[2] = dstfc[2];
             set_address (&dstaddr, AT_FC, 3, addrdata);
             conversation = find_conversation (pinfo->num, &dstaddr, &pinfo->src,
-                                              conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
-                                              fchdr->rxid, options);
+                                              conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
+                                              fchdr->rxid, find_options);
         }
 
         if (!conversation) {
             /* Finally check for FLOGI with both NO_PORT2 and NO_ADDR2 set */
-            options = NO_ADDR2 | NO_PORT2;
+            find_options = NO_ADDR_B | NO_PORT_B;
             conversation = find_conversation (pinfo->num, &pinfo->src, &pinfo->dst,
-                                              conversation_pt_to_endpoint_type(pinfo->ptype), fchdr->oxid,
-                                              fchdr->rxid, options);
+                                              conversation_pt_to_conversation_type(pinfo->ptype), fchdr->oxid,
+                                              fchdr->rxid, find_options);
             if (!conversation) {
                 if (tree && (opcode == FC_ELS_ACC)) {
                     /* No record of what this accept is for. Can't decode */
@@ -1940,7 +1945,7 @@ dissect_fcels (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
             cdata = (fcels_conv_data_t *)wmem_map_lookup (fcels_req_hash, &ckey);
 
             if (cdata != NULL) {
-                if ((options & NO_ADDR2) && (cdata->opcode != FC_ELS_FLOGI)) {
+                if ((find_options & NO_ADDR_B) && (cdata->opcode != FC_ELS_FLOGI)) {
                     /* only FLOGI can have this special check */
                     if (tree && (opcode == FC_ELS_ACC)) {
                         /* No record of what this accept is for. Can't decode */
@@ -2100,7 +2105,7 @@ proto_register_fcels (void)
           {"Vendor Unique", "fcels.rjt.vnduniq", FT_UINT8, BASE_HEX, NULL,
            0x0, NULL, HFILL}},
         { &hf_fcels_b2b,
-          {"B2B Credit", "fcels.logi.b2b", FT_UINT8, BASE_DEC, NULL, 0x0, NULL,
+          {"B2B Credit", "fcels.logi.b2b", FT_UINT16, BASE_DEC, NULL, 0x0, NULL,
            HFILL}},
         { &hf_fcels_cmnfeatures,
           {"Common Svc Parameters", "fcels.logi.cmnfeatures", FT_UINT16, BASE_HEX, NULL,
@@ -2118,7 +2123,7 @@ proto_register_fcels (void)
           {"Relative Offset By Info Cat", "fcels.logi.reloff", FT_UINT16, BASE_DEC,
            NULL, 0x0, NULL, HFILL}},
         { &hf_fcels_edtov,
-          {"E_D_TOV", "fcels.edtov", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL}},
+          {"E_D_TOV", "fcels.edtov", FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL}},
         { &hf_fcels_npname,
           {"N_Port Port_Name", "fcels.npname", FT_FCWWN, BASE_NONE, NULL, 0x0,
            NULL, HFILL}},
@@ -2152,13 +2157,13 @@ proto_register_fcels (void)
           {"Class Recv Size", "fcels.logi.clsrcvsize", FT_UINT16, BASE_DEC, NULL,
            0x0, NULL, HFILL}},
         { &hf_fcels_conseq,
-          {"Total Concurrent Seq", "fcels.logi.totconseq", FT_UINT8, BASE_DEC, NULL,
+          {"Total Concurrent Seq", "fcels.logi.totconseq", FT_UINT16, BASE_DEC, NULL,
            0x0, NULL, HFILL}},
         { &hf_fcels_e2e,
           {"End2End Credit", "fcels.logi.e2e", FT_UINT16, BASE_DEC, NULL, 0x0, NULL,
            HFILL}},
         { &hf_fcels_openseq,
-          {"Open Seq Per Exchg", "fcels.logi.openseq", FT_UINT8, BASE_DEC, NULL, 0x0,
+          {"Open Seq Per Exchg", "fcels.logi.openseq", FT_UINT16, BASE_DEC, NULL, 0x0,
            NULL, HFILL}},
         { &hf_fcels_nportid,
           {"Originator S_ID", "fcels.portid", FT_BYTES, SEP_DOT, NULL, 0x0,
@@ -2423,22 +2428,22 @@ proto_register_fcels (void)
            TFS(&tfs_fc_fcels_fcpflags_retry), 1 << 8, NULL, HFILL}},
         { &hf_fcels_fcpflags_ccomp,
           {"Comp", "fcels.fcpflags.ccomp", FT_BOOLEAN, 32,
-           TFS(&tfs_fc_fcels_fcpflags_ccomp), 0x0080, NULL, HFILL}},
+           TFS(&tfs_fc_fcels_fcpflags_ccomp), 0x00000080, NULL, HFILL}},
         { &hf_fcels_fcpflags_datao,
           {"Data Overlay", "fcels.fcpflags.datao", FT_BOOLEAN, 32,
-           TFS(&tfs_fc_fcels_fcpflags_datao), 0x0040, NULL, HFILL}},
+           TFS(&tfs_fc_fcels_fcpflags_datao), 0x00000040, NULL, HFILL}},
         { &hf_fcels_fcpflags_initiator,
           {"Initiator", "fcels.fcpflags.initiator", FT_BOOLEAN, 32,
-           TFS(&tfs_fc_fcels_fcpflags_initiator), 0x0020, NULL, HFILL}},
+           TFS(&tfs_fc_fcels_fcpflags_initiator), 0x00000020, NULL, HFILL}},
         { &hf_fcels_fcpflags_target,
           {"Target", "fcels.fcpflags.target", FT_BOOLEAN, 32,
-           TFS(&tfs_fc_fcels_fcpflags_target), 0x0010, NULL, HFILL}},
+           TFS(&tfs_fc_fcels_fcpflags_target), 0x00000010, NULL, HFILL}},
         { &hf_fcels_fcpflags_rdxr,
           {"Rd Xfer_Rdy Dis", "fcels.fcpflags.rdxr", FT_BOOLEAN, 32,
-           TFS(&tfs_fc_fcels_fcpflags_rdxr), 0x0002, NULL, HFILL}},
+           TFS(&tfs_fc_fcels_fcpflags_rdxr), 0x00000002, NULL, HFILL}},
         { &hf_fcels_fcpflags_wrxr,
           {"Wr Xfer_Rdy Dis", "fcels.fcpflags.wrxr", FT_BOOLEAN, 32,
-           TFS(&tfs_fc_fcels_fcpflags_wrxr), 0x0001, NULL, HFILL}},
+           TFS(&tfs_fc_fcels_fcpflags_wrxr), 0x00000001, NULL, HFILL}},
         { &hf_fcels_prliloflags,
           {"PRLILO Flags", "fcels.prliloflags", FT_UINT8, BASE_HEX, NULL, 0x0, NULL,
            HFILL}},
@@ -2589,14 +2594,13 @@ proto_register_fcels (void)
     expert_fcels = expert_register_protocol(proto_fcels);
     expert_register_field_array(expert_fcels, ei, array_length(ei));
     fcels_req_hash = wmem_map_new_autoreset(wmem_epan_scope(), wmem_file_scope(), fcels_hash, fcels_equal);
+
+    els_handle = register_dissector("fcels", dissect_fcels, proto_fcels);
 }
 
 void
 proto_reg_handoff_fcels (void)
 {
-    dissector_handle_t els_handle;
-
-    els_handle = create_dissector_handle (dissect_fcels, proto_fcels);
     dissector_add_uint("fc.ftype", FC_FTYPE_ELS, els_handle);
 
     fcsp_handle = find_dissector_add_dependency ("fcsp", proto_fcels);

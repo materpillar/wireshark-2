@@ -1,4 +1,4 @@
-Wireshark 3.3.1 (v3.3.1rc0-22-gae6bbff3d55d)
+Wireshark 4.1.0 (v4.1.0rc0-1991-g04aed725ef4c)
 Interactively dump and analyze network traffic.
 See https://www.wireshark.org for more information.
 
@@ -12,9 +12,6 @@ Capture interface:
                            packet snapshot length (def: appropriate maximum)
   -p, --no-promiscuous-mode
                            don't capture in promiscuous mode
-  -k                       start capturing immediately (def: do nothing)
-  -S                       update packet display when new packets are captured
-  -l                       turn on automatic scrolling while -S is in use
   -I, --monitor-mode       capture in monitor mode, if available
   -B <buffer size>, --buffer-size <buffer size>
                            size of kernel buffer (def: 2MB)
@@ -26,6 +23,11 @@ Capture interface:
                            print list of link-layer types of iface and exit
   --list-time-stamp-types  print list of timestamp types for iface and exit
 
+Capture display:
+  -k                       start capturing immediately (def: do nothing)
+  -S                       update packet display when new packets are captured
+  --update-interval        interval between updates with new packets (def: 100ms)
+  -l                       turn on automatic scrolling while -S is in use
 Capture stop conditions:
   -c <packet count>        stop after n packets (def: infinite)
   -a <autostop cond.> ..., --autostop <autostop cond.> ...
@@ -71,7 +73,7 @@ User interface:
   -J <jump filter>         jump to the first packet matching the (display)
                            filter
   -j                       search backwards for a matching packet after "-J"
-  -t a|ad|adoy|d|dd|e|r|u|ud|udoy
+  -t (a|ad|adoy|d|dd|e|r|u|ud|udoy)[.[N]]|.[N]
                            format of time stamps (def: r: rel. to first)
   -u s|hms                 output format of seconds (def: s: seconds)
   -X <key>:<value>         eXtension options, see man page for details
@@ -80,7 +82,19 @@ User interface:
 Output:
   -w <outfile|->           set the output filename (or '-' for stdout)
   --capture-comment <comment>
-                           set the capture file comment, if supported
+                           add a capture file comment, if supported
+  --temp-dir <directory>   write temporary files to this directory
+                           (default: /tmp)
+
+Diagnostic output:
+  --log-level <level>      sets the active log level ("critical", "warning", etc.)
+  --log-fatal <level>      sets level to abort the program ("critical" or "warning")
+  --log-domains <[!]list>  comma-separated list of the active log domains
+  --log-fatal-domains <list>
+                           list of domains that cause the program to abort
+  --log-debug <[!]list>    list of domains with "debug" level
+  --log-noisy <[!]list>    list of domains with "noisy" level
+  --log-file <path>        file to output messages to (in addition to stderr)
 
 Miscellaneous:
   -h, --help               display this help and exit

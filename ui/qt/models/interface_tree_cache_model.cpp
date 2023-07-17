@@ -11,8 +11,6 @@
 
 #include <ui/qt/models/interface_tree_cache_model.h>
 
-#include "glib.h"
-
 #include "epan/prefs.h"
 
 #include <ui/qt/utils/qt_ui_utils.h>
@@ -21,7 +19,7 @@
 
 #include "wiretap/wtap.h"
 
-#include "wireshark_application.h"
+#include "main_application.h"
 
 #include <QIdentityProxyModel>
 
@@ -279,7 +277,7 @@ void InterfaceTreeCacheModel::save()
         ++it;
     }
 
-    wsApp->emitAppSignal(WiresharkApplication::LocalInterfacesChanged);
+    mainApp->emitAppSignal(MainApplication::LocalInterfacesChanged);
 }
 #endif
 
@@ -580,20 +578,7 @@ void InterfaceTreeCacheModel::deleteDevice(const QModelIndex &index)
         capture_opts_free_interface_t(device);
         global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, row);
         emit endRemoveRows();
-        wsApp->emitAppSignal(WiresharkApplication::LocalInterfacesChanged);
+        mainApp->emitAppSignal(MainApplication::LocalInterfacesChanged);
     }
 }
 #endif
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

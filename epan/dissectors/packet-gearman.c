@@ -24,6 +24,8 @@
 void proto_register_gearman(void);
 void proto_reg_handoff_gearman(void);
 
+static dissector_handle_t gearman_handle;
+
 static int proto_gearman = -1;
 
 static int hf_gearman_mgr_cmd = -1;
@@ -68,8 +70,8 @@ static gboolean gearman_desegment  = TRUE;
 
 static const int GEARMAN_COMMAND_HEADER_SIZE = 12;
 static const int GEARMAN_PORT = 4730;
-static const gchar *GEARMAN_MAGIC_CODE_REQUEST = "\0REQ";
-static const gchar *GEARMAN_MAGIC_CODE_RESPONSE = "\0RES";
+static const guchar *GEARMAN_MAGIC_CODE_REQUEST = "\0REQ";
+static const guchar *GEARMAN_MAGIC_CODE_RESPONSE = "\0RES";
 
 static const gchar *GEARMAN_MGR_CMDS[] = {
   "workers",
@@ -195,7 +197,7 @@ dissect_binary_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void*
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "Gearman");
   col_clear(pinfo->cinfo,COL_INFO);
 
-  magic_code = tvb_get_string_enc(wmem_packet_scope(), tvb, 1, 3, ENC_ASCII);
+  magic_code = tvb_get_string_enc(pinfo->pool, tvb, 1, 3, ENC_ASCII);
   type = tvb_get_ntohl(tvb, 4);
   size = tvb_get_ntohl(tvb, 8);
 
@@ -220,7 +222,7 @@ dissect_binary_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void*
     // explicitly set len to 0 if there are no arguments,
     // else use tvb_strnlen() to find the remaining length of tvb
     len = ( size > 0 ) ? tvb_strnlen( tvb, GEARMAN_COMMAND_HEADER_SIZE, -1 ) : 0 ;
-    content_item = proto_tree_add_item(command_tree, hf_gearman_data_content, tvb, GEARMAN_COMMAND_HEADER_SIZE, len, ENC_ASCII|ENC_NA);
+    content_item = proto_tree_add_item(command_tree, hf_gearman_data_content, tvb, GEARMAN_COMMAND_HEADER_SIZE, len, ENC_ASCII);
     content_tree = proto_item_add_subtree(content_item, ett_gearman_content);
   }
 
@@ -562,7 +564,7 @@ dissect_management_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       if (cmdlen == linelen && 0 == tvb_strneql(tvb, offset, GEARMAN_MGR_CMDS[i], cmdlen))
       {
         const guint8* cmdstr;
-        proto_tree_add_item_ret_string(gearman_tree, hf_gearman_mgr_cmd, tvb, offset, cmdlen, ENC_ASCII|ENC_NA, wmem_packet_scope(), &cmdstr);
+        proto_tree_add_item_ret_string(gearman_tree, hf_gearman_mgr_cmd, tvb, offset, cmdlen, ENC_ASCII|ENC_NA, pinfo->pool, &cmdstr);
         col_add_fstr(pinfo->cinfo, COL_INFO, "[MGR] %s", cmdstr);
         type = 1;
         break;
@@ -575,12 +577,12 @@ dissect_management_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
       if (type == 0)
       {
-        col_add_fstr(pinfo->cinfo, COL_INFO, "[MGR] %s", tvb_get_string_enc(wmem_packet_scope(), tvb, offset, linelen, ENC_ASCII));
+        col_add_fstr(pinfo->cinfo, COL_INFO, "[MGR] %s", tvb_get_string_enc(pinfo->pool, tvb, offset, linelen, ENC_ASCII));
         type = -1;
       }
       else
       {
-        col_append_sep_str(pinfo->cinfo, COL_INFO, ",", tvb_get_string_enc(wmem_packet_scope(), tvb, offset, linelen, ENC_ASCII));
+        col_append_sep_str(pinfo->cinfo, COL_INFO, ",", tvb_get_string_enc(pinfo->pool, tvb, offset, linelen, ENC_ASCII));
       }
     }
 
@@ -668,14 +670,12 @@ proto_register_gearman(void)
                                   "Whether the Gearman dissector should desegment all messages spanning multiple TCP segments",
                                   &gearman_desegment);
 
+  gearman_handle = register_dissector("gearman", dissect_gearman, proto_gearman);
 }
 
 void
 proto_reg_handoff_gearman(void)
 {
-  dissector_handle_t gearman_handle;
-
-  gearman_handle = create_dissector_handle(dissect_gearman, proto_gearman);
   dissector_add_uint_with_preference("tcp.port", GEARMAN_PORT, gearman_handle);
 }
 

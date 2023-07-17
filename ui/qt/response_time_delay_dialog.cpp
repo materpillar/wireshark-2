@@ -17,7 +17,7 @@
 #include <QTreeWidget>
 
 #include <ui/qt/utils/qt_ui_utils.h>
-#include "wireshark_application.h"
+#include "main_application.h"
 
 static QHash<const QString, register_rtd_t *> cfg_str_to_rtd_;
 
@@ -31,12 +31,12 @@ rtd_init(const char *args, void*) {
         if (args_l.length() > 2) {
             filter = QStringList(args_l.mid(2)).join(",");
         }
-        wsApp->emitTapParameterSignal(rtd, filter, NULL);
+        mainApp->emitTapParameterSignal(rtd, filter, NULL);
     }
 }
 }
 
-gboolean register_response_time_delay_tables(const void *, void *value, void*)
+bool register_response_time_delay_tables(const void *, void *value, void*)
 {
     register_rtd_t *rtd = (register_rtd_t*)value;
     const char* short_name = proto_get_protocol_short_name(find_protocol_by_id(get_rtd_proto_id(rtd)));

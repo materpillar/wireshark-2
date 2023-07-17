@@ -475,15 +475,15 @@ static const value_string reject_cause_type_values [] = {
     { 0x04, "Connection already present at the V5 time slot(s) to a different port or ISDN user port time slot(s)" },
     { 0x05, "Connection already present at the ISDN user port time slot(s) to a different V5 time slot(s)" },
     { 0x06, "User port unavailable (blocked)" },
-    { 0x07, "De-allocation cannot completeddue to incompatible data content" },
-    { 0x08, "De-allocation cannot completeddue to V5 time slot(s) data incompatibility" },
-    { 0x09, "De-allocation cannot completeddue to port data incompatibility" },
-    { 0x0a, "De-allocation cannot completeddue to user port time slot(s) data incompatibility" },
+    { 0x07, "De-allocation cannot be completed due to incompatible data content" },
+    { 0x08, "De-allocation cannot be completed due to V5 time slot(s) data incompatibility" },
+    { 0x09, "De-allocation cannot be completed due to port data incompatibility" },
+    { 0x0a, "De-allocation cannot be completed due to user port time slot(s) data incompatibility" },
     { 0x0b, "User port not provisioned" },
     { 0x0c, "Invalid V5 time slot(s) indication(s)" },
     { 0x0d, "Invalid V5 2048 kbit/s link indication" },
     { 0x0e, "Invalid user time slot(s) indication(s)" },
-    { 0x0f, "V5 time slot(s) being used as physikal C-channel(s)" },
+    { 0x0f, "V5 time slot(s) being used as physical C-channel(s)" },
     { 0x10, "V5 link unavailable (blocked)" },
     { 0,    NULL } };
 
@@ -1041,7 +1041,7 @@ dissect_resource_unavailable(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
         proto_tree_add_item(info_tree, hf_v52_info_element, info_tvb, info_offset, info_element_length, ENC_BIG_ENDIAN);
         proto_tree_add_item(info_tree, hf_v52_info_length, info_tvb, info_offset+1, info_element_length, ENC_BIG_ENDIAN);
         proto_item_append_text(ti_info, " %s (0x%x)", val_to_str_ext_const(info_element, &info_element_values_ext, "unknown info element"), info_element);
-        proto_tree_add_item(info_tree, hf_v52_res_unavailable, info_tvb, info_offset+2, info_element_length, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(info_tree, hf_v52_res_unavailable, info_tvb, info_offset+2, info_element_length, ENC_ASCII);
     }
 }
 
@@ -2300,7 +2300,7 @@ proto_register_v52(void)
                    NULL, HFILL } },
         {&hf_v52_v5_multi_slot_elements,
           { "Additional MS ID",    "v52.add_ms_id",
-          FT_UINT8,    BASE_HEX, NULL,                                  0xff,
+          FT_UINT8,    BASE_HEX, NULL,                                  0x0,
           NULL, HFILL } },
         {&hf_v52_v5_time_slot,
           { "V5 Time Slot Number",    "v52.v5_time_slot",
@@ -2367,7 +2367,7 @@ proto_register_v52(void)
           FT_UINT8,    BASE_HEX, NULL,                                  0x7f,
           NULL, HFILL } },
         {&hf_v52_diagnostic_information,
-          { "Diagnostic information",    "v52.diagnostic_inforation",
+          { "Diagnostic information",    "v52.diagnostic_information",
           FT_UINT8,    BASE_HEX, NULL,                                  0xff,
           NULL, HFILL } },
         {&hf_v52_connection_incomplete_reason,

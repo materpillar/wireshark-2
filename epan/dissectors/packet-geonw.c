@@ -62,13 +62,12 @@
 #include <epan/address_types.h>
 #include <epan/addr_resolv.h>
 #include <epan/to_str.h>
-#include <epan/to_str-int.h>
+#include <epan/to_str.h>
 #include <epan/conversation.h>
 #include <epan/tap.h>
 #include <epan/etypes.h>
 
 #include <wsutil/utf8_entities.h>
-#include <wsutil/ws_printf.h>
 
 #include "packet-e164.h"
 #include "packet-ieee1609dot2.h"
@@ -147,6 +146,8 @@ void proto_register_geonw(void);
 #define LS_REPLY_LEN      48
 
 #define TST_MAX 0xffffffff
+
+#define SEC_TVB_KEY 0
 
 /*
  * Variables
@@ -324,7 +325,7 @@ dissect_btpa(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
     proto_item *hidden_item;
     struct btpaheader *btpah;
 
-    btpah = wmem_new0(wmem_packet_scope(), struct btpaheader);
+    btpah = wmem_new0(pinfo->pool, struct btpaheader);
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "BTPA");
     /* Clear out stuff in the info column */
@@ -390,7 +391,7 @@ dissect_btpb(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
     guint32 dst_info;
     struct btpbheader *btpbh;
 
-    btpbh = wmem_new0(wmem_packet_scope(), struct btpbheader);
+    btpbh = wmem_new0(pinfo->pool, struct btpbheader);
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "BTPB");
     /* Clear out stuff in the info column */
@@ -404,9 +405,7 @@ dissect_btpb(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
 
     pinfo->destport = dst_port;
 
-    char buf_dst[32];
-    ws_snprintf(buf_dst, 32, "%"G_GUINT16_FORMAT, dst_port);
-    col_append_lstr(pinfo->cinfo, COL_INFO, " " UTF8_RIGHTWARDS_ARROW " ", buf_dst, COL_ADD_LSTR_TERMINATOR);
+    col_append_fstr(pinfo->cinfo, COL_INFO, " " UTF8_RIGHTWARDS_ARROW " %u", dst_port);
 
     btpbh->btp_pdst = dst_port;
     btpbh->btp_idst = dst_info;
@@ -448,9 +447,9 @@ typedef struct _geonw_conv_info_t {
     wmem_tree_t  *matched_pdus;
 } geonw_conv_info_t;
 
-const gchar * get_geonw_name(const guint8 *addr);
-const gchar* geonw_name_resolution_str(const address* addr);
-int geonw_name_resolution_len(void);
+static const gchar * get_geonw_name(const guint8 *addr);
+static const gchar* geonw_name_resolution_str(const address* addr);
+static int geonw_name_resolution_len(void);
 
 static geonw_transaction_t *transaction_start(packet_info * pinfo, proto_tree * tree);
 static geonw_transaction_t *transaction_end(packet_info * pinfo, proto_tree * tree);
@@ -607,7 +606,7 @@ geonw_addr_resolve(hashgeonw_t *tp) {
     set_address(&eth_addr, AT_ETHER, 6, &(addr[2]));
     ether_to_str(&eth_addr, rname, 18);
     // We could use ether_name_resolution_str:
-    //     g_strlcpy(rname, ether_name_resolution_str(&eth_addr), MAXNAMELEN-l1-4);
+    //     (void) g_strlcpy(rname, ether_name_resolution_str(&eth_addr), MAXNAMELEN-l1-4);
 
     tp->status = 1;
 
@@ -693,10 +692,10 @@ static geonw_transaction_t *transaction_start(packet_info * pinfo, proto_tree * 
     proto_item *it;
 
     /* Handle the conversation tracking */
-    conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst, conversation_pt_to_endpoint_type(pinfo->ptype), HT_LS, HT_LS, 0);
+    conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst, conversation_pt_to_conversation_type(pinfo->ptype), HT_LS, HT_LS, 0);
     if (conversation == NULL) {
         /* No, this is a new conversation. */
-        conversation = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst, conversation_pt_to_endpoint_type(pinfo->ptype), HT_LS, HT_LS, 0);
+        conversation = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst, conversation_pt_to_conversation_type(pinfo->ptype), HT_LS, HT_LS, 0);
     }
     geonw_info = (geonw_conv_info_t *)conversation_get_proto_data(conversation, proto_geonw);
     if (geonw_info == NULL) {
@@ -764,7 +763,7 @@ static geonw_transaction_t *transaction_end(packet_info * pinfo, proto_tree * tr
     nstime_t ns;
     double resp_time;
 
-    conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst, conversation_pt_to_endpoint_type(pinfo->ptype), HT_LS, HT_LS, 0);
+    conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst, conversation_pt_to_conversation_type(pinfo->ptype), HT_LS, HT_LS, 0);
     if (conversation == NULL) {
         return NULL;
     }
@@ -1215,7 +1214,7 @@ dissect_sec_var_len(tvbuff_t *tvb, gint *offset, packet_info *pinfo, proto_tree 
     ti = proto_tree_add_item(tree, hf_sgeonw_var_len, tvb, start, (*offset) - start, ENC_NA); // Length cannot be determined now
     subtree = proto_item_add_subtree(ti, ett_sgeonw_var_len);
     proto_tree_add_bits_item(subtree, hf_sgeonw_var_len_det, tvb, start << 3, (*offset) - start, ENC_NA);
-    proto_tree_add_uint_bits_format_value(subtree, hf_sgeonw_var_len_val, tvb, (start << 3) + (*offset) - start, (((*offset) - start) << 3) - ((*offset) - start),var_len,"%u",var_len);
+    proto_tree_add_uint_bits_format_value(subtree, hf_sgeonw_var_len_val, tvb, (start << 3) + (*offset) - start, (((*offset) - start) << 3) - ((*offset) - start),var_len,ENC_BIG_ENDIAN,"%u",var_len);
     // EI Error if !mask (more than 32 bits)
     if (!mask)
         expert_add_info(pinfo, ti, &ei_sgeonw_len_unsupported);
@@ -1250,11 +1249,11 @@ dissect_sec_intx(tvbuff_t *tvb, gint *offset, packet_info *pinfo, proto_tree *tr
     proto_tree_add_bits_item(subtree, hf_sgeonw_var_len_det, tvb, start << 3, (*offset) - start, ENC_NA);
     if ((hf != hf_sgeonw_app_id) || ((*offset) - start) > 4) {
         proto_tree_add_uint64_bits_format_value(subtree, hf, tvb, (start << 3) + (*offset) - start,
-            (((*offset) - start) << 3) - ((*offset) - start), tmp_val, "%" G_GUINT64_FORMAT, tmp_val);
+            (((*offset) - start) << 3) - ((*offset) - start), tmp_val, ENC_BIG_ENDIAN, "%" PRIu64, tmp_val);
     }
     else {
         proto_tree_add_uint_bits_format_value(subtree, hf, tvb, (start << 3) + (*offset) - start,
-            (((*offset) - start) << 3) - ((*offset) - start), (guint32)tmp_val, "%s(%u)", val64_to_str_const(tmp_val, ieee1609dot2_Psid_vals, "Unknown") , (guint32)tmp_val);
+            (((*offset) - start) << 3) - ((*offset) - start), (guint32)tmp_val, ENC_BIG_ENDIAN, "%s(%u)", val64_to_str_const(tmp_val, ieee1609dot2_Psid_vals, "Unknown") , (guint32)tmp_val);
     }
     // ETSI TS 103 097 V1.2.1: The encoding of the length shall use at most 7 bits set to 1.
     if (!mask)
@@ -1913,7 +1912,7 @@ dissect_sec_payload(tvbuff_t *tvb, gint *offset, packet_info *pinfo, proto_tree 
                 param_len = dissect_sec_var_len(tvb, offset, pinfo, field_tree);
                 if (param_len) {
                     tvbuff_t *next_tvb = tvb_new_subset_length(tvb, *offset, param_len);
-                    p_add_proto_data(wmem_file_scope(), pinfo, proto_geonw, 0, next_tvb);
+                    p_add_proto_data(pinfo->pool, pinfo, proto_geonw, SEC_TVB_KEY, next_tvb);
                 }
                 *offset += param_len;
                 break;
@@ -2116,15 +2115,19 @@ static int
 dissect_sgeonw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *data _U_)
 {
     // Just store the tvbuff for later, as it is embedded inside a secured geonetworking packet
-    p_add_proto_data(wmem_file_scope(), pinfo, proto_geonw, 0, tvb);
+    p_add_proto_data(pinfo->pool, pinfo, proto_geonw, SEC_TVB_KEY, tvb);
 
     return tvb_reported_length(tvb);
 }
 
 // The actual dissector
+// skip_bh:
+//   0 - do not skip, complete GNW packet with Basic Header
+//   BH_NH_COMMON_HDR - skip and continue to Common Header
+//   BH_NH_SECURED_PKT - skip and continue to Secured Packet
 // XXX COL_INFO to be improved
 static int
-dissect_geonw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+dissect_geonw_internal(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_, guint8 skip_bh)
 {
     guint8 bh_next_header;
     guint32 ch_next_header;
@@ -2134,6 +2137,7 @@ dissect_geonw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     gint offset = 0;
     proto_item *ti;
     proto_item *top_item;
+    proto_item* rhl_ti = NULL;
     gint hdr_len = 0;
     guint32 payload_len = 0;
     guint32 reserved;
@@ -2142,20 +2146,22 @@ dissect_geonw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     struct geonwheader *geonwh;
     gint32 latlon;
 
-    geonwh = wmem_new0(wmem_packet_scope(), struct geonwheader);
+    geonwh = wmem_new0(pinfo->pool, struct geonwheader);
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "GEONW");
     /* Clear out stuff in the info column */
     col_clear(pinfo->cinfo,COL_INFO);
 
-    bh_next_header = tvb_get_guint8(tvb, 0) & 0x0f;
-    header_type = tvb_get_guint8(tvb, 5);
-
-    if (bh_next_header == BH_NH_SECURED_PKT) {
+    if (!skip_bh) {
+        bh_next_header = tvb_get_guint8(tvb, 0) & 0x0f;
         hdr_len = BH_LEN;
+    } else {
+        bh_next_header = skip_bh;
     }
-    else {
-        hdr_len = BH_LEN + CH_LEN;
+
+    if (bh_next_header == BH_NH_COMMON_HDR) {
+        header_type = tvb_get_guint8(tvb, hdr_len + 1);
+        hdr_len += CH_LEN;
         switch(header_type & HT_MASK) {
             case HT_BEACON:
                 hdr_len += BEACON_LEN;
@@ -2182,54 +2188,57 @@ dissect_geonw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 hdr_len = -1;
         }
     }
+
     top_item = proto_tree_add_item(tree, proto_geonw, tvb, 0, hdr_len, ENC_NA);
     proto_tree *geonw_tree = proto_item_add_subtree(top_item, ett_geonw);
 
-    // Basic Header subtree
-    ti = proto_tree_add_item(geonw_tree, hf_geonw_bh, tvb, 0, 4, ENC_NA);
-    proto_tree *geonw_bh_tree = proto_item_add_subtree(ti, ett_geonw_bh);
+    if (!skip_bh) {
+        // Basic Header subtree
+        ti = proto_tree_add_item(geonw_tree, hf_geonw_bh, tvb, 0, 4, ENC_NA);
+        proto_tree* geonw_bh_tree = proto_item_add_subtree(ti, ett_geonw_bh);
 
-    ti = proto_tree_add_item_ret_uint(geonw_bh_tree, hf_geonw_bh_version, tvb, offset, 1, ENC_BIG_ENDIAN, &tmp_val);
-    geonwh->gnw_ver = tmp_val;
-    // Shall be 0 or 1
-    if (tmp_val > 1) {
-        col_add_fstr(pinfo->cinfo, COL_INFO,
-                     "Bogus GeoNetworking version (%u, must be less than 2)", tmp_val);
-        expert_add_info_format(pinfo, ti, &ei_geonw_version_err, "Bogus GeoNetworking version");
-        return tvb_captured_length(tvb);
+        ti = proto_tree_add_item_ret_uint(geonw_bh_tree, hf_geonw_bh_version, tvb, offset, 1, ENC_BIG_ENDIAN, &tmp_val);
+        geonwh->gnw_ver = tmp_val;
+        // Shall be 0 or 1
+        if (tmp_val > 1) {
+            col_add_fstr(pinfo->cinfo, COL_INFO,
+                "Bogus GeoNetworking version (%u, must be less than 2)", tmp_val);
+            expert_add_info_format(pinfo, ti, &ei_geonw_version_err, "Bogus GeoNetworking version");
+            return tvb_captured_length(tvb);
+        }
+        proto_tree_add_item(geonw_bh_tree, hf_geonw_bh_next_header, tvb, offset, 1, ENC_BIG_ENDIAN);
+        offset += 1;
+        // Reserved byte
+        // Expert info if not zero?
+        ti = proto_tree_add_item_ret_uint(geonw_bh_tree, hf_geonw_bh_reserved, tvb, offset, 1, ENC_NA, &reserved);
+        if (reserved) {
+            expert_add_info(pinfo, ti, &ei_geonw_nz_reserved);
+        }
+        offset += 1;
+
+        // Subtree and lt_mult and lt_base
+        ti = proto_tree_add_item_ret_uint(geonw_bh_tree, hf_geonw_bh_life_time, tvb, offset, 1, ENC_BIG_ENDIAN, &tmp_val);
+        geonwh->gnw_lt = tmp_val;
+        proto_tree* geonw_bh_lt_tree = proto_item_add_subtree(ti, ett_geonw_bh_lt);
+
+        proto_tree_add_item(geonw_bh_lt_tree, hf_geonw_bh_lt_mult, tvb, offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(geonw_bh_lt_tree, hf_geonw_bh_lt_base, tvb, offset, 1, ENC_BIG_ENDIAN);
+        offset += 1;
+
+        rhl_ti = proto_tree_add_item_ret_uint(geonw_bh_tree, hf_geonw_bh_remain_hop_limit, tvb, offset, 1, ENC_BIG_ENDIAN, &rhl);
+        geonwh->gnw_rhl = rhl;
+        /*
+         * Flag a low RHL if the next header is not a common header
+         */
+        if (rhl < 5 && bh_next_header != BH_NH_COMMON_HDR) {
+            expert_add_info_format(pinfo, rhl_ti, &ei_geonw_rhl_too_low, "\"Remain Hop Limit\" only %u", rhl);
+        }
+        offset += 1;
     }
-    proto_tree_add_item(geonw_bh_tree, hf_geonw_bh_next_header, tvb, offset, 1, ENC_BIG_ENDIAN);
-    offset += 1;
-    // Reserved byte
-    // Expert info if not zero?
-    ti = proto_tree_add_item_ret_uint(geonw_bh_tree, hf_geonw_bh_reserved, tvb, offset, 1, ENC_NA, &reserved);
-    if (reserved) {
-        expert_add_info(pinfo, ti, &ei_geonw_nz_reserved);
-    }
-    offset += 1;
-
-    // Subtree and lt_mult and lt_base
-    ti = proto_tree_add_item_ret_uint(geonw_bh_tree, hf_geonw_bh_life_time, tvb, offset, 1, ENC_BIG_ENDIAN, &tmp_val);
-    geonwh->gnw_lt = tmp_val;
-    proto_tree *geonw_bh_lt_tree = proto_item_add_subtree(ti, ett_geonw_bh_lt);
-
-    proto_tree_add_item(geonw_bh_lt_tree, hf_geonw_bh_lt_mult, tvb, offset, 1, ENC_BIG_ENDIAN);
-    proto_tree_add_item(geonw_bh_lt_tree, hf_geonw_bh_lt_base, tvb, offset, 1, ENC_BIG_ENDIAN);
-    offset += 1;
-
-    proto_item *rhl_ti = proto_tree_add_item_ret_uint(geonw_bh_tree, hf_geonw_bh_remain_hop_limit, tvb, offset, 1, ENC_BIG_ENDIAN, &rhl);
-    geonwh->gnw_rhl = rhl;
-    /*
-     * Flag a low RHL if the next header is not a common header
-     */
-    if (rhl < 5 && bh_next_header != BH_NH_COMMON_HDR) {
-        expert_add_info_format(pinfo, rhl_ti, &ei_geonw_rhl_too_low, "\"Remain Hop Limit\" only %u", rhl);
-    }
-    offset += 1;
 
     if (bh_next_header == BH_NH_SECURED_PKT) {
         dissect_secured_message(tvb, offset, pinfo, geonw_tree, NULL);
-        tvbuff_t *next_tvb = (tvbuff_t*)p_get_proto_data(wmem_file_scope(), pinfo, proto_geonw, 0);
+        tvbuff_t *next_tvb = (tvbuff_t*)p_get_proto_data(pinfo->pool, pinfo, proto_geonw, SEC_TVB_KEY);
         if (next_tvb) {
             tvb = next_tvb;
             bh_next_header = BH_NH_COMMON_HDR;
@@ -2262,7 +2271,6 @@ dissect_geonw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 default:
                     hdr_len = -1;
             }
-            p_add_proto_data(wmem_file_scope(), pinfo, proto_geonw, 0, NULL);
         }
     }
 
@@ -2287,23 +2295,26 @@ dissect_geonw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
         col_add_str(pinfo->cinfo, COL_INFO, val_to_str(header_type, ch_header_type_names, "Unknown (%u)"));
         offset += 1;
 
-        /* Now that we know the header type, lets add expert info on RHL
-         * RHL shall be
-         *  = 1 if parameter Packet transport type in the service primitive
-         *    GN-DATA.request is SHB, or if Header type HT = 1 (BEACON)
-         *  = Value of optional Maximum hop limit parameter from service
-         *    primitive GN-DATA.request
-         *  = Otherwise GN protocol constant itsGnDefaultHopLimit if
-         *    GN-DATA.request parameter Packet transport type is GUC, GBC, GBC
-         *    or TSB
-         * Flag a low RHL if the packet is not BEACON or SHB.
-         */
-        if (header_type == HTST_BEACON || header_type == HTST_TSB_SINGLE) {
-            if (rhl > 1) {
-                expert_add_info_format(pinfo, rhl_ti, &ei_geonw_rhl_lncb, "\"Remain Hop Limit\" != 1 for BEACON or SHB (%u)", rhl);
+        if (!skip_bh) {
+            /* Now that we know the header type, lets add expert info on RHL
+             * RHL shall be
+             *  = 1 if parameter Packet transport type in the service primitive
+             *    GN-DATA.request is SHB, or if Header type HT = 1 (BEACON)
+             *  = Value of optional Maximum hop limit parameter from service
+             *    primitive GN-DATA.request
+             *  = Otherwise GN protocol constant itsGnDefaultHopLimit if
+             *    GN-DATA.request parameter Packet transport type is GUC, GBC, GBC
+             *    or TSB
+             * Flag a low RHL if the packet is not BEACON or SHB.
+             */
+            if (header_type == HTST_BEACON || header_type == HTST_TSB_SINGLE) {
+                if (rhl > 1) {
+                    expert_add_info_format(pinfo, rhl_ti, &ei_geonw_rhl_lncb, "\"Remain Hop Limit\" != 1 for BEACON or SHB (%u)", rhl);
+                }
             }
-        } else if (rhl < 5) {
-            expert_add_info_format(pinfo, rhl_ti, &ei_geonw_rhl_too_low, "\"Remain Hop Limit\" only %u", rhl);
+            else if (rhl < 5) {
+                expert_add_info_format(pinfo, rhl_ti, &ei_geonw_rhl_too_low, "\"Remain Hop Limit\" only %u", rhl);
+            }
         }
 
         // TC
@@ -2356,11 +2367,13 @@ dissect_geonw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
         // MHL
         proto_tree_add_item_ret_uint(geonw_ch_tree, hf_geonw_ch_max_hop_limit, tvb, offset, 1, ENC_BIG_ENDIAN, &tmp_val);
         geonwh->gnw_mhl = tmp_val;
-        // Expert mhl < rhl: packet will be ignored
-        if (tmp_val < rhl) {
-            expert_add_info_format(pinfo, rhl_ti, &ei_geonw_mhl_lt_rhl, "Ignored: \"Remain Hop Limit\" > %u (mhl)", tmp_val);
-        }
         offset += 1;
+        if (!skip_bh) {
+            // Expert mhl < rhl: packet will be ignored
+            if (tmp_val < rhl) {
+                expert_add_info_format(pinfo, rhl_ti, &ei_geonw_mhl_lt_rhl, "Ignored: \"Remain Hop Limit\" > %u (mhl)", tmp_val);
+            }
+        }
 
         // Reserved...
         ti = proto_tree_add_item_ret_uint(geonw_ch_tree, hf_geonw_ch_reserved2, tvb, offset, 1, ENC_NA, &reserved);
@@ -2750,7 +2763,7 @@ btpa_src_prompt(packet_info *pinfo _U_, gchar* result)
 {
     guint32 port = GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, hf_btpa_srcport, pinfo->curr_layer_num));
 
-    g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "source (%u%s)", port, UTF8_RIGHTWARDS_ARROW);
+    snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "source (%u%s)", port, UTF8_RIGHTWARDS_ARROW);
 }
 
 static gpointer
@@ -2764,7 +2777,7 @@ btpa_dst_prompt(packet_info *pinfo, gchar *result)
 {
     guint32 port = GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, hf_btpa_dstport, pinfo->curr_layer_num));
 
-    g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "destination (%s%u)", UTF8_RIGHTWARDS_ARROW, port);
+    snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "destination (%s%u)", UTF8_RIGHTWARDS_ARROW, port);
 }
 
 static gpointer
@@ -2778,7 +2791,7 @@ btpa_both_prompt(packet_info *pinfo, gchar *result)
 {
     guint32 srcport = GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, hf_btpa_srcport, pinfo->curr_layer_num)),
             destport = GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, hf_btpa_dstport, pinfo->curr_layer_num));
-    g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "both (%u%s%u)", srcport, UTF8_LEFT_RIGHT_ARROW, destport);
+    snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "both (%u%s%u)", srcport, UTF8_LEFT_RIGHT_ARROW, destport);
 }
 
 static void
@@ -2786,7 +2799,7 @@ btpb_dst_prompt(packet_info *pinfo, gchar *result)
 {
     guint32 port = GPOINTER_TO_UINT(p_get_proto_data(pinfo->pool, pinfo, hf_btpb_dstport, pinfo->curr_layer_num));
 
-    g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "destination (%s%u)", UTF8_RIGHTWARDS_ARROW, port);
+    snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "destination (%s%u)", UTF8_RIGHTWARDS_ARROW, port);
 }
 
 static gpointer
@@ -2848,10 +2861,7 @@ proto_register_btpa(void)
 void
 proto_reg_handoff_btpa(void)
 {
-    dissector_handle_t btpa_handle_;
-
-    btpa_handle_ = create_dissector_handle(dissect_btpa, proto_btpa);
-    dissector_add_uint("geonw.ch.nh", 1, btpa_handle_);
+    dissector_add_uint("geonw.ch.nh", 1, btpa_handle);
 
     find_dissector_add_dependency("gnw", proto_btpa);
 
@@ -2902,10 +2912,7 @@ proto_register_btpb(void)
 void
 proto_reg_handoff_btpb(void)
 {
-    dissector_handle_t btpb_handle_;
-
-    btpb_handle_ = create_dissector_handle(dissect_btpb, proto_btpb);
-    dissector_add_uint("geonw.ch.nh", 2, btpb_handle_);
+    dissector_add_uint("geonw.ch.nh", 2, btpb_handle);
 
     find_dissector_add_dependency("gnw", proto_btpb);
 
@@ -2917,33 +2924,35 @@ proto_reg_handoff_btpb(void)
 static void
 display_latitude( gchar *result, gint32 hexver )
 {
-    g_snprintf( result, ITEM_LABEL_LENGTH, "%ud%u'%.2f\"%c",
+    snprintf( result, ITEM_LABEL_LENGTH, "%ud%u'%.2f\"%c (%d)",
             abs(hexver)/10000000,
             abs(hexver%10000000)*6/1000000,
             abs(hexver*6%1000000)*6./100000.,
-            hexver>=0?'N':'S');
+            hexver>=0?'N':'S',
+            hexver);
 }
 
 static void
 display_longitude( gchar *result, gint32 hexver )
 {
-    g_snprintf( result, ITEM_LABEL_LENGTH, "%ud%u'%.2f\"%c",
+    snprintf( result, ITEM_LABEL_LENGTH, "%ud%u'%.2f\"%c (%d)",
             abs(hexver)/10000000,
             abs(hexver%10000000)*6/1000000,
             abs(hexver*6%1000000)*6./100000.,
-            hexver>=0?'E':'W');
+            hexver>=0?'E':'W',
+            hexver);
 }
 
 static void
 display_speed( gchar *result, gint32 hexver )
 {
-    g_snprintf( result, ITEM_LABEL_LENGTH, "%.2f m/s", abs(hexver)/100.);
+    snprintf( result, ITEM_LABEL_LENGTH, "%.2f m/s", hexver/100.);
 }
 
 static void
 display_heading( gchar *result, guint32 hexver )
 {
-    g_snprintf( result, ITEM_LABEL_LENGTH, "%.1f degrees", hexver/10.);
+    snprintf( result, ITEM_LABEL_LENGTH, "%.1f degrees", hexver/10.);
 }
 
 static void
@@ -2955,15 +2964,34 @@ display_elevation( gchar *result, gint32 hexver )
     //  also represented by 0xF001.
     //  0xF000: an unknown elevation
     if (hexver == -4096)
-        g_snprintf( result, ITEM_LABEL_LENGTH, "Unknown (%4x)", hexver);
+        snprintf( result, ITEM_LABEL_LENGTH, "Unknown (%4x)", hexver);
     else
-        g_snprintf( result, ITEM_LABEL_LENGTH, "%.1fm", hexver/10.);
+        snprintf( result, ITEM_LABEL_LENGTH, "%.1fm", hexver/10.);
+}
+
+static int
+dissect_geonw(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, void* data)
+{
+    return dissect_geonw_internal(tvb, pinfo, tree, data, 0);
+}
+
+static int
+dissect_geonw_comm(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, void* data)
+{
+    return dissect_geonw_internal(tvb, pinfo, tree, data, BH_NH_COMMON_HDR);
+}
+
+static int
+dissect_geonw_sec(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, void* data)
+{
+    return dissect_geonw_internal(tvb, pinfo, tree, data, BH_NH_SECURED_PKT);
 }
 
 void
 proto_register_geonw(void)
 {
     static const value_string bh_next_header_names[] = {
+        { 0, "ANY" },
         { 1, "Common Header" },
         { 2, "Secured Packet" },
         { 0, NULL}
@@ -2978,6 +3006,7 @@ proto_register_geonw(void)
     };
 
     static const value_string ch_next_header_names[] = {
+        { 0, "ANY" },
         { CH_NH_BTP_A, "BTP-A Transport protocol" },
         { CH_NH_BTP_B, "BTP-B Transport protocol" },
         { CH_NH_IPV6, "IPv6 header" },
@@ -3117,7 +3146,7 @@ proto_register_geonw(void)
 
         { &hf_geonw_seq_num,
           { "Sequence number", "geonw.seq_num",
-            FT_UINT16, BASE_HEX, NULL, 0x00,
+            FT_UINT16, BASE_DEC, NULL, 0x00,
             NULL, HFILL }},
 
         { &hf_geonw_reserved,
@@ -3178,7 +3207,7 @@ proto_register_geonw(void)
 
         { &hf_geonw_so_pv_speed,
           { "Speed", "geonw.src_pos.speed",
-            FT_INT16, BASE_CUSTOM, CF_FUNC(display_speed), 0x00,
+            FT_INT16, BASE_CUSTOM, CF_FUNC(display_speed), 0x7FFF,
             NULL, HFILL }},
 
         { &hf_geonw_so_pv_heading,
@@ -3343,7 +3372,7 @@ proto_register_geonw(void)
            BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
         { &hf_geonw_tsb,
-         { "Topologically-Scoped Broadcast Packet", "geonw.gbc", FT_NONE,
+         { "Topologically-Scoped Broadcast Packet", "geonw.tsb", FT_NONE,
            BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
         { &hf_geonw_ls,
@@ -3600,6 +3629,8 @@ proto_register_geonw(void)
 
 
     geonw_handle = register_dissector("gnw", dissect_geonw, proto_geonw);
+    register_dissector("gnw.comm", dissect_geonw_comm, proto_geonw);
+    register_dissector("gnw.sec", dissect_geonw_sec, proto_geonw);
 
     proto_register_field_array(proto_geonw, hf_geonw, array_length(hf_geonw));
     proto_register_subtree_array(ett, array_length(ett));
@@ -3628,13 +3659,13 @@ proto_register_geonw(void)
 void
 proto_reg_handoff_geonw(void)
 {
-    dissector_handle_t geonw_handle_;
     dissector_handle_t sgeonw_handle_;
 
-    geonw_handle_ = create_dissector_handle(dissect_geonw, proto_geonw);
+    // This is a minimal dissector that just stores the tvbuff for later use;
+    // not useful from outside a dissector table, so not using register_dissector()
     sgeonw_handle_ = create_dissector_handle(dissect_sgeonw, proto_geonw);
 
-    dissector_add_uint_with_preference("ethertype", ETHERTYPE_GEONETWORKING, geonw_handle_);
+    dissector_add_uint_with_preference("ethertype", ETHERTYPE_GEONETWORKING, geonw_handle);
 
     // IPv6 over GeoNetworking Protocols
     ipv6_handle = find_dissector("ipv6");
@@ -3650,7 +3681,10 @@ proto_reg_handoff_geonw(void)
     dissector_add_uint("ieee1609dot2.psid", psid_road_and_lane_topology_service, sgeonw_handle_);
     dissector_add_uint("ieee1609dot2.psid", psid_infrastructure_to_vehicle_information_service, sgeonw_handle_);
     dissector_add_uint("ieee1609dot2.psid", psid_traffic_light_control_requests_service, sgeonw_handle_);
+    dissector_add_uint("ieee1609dot2.psid", psid_geonetworking_management_communications, sgeonw_handle_);
     dissector_add_uint("ieee1609dot2.psid", psid_traffic_light_control_status_service, sgeonw_handle_);
+    dissector_add_uint("ieee1609dot2.psid", psid_collective_perception_service, sgeonw_handle_);
+
 }
 
 /*

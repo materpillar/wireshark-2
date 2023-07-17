@@ -9,7 +9,7 @@
 
 #include "config.h"
 
-#include <glib.h>
+#include "wireshark.h"
 
 #include "ui/capture_info.h"
 
@@ -21,7 +21,7 @@
 #include "capture_info_dialog.h"
 #include "ui_capture_info_dialog.h"
 
-#include "wireshark_application.h"
+#include "main_application.h"
 
 #include "ui/qt/models/sparkline_delegate.h"
 
@@ -78,6 +78,7 @@ capture_info    *cinfo)
 {
     CaptureInfoDialog *ci_dlg = qobject_cast<CaptureInfoDialog *>((QObject *)cinfo->ui);
     if (!ci_dlg) return;
+    cinfo->ui = NULL;
     delete ci_dlg;
 }
 
@@ -91,7 +92,7 @@ CaptureInfoDialog::CaptureInfoDialog(struct _capture_info *cap_info, struct _cap
 {
     ui->setupUi(this);
     loadGeometry();
-    setWindowTitle(wsApp->windowTitleString(tr("Capture Information")));
+    setWindowTitle(mainApp->windowTitleString(tr("Capture Information")));
 
     QPushButton *button = ui->buttonBox->button(QDialogButtonBox::Abort);
     button->setText(tr("Stop Capture"));
@@ -172,7 +173,7 @@ void CaptureInfoModel::updateInfo()
 int CaptureInfoModel::rowCount(const QModelIndex &) const
 {
     if (!cap_info_) return 0;
-    return points_.keys().size() + 1;
+    return static_cast<int>(points_.keys().size()) + 1;
 }
 
 int CaptureInfoModel::columnCount(const QModelIndex &) const
@@ -202,16 +203,3 @@ QVariant CaptureInfoModel::data(const QModelIndex &index, int role) const
     }
     return QVariant();
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

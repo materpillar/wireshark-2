@@ -1,6 +1,6 @@
 /* packet-isobus.c
  * Routines for ISObus dissection (Based on CANOpen Dissector)
- * Copyright 2016, Jeroen Sack <jsack@lely.com>
+ * Copyright 2016, Jeroen Sack <jeroen@jeroensack.nl>
  * ISO 11783
  *
  * Wireshark - Network traffic analyzer
@@ -14,11 +14,13 @@
 
 #include <epan/packet.h>
 #include <epan/reassemble.h>
-#include <epan/dissectors/packet-socketcan.h>
-#include <epan/wmem/wmem_map.h>
+#include "packet-socketcan.h"
+#include <epan/wmem_scopes.h>
 
 void proto_register_isobus(void);
 void proto_reg_handoff_isobus(void);
+
+static dissector_handle_t isobus_handle;
 
 /* Initialize the protocol and registered fields */
 static int proto_isobus = -1;
@@ -383,19 +385,19 @@ dissect_isobus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     proto_item_set_generated(ti);
 
     /* put source address in source field */
-    g_snprintf(str_src, 4, "%d", src_addr);
+    snprintf(str_src, 4, "%d", src_addr);
     alloc_address_wmem(pinfo->pool, &pinfo->src, AT_STRINGZ, (int)strlen(str_src) + 1, str_src);
 
     if(pdu_format <= 239) /* PDU1 format */
     {
         /* put destination address in address field */
-        g_snprintf(str_dst, 4, "%d", pdu_specific);
+        snprintf(str_dst, 4, "%d", pdu_specific);
         alloc_address_wmem(pinfo->pool, &pinfo->dst, AT_STRINGZ, (int)strlen(str_dst) + 1, str_dst);
     }
     else
     {
         /* put group destination address in address field and add (grp) to it */
-        g_snprintf(str_dst, 10, "%d (grp)", pdu_specific);
+        snprintf(str_dst, 10, "%d (grp)", pdu_specific);
         alloc_address_wmem(pinfo->pool, &pinfo->dst, AT_STRINGZ, (int)strlen(str_dst) + 1, str_dst);
     }
 
@@ -403,11 +405,11 @@ dissect_isobus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     {
     case 0:
         col_append_fstr(pinfo->cinfo, COL_INFO, "[%s] ",
-            val_to_str(pdu_format, pdu_format_dp0_short, "Unknown"));
+            val_to_str_const(pdu_format, pdu_format_dp0_short, "Unknown"));
         break;
     case 1:
         col_append_fstr(pinfo->cinfo, COL_INFO, "[%s] ",
-            val_to_str(pdu_format, pdu_format_dp1_short, "Unknown"));
+            val_to_str_const(pdu_format, pdu_format_dp1_short, "Unknown"));
         break;
     }
 
@@ -535,7 +537,8 @@ dissect_isobus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 
             proto_tree_add_item(tree, hf_isobus_transportprotocol_connabort_pgn, tvb, data_offset, 3, ENC_LITTLE_ENDIAN);
 
-            col_append_fstr(pinfo->cinfo, COL_INFO, "Connection Abort, %s", rval_to_str(connection_abort_reason, connection_abort_reasons, "unknown reason"));
+            col_append_fstr(pinfo->cinfo, COL_INFO, "Connection Abort, %s",
+                            rval_to_str_const(connection_abort_reason, connection_abort_reasons, "unknown reason"));
         }
         else if (control_byte == 32)
         {
@@ -651,12 +654,12 @@ proto_register_isobus(void)
         },
         { &hf_isobus_ext_data_page,
           { "Ext data page", "isobus.edp",
-            FT_UINT32, BASE_HEX, NULL, 0x2000000,
+            FT_UINT32, BASE_HEX, NULL, 0x02000000,
             NULL, HFILL }
         },
         { &hf_isobus_data_page,
           { "Data page", "isobus.datapage",
-            FT_UINT32, BASE_HEX, NULL, 0x1000000,
+            FT_UINT32, BASE_HEX, NULL, 0x01000000,
             NULL, HFILL }
         },
         { &hf_isobus_pdu_format_dp0,
@@ -843,14 +846,13 @@ proto_register_isobus(void)
 
     subdissector_table = register_dissector_table("isobus.pdu_format",
         "PDU format", proto_isobus, FT_UINT8, BASE_DEC);
+
+    isobus_handle = register_dissector("isobus",  dissect_isobus, proto_isobus );
 }
 
 void
 proto_reg_handoff_isobus(void)
 {
-   dissector_handle_t isobus_handle;
-
-   isobus_handle = create_dissector_handle( dissect_isobus, proto_isobus );
    dissector_add_for_decode_as("can.subdissector", isobus_handle );
 }
 

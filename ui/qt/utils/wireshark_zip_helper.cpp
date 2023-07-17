@@ -32,6 +32,14 @@
 #include <QDateTime>
 #include <QMap>
 
+/* Whether we are using minizip-ng and it uses an incompatible 'dos_date'
+ * struct member. */
+#ifdef HAVE_MZCOMPAT_DOS_DATE
+#define _MZDOSDATE dos_date
+#else
+#define _MZDOSDATE dosDate
+#endif
+
 bool WiresharkZipHelper::unzip(QString zipFile, QString directory, bool (*fileCheck)(QString, int), QString (*cleanName)(QString))
 {
     unzFile uf = Q_NULLPTR;
@@ -67,7 +75,17 @@ bool WiresharkZipHelper::unzip(QString zipFile, QString directory, bool (*fileCh
 
             /* Sanity check for the file */
             if (fileInZip.length() == 0 || (fileCheck && ! fileCheck(fileInZip, fileSize)) )
+            {
+                if ((cnt + 1) < nmbr)
+                {
+                    err = unzGoToNextFile(uf);
+                    if (err != UNZ_OK)
+                    {
+                        break;
+                    }
+                }
                 continue;
+            }
 
             if (di.exists())
             {
@@ -131,7 +149,7 @@ bool WiresharkZipHelper::unzip(QString zipFile, QString directory, bool (*fileCh
                             {
                                 QByteArray buf;
                                 buf.resize(IO_BUF_SIZE);
-                                while ((err = unzReadCurrentFile(uf, buf.data(), buf.size())) != UNZ_EOF)
+                                while ((err = unzReadCurrentFile(uf, buf.data(), static_cast<int>(buf.size()))) != UNZ_EOF)
                                     file.write(buf.constData(), err);
 
                                 file.close();
@@ -164,7 +182,7 @@ bool WiresharkZipHelper::unzip(QString zipFile, QString directory, bool (*fileCh
 #define UINT32_MAX  (0xffffffff)
 #endif
 
-static unsigned long qDateToDosDate(QDateTime time)
+static uint32_t qDateToDosDate(QDateTime time)
 {
     QDate ld = time.toLocalTime().date();
 
@@ -179,7 +197,7 @@ static unsigned long qDateToDosDate(QDateTime time)
     int month = ld.month() - 1;
     int day = ld.day();
 
-    if (year < 0 || year > 207 || month < 1 || month > 31)
+    if (year < 0 || year > 127 || month < 1 || month > 31)
         return 0;
 
     QTime lt = time.toLocalTime().time();
@@ -187,7 +205,7 @@ static unsigned long qDateToDosDate(QDateTime time)
     unsigned int dosDate = static_cast<unsigned int>((day + (32 * (month + 1)) + (512 * year)));
     unsigned int dosTime = static_cast<unsigned int>((lt.second() / 2) + (32 * lt.minute()) + (2048 * lt.hour()));
 
-    return dosDate << 16 | dosTime;
+    return (uint32_t)(dosDate << 16 | dosTime);
 }
 
 void WiresharkZipHelper::addFileToZip(zipFile zf, QString filepath, QString fileInZip)
@@ -199,7 +217,7 @@ void WiresharkZipHelper::addFileToZip(zipFile zf, QString filepath, QString file
     memset(&zi, 0, sizeof(zi));
 
     QDateTime fTime = fi.lastModified();
-    zi.dosDate = qDateToDosDate(fTime);
+    zi._MZDOSDATE = qDateToDosDate(fTime);
 
     QFile fh(filepath);
     /* Checks if a large file block has to be written */
@@ -263,16 +281,3 @@ bool WiresharkZipHelper::zip(QString fileName, QStringList files, QString relati
 }
 
 #endif
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

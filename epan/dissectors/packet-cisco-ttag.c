@@ -20,6 +20,8 @@
 void proto_register_ttag(void);
 void proto_reg_handoff_ttag(void);
 
+static dissector_handle_t ttag_handle;
+
 static dissector_handle_t ethertype_handle;
 
 static int proto_ttag = -1;
@@ -51,7 +53,7 @@ dissect_ttag(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
     timestamp.secs = (time_t) (timestamp_value / G_GUINT64_CONSTANT(1000000000));
     timestamp.nsecs = (guint32)(timestamp_value - (timestamp.secs * G_GUINT64_CONSTANT(1000000000)));
 
-    proto_item_append_text(ti, ", Timestamp: %s", rel_time_to_secs_str(wmem_packet_scope(), &timestamp));
+    proto_item_append_text(ti, ", Timestamp: %s", rel_time_to_secs_str(pinfo->pool, &timestamp));
 
     proto_tree_add_time(ttag_tree, hf_ttag_time_stamp, tvb, offset, 6, &timestamp);
     offset += 6;
@@ -94,16 +96,15 @@ proto_register_ttag(void)
     proto_ttag = proto_register_protocol("Cisco ttag", "Cisco ttag", "ttag");
     proto_register_field_array(proto_ttag, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    ttag_handle = register_dissector("ttag", dissect_ttag, proto_ttag);
 }
 
 void
 proto_reg_handoff_ttag(void)
 {
-    dissector_handle_t ttag_handle;
-
     ethertype_handle = find_dissector_add_dependency("ethertype", proto_ttag);
 
-    ttag_handle = create_dissector_handle(dissect_ttag, proto_ttag);
     dissector_add_for_decode_as("ethertype", ttag_handle);
 }
 

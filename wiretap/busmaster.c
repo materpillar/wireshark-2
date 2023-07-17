@@ -12,8 +12,8 @@
 #include "config.h"
 #include <wtap-int.h>
 #include <file_wrappers.h>
-#include <epan/exported_pdu.h>
 #include <epan/dissectors/packet-socketcan.h>
+#include <wsutil/exported_pdu_tlvs.h>
 #include "busmaster.h"
 #include "busmaster_priv.h"
 #include <inttypes.h>
@@ -33,6 +33,18 @@ busmaster_seek_read(wtap     *wth, gint64 seek_off,
                     wtap_rec *rec, Buffer *buf,
                     int      *err, gchar **err_info);
 
+static int busmaster_file_type_subtype = -1;
+
+void register_busmaster(void);
+
+/*
+ * See
+ *
+ *    http://rbei-etas.github.io/busmaster/
+ *
+ * for the BUSMASTER software.
+ */
+
 static gboolean
 busmaster_gen_packet(wtap_rec               *rec, Buffer *buf,
                      const busmaster_priv_t *priv_entry, const msg_t *msg,
@@ -50,32 +62,8 @@ busmaster_gen_packet(wtap_rec               *rec, Buffer *buf,
         || (msg->type == MSG_TYPE_EXT_RTR);
     gboolean is_err = (msg->type == MSG_TYPE_ERR);
 
-    static const char *const can_proto_name   = "can-hostendian";
-    static const char *const canfd_proto_name = "canfd";
-
-    const char        *proto_name  = is_fd ? canfd_proto_name : can_proto_name;
-    guint              proto_name_length = (guint)strlen(proto_name) + 1;
-    guint              header_length;
-    guint              packet_length;
-    guint              frame_length;
-    guint8            *buf_data;
-
-    /* Adjust proto name length to be aligned on 4 byte boundary */
-    proto_name_length += (proto_name_length % 4) ? (4 - (proto_name_length % 4)) : 0;
-
-    header_length = 4 + proto_name_length + 4;
-    frame_length  = is_fd ? sizeof(canfd_frame_t) : sizeof(can_frame_t);
-    packet_length = header_length + frame_length;
-
-    ws_buffer_clean(buf);
-    ws_buffer_assure_space(buf, packet_length);
-    buf_data = ws_buffer_start_ptr(buf);
-
-    memset(buf_data, 0, packet_length);
-
-    buf_data[1] = EXP_PDU_TAG_PROTO_NAME;
-    buf_data[3] = proto_name_length;
-    memcpy(buf_data + 4, proto_name, strlen(proto_name));
+    static const char can_proto_name[]   = "can-hostendian";
+    static const char canfd_proto_name[] = "canfd";
 
     if (!priv_entry)
     {
@@ -83,6 +71,18 @@ busmaster_gen_packet(wtap_rec               *rec, Buffer *buf,
         *err_info = g_strdup("Header is missing");
         return FALSE;
     }
+
+    /* Generate Exported PDU tags for the packet info */
+    ws_buffer_clean(buf);
+    if (is_fd)
+    {
+        wtap_buffer_append_epdu_tag(buf, EXP_PDU_TAG_DISSECTOR_NAME, (const guint8 *)canfd_proto_name, sizeof canfd_proto_name - 1);
+    }
+    else
+    {
+        wtap_buffer_append_epdu_tag(buf, EXP_PDU_TAG_DISSECTOR_NAME, (const guint8 *)can_proto_name, sizeof can_proto_name - 1);
+    }
+    wtap_buffer_append_epdu_end(buf);
 
     if (is_fd)
     {
@@ -98,7 +98,7 @@ busmaster_gen_packet(wtap_rec               *rec, Buffer *buf,
                msg->data.data,
                MIN(msg->data.length, sizeof(canfd_frame.data)));
 
-        memcpy(buf_data + header_length,
+        ws_buffer_append(buf,
                (guint8 *)&canfd_frame,
                sizeof(canfd_frame));
     }
@@ -116,7 +116,7 @@ busmaster_gen_packet(wtap_rec               *rec, Buffer *buf,
                msg->data.data,
                MIN(msg->data.length, sizeof(can_frame.data)));
 
-        memcpy(buf_data + header_length,
+        ws_buffer_append(buf,
                (guint8 *)&can_frame,
                sizeof(can_frame));
     }
@@ -168,12 +168,13 @@ busmaster_gen_packet(wtap_rec               *rec, Buffer *buf,
     }
 
     rec->rec_type       = REC_TYPE_PACKET;
+    rec->block          = wtap_block_create(WTAP_BLOCK_PACKET);
     rec->presence_flags = has_ts ? WTAP_HAS_TS : 0;
     rec->ts.secs        = secs;
     rec->ts.nsecs       = nsecs;
 
-    rec->rec_header.packet_header.caplen = packet_length;
-    rec->rec_header.packet_header.len    = packet_length;
+    rec->rec_header.packet_header.caplen = (guint32)ws_buffer_length(buf);
+    rec->rec_header.packet_header.len    = (guint32)ws_buffer_length(buf);
 
     return TRUE;
 }
@@ -252,7 +253,7 @@ busmaster_open(wtap *wth, int *err, char **err_info)
     wth->subtype_close     = busmaster_close;
     wth->subtype_read      = busmaster_read;
     wth->subtype_seek_read = busmaster_seek_read;
-    wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_UNKNOWN;
+    wth->file_type_subtype = busmaster_file_type_subtype;
     wth->file_encap        = WTAP_ENCAP_WIRESHARK_UPPER_PDU;
     wth->file_tsprec       = WTAP_TSPREC_USEC;
 
@@ -428,6 +429,24 @@ busmaster_seek_read(wtap   *wth, gint64 seek_off, wtap_rec *rec,
     }
 
     return busmaster_gen_packet(rec, buf, priv_entry, &state.msg, err, err_info);
+}
+
+static const struct supported_block_type busmaster_blocks_supported[] = {
+    /*
+     * We support packet blocks, with no comments or other options.
+     */
+    { WTAP_BLOCK_PACKET, MULTIPLE_BLOCKS_SUPPORTED, NO_OPTIONS_SUPPORTED }
+};
+
+static const struct file_type_subtype_info busmaster_info = {
+    "BUSMASTER log file", "busmaster", "log", NULL,
+    FALSE, BLOCKS_SUPPORTED(busmaster_blocks_supported),
+    NULL, NULL, NULL
+};
+
+void register_busmaster(void)
+{
+    busmaster_file_type_subtype = wtap_register_file_type_subtype(&busmaster_info);
 }
 
 /*

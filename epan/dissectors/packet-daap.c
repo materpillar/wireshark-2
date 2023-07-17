@@ -205,6 +205,8 @@
 void proto_register_daap(void);
 void proto_reg_handoff_daap(void);
 
+static dissector_handle_t daap_handle;
+
 static dissector_handle_t png_handle;
 
 /*XXX: Sorted by value definition since it appears that the "value" is just */
@@ -415,7 +417,7 @@ dissect_daap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
     */
    col_set_str(pinfo->cinfo, COL_INFO, "DAAP Response");
    col_append_fstr(pinfo->cinfo, COL_INFO, " [first tag: %s, size: %d]",
-                   tvb_format_text(tvb, 0, 4),
+                   tvb_format_text(pinfo->pool, tvb, 0, 4),
                    tvb_get_ntohl(tvb, 4));
 
    ti = proto_tree_add_item(tree, proto_daap, tvb, 0, -1, ENC_NA);
@@ -531,7 +533,7 @@ dissect_daap_one_tag(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb)
             /* Tags contain strings
                XXX - verify that they're really 7bit ASCII */
             proto_tree_add_item(tag_tree, hf_daap_data_string,
-                  tvb, offset, tagsize, ENC_ASCII|ENC_NA);
+                  tvb, offset, tagsize, ENC_ASCII);
             break;
 
          case daap_mper:
@@ -717,7 +719,7 @@ proto_register_daap(void)
       },
       { &hf_daap_data_string,
         { "Data string", "daap.data_string",
-           FT_STRING, STR_ASCII, NULL, 0, NULL, HFILL }
+           FT_STRING, BASE_NONE, NULL, 0, NULL, HFILL }
       },
       { &hf_daap_persistent_id,
         { "Persistent Id", "daap.persistent_id",
@@ -779,14 +781,13 @@ proto_register_daap(void)
 
    proto_register_field_array(proto_daap, hf, array_length(hf));
    proto_register_subtree_array(ett, array_length(ett));
+
+   daap_handle = register_dissector("daap", dissect_daap, proto_daap);
 }
 
 void
 proto_reg_handoff_daap(void)
 {
-   dissector_handle_t daap_handle;
-
-   daap_handle = create_dissector_handle(dissect_daap, proto_daap);
    http_tcp_port_add(TCP_PORT_DAAP);
    dissector_add_string("media_type", "application/x-dmap-tagged", daap_handle);
 

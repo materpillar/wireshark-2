@@ -2525,7 +2525,7 @@ static const fragment_items opa_rmpp_frag_items = {
  * @param[out] num_ports optional: pointer to a number of ports in set in port
  *                                 select mask and portlist if provided.
  * @return gchar* pointer to range string allocated using
- *                wmem_strbuf_sized_new(wmem_packet_scope(),...)
+ *                wmem_strbuf_new_sized(wmem_packet_scope(),...)
  */
 static gchar *opa_format_port_select_mask(tvbuff_t *tvb, gint offset, guint8 **port_list, guint8 *num_ports)
 {
@@ -2542,7 +2542,7 @@ static gchar *opa_format_port_select_mask(tvbuff_t *tvb, gint offset, guint8 **p
     psm[2] = tvb_get_ntoh64(tvb, offset + 16);
     psm[3] = tvb_get_ntoh64(tvb, offset + 24);
 
-    buf = wmem_strbuf_sized_new(wmem_packet_scope(), 0, ITEM_LABEL_LENGTH);
+    buf = wmem_strbuf_create(wmem_packet_scope());
 
     if (port_list) {
         /* Allocate list of ports; max = 256 = 64 * 4 */
@@ -2584,93 +2584,93 @@ static gchar *opa_format_port_select_mask(tvbuff_t *tvb, gint offset, guint8 **p
 /* Custom Functions */
 static void cf_opa_mad_swinfo_ar_frequency(gchar *buf, guint16 value)
 {
-    g_snprintf(buf, ITEM_LABEL_LENGTH, "%u ms", 2 ^ (value)*64);
+    snprintf(buf, ITEM_LABEL_LENGTH, "%u ms", 2 ^ (value)*64);
 }
 static void cf_opa_mad_linkspeed(gchar *buf, guint16 value)
 {
     int len = 0;
     if (value & 0x1) /* 12.5 Gbps */
-        len = g_snprintf(buf, ITEM_LABEL_LENGTH, "12.5");
+        len = snprintf(buf, ITEM_LABEL_LENGTH, "12.5");
     if (value & 0x2) /* 25.78125 Gbps */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s25.78125", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s25.78125", (len ? ", " : ""));
     if (len)
-        g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, " Gbps");
+        snprintf(&buf[len], ITEM_LABEL_LENGTH - len, " Gbps");
     else
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
+        snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
 }
 static void cf_opa_mad_linkwidth(gchar *buf, guint16 value)
 {
     int len = 0;
     if (value & 0x1) /* 1x */
-        len = g_snprintf(buf, ITEM_LABEL_LENGTH, "1X");
+        len = snprintf(buf, ITEM_LABEL_LENGTH, "1X");
     if (value & 0x2) /* 2x */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s2X", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s2X", (len ? ", " : ""));
     if (value & 0x4) /* 3x */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s3X", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s3X", (len ? ", " : ""));
     if (value & 0x8) /* 4x */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s4X", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s4X", (len ? ", " : ""));
     if (!len)
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
+        snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
 }
 static void cf_opa_mad_portlinkmode(gchar *buf, guint16 value)
 {
     int len = 0;
     if (value & 0x1) /* Reserved */
-        len = g_snprintf(buf, ITEM_LABEL_LENGTH, "Reserved");
+        len = snprintf(buf, ITEM_LABEL_LENGTH, "Reserved");
     if (value & 0x2) /* Ethernet */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sEthernet", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sEthernet", (len ? ", " : ""));
     if (value & 0x4) /* STL */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sSTL", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sSTL", (len ? ", " : ""));
     if (!len)
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
+        snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
 }
 static void cf_opa_mad_portltpcrcmode(gchar *buf, guint16 value)
 {
     int len = 0;
     if (value & 0x1) /* 14-bit */
-        len = g_snprintf(buf, ITEM_LABEL_LENGTH, "14-bit");
+        len = snprintf(buf, ITEM_LABEL_LENGTH, "14-bit");
     if (value & 0x2) /* 16-bit */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s16-bit", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s16-bit", (len ? ", " : ""));
     if (value & 0x4) /* 48-bit */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s48-bit overlapping", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s48-bit overlapping", (len ? ", " : ""));
     if (value & 0x8) /* 12 to 16 bit per lane */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s[12,16]-bit per lane", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s[12,16]-bit per lane", (len ? ", " : ""));
     if (len)
-        g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, " LTP CRC Mode");
+        snprintf(&buf[len], ITEM_LABEL_LENGTH - len, " LTP CRC Mode");
     else
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
+        snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
 }
 static void cf_opa_mad_packetformat(gchar *buf, guint16 value)
 {
     int len = 0;
     if (value & 0x1) /* 8B */
-        len = g_snprintf(buf, ITEM_LABEL_LENGTH, "8B");
+        len = snprintf(buf, ITEM_LABEL_LENGTH, "8B");
     if (value & 0x2) /* 9B */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s9B", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s9B", (len ? ", " : ""));
     if (value & 0x4) /* 10B */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s10B", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s10B", (len ? ", " : ""));
     if (value & 0x8) /* 16B */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s16B", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s16B", (len ? ", " : ""));
     if (len)
-        g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, " Format%s", (len > 4 ? "s" : ""));
+        snprintf(&buf[len], ITEM_LABEL_LENGTH - len, " Format%s", (len > 4 ? "s" : ""));
     else
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
+        snprintf(buf, ITEM_LABEL_LENGTH, "No State Change");
 }
 static void cf_opa_mad_swcongestionsetting_controlmap(gchar *buf, guint32 value)
 {
     int len = 0;
     if (value & 0x1) /* Victim */
-        len = g_snprintf(buf, ITEM_LABEL_LENGTH, "Victim");
+        len = snprintf(buf, ITEM_LABEL_LENGTH, "Victim");
     if (value & 0x2) /* Credit */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sCredit", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sCredit", (len ? ", " : ""));
     if (value & 0x4) /* Threshold & PacketSize */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sThreshold & PacketSize", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sThreshold & PacketSize", (len ? ", " : ""));
     if (value & 0x8) /* CS_threshold & CS_ReturnDelay */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sCS_threshold & CS_ReturnDelay", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sCS_threshold & CS_ReturnDelay", (len ? ", " : ""));
     if (value & 0x10) /* Marking Rate */
-        len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sMarking Rate", (len ? ", " : ""));
+        len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%sMarking Rate", (len ? ", " : ""));
     if (!len)
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "No Valid Fields");
+        snprintf(buf, ITEM_LABEL_LENGTH, "No Valid Fields");
 }
 static void cf_opa_mad_32b_mask(gchar *buf, guint32 value)
 {
@@ -2678,16 +2678,16 @@ static void cf_opa_mad_32b_mask(gchar *buf, guint32 value)
     guint32 i, mask;
     for (i = 0, mask = value; mask && i < 32 && len < ITEM_LABEL_LENGTH; i++, mask >>= 1) {
         if (mask & 1) {
-            len += g_snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s%u", (len ? ", " : ""), i);
+            len += snprintf(&buf[len], ITEM_LABEL_LENGTH - len, "%s%u", (len ? ", " : ""), i);
         }
     }
     if (!len) {
-        g_snprintf(buf, ITEM_LABEL_LENGTH, " ");
+        snprintf(buf, ITEM_LABEL_LENGTH, " ");
     }
 }
 static void cf_opa_mad_computed_pct10(gchar *buf, guint16 value)
 {
-    g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%01u", value / 10, value % 10);
+    snprintf(buf, ITEM_LABEL_LENGTH, "%u.%01u", value / 10, value % 10);
 }
 
 /* Dissector Declarations */
@@ -2696,8 +2696,8 @@ static dissector_table_t ethertype_dissector_table;
 
 static reassembly_table opa_mad_rmpp_reassembly_table;
 
-gboolean pref_parse_on_mad_status_error = FALSE;
-gboolean pref_attempt_rmpp_defragment = TRUE;
+static gboolean pref_parse_on_mad_status_error = FALSE;
+static gboolean pref_attempt_rmpp_defragment = TRUE;
 
 static range_t *global_mad_vendor_class = NULL;
 static range_t *global_mad_vendor_rmpp_class = NULL;
@@ -2813,7 +2813,8 @@ static gint parse_MAD_AttributeModifier(proto_tree *MAD_tree, tvbuff_t *tvb, gin
     default:
         break;
     }
-    return local_offset += 4;
+    local_offset += 4;
+    return local_offset;
 }
 /* Parse the common MAD Header */
 static gboolean parse_MAD_Common(proto_tree *parentTree, packet_info *pinfo, tvbuff_t *tvb, gint *offset, MAD_t *MAD)
@@ -2904,8 +2905,8 @@ static gboolean parse_RMPP(proto_tree *parentTree, packet_info *pinfo, tvbuff_t 
     RMPP->Version = tvb_get_guint8(tvb, local_offset);
     local_offset += 1;
 
-    RMPP_type_item = proto_tree_add_item(RMPP_header_tree, hf_opa_rmpp_type, tvb, local_offset, 1, ENC_BIG_ENDIAN);
-    RMPP->Type = tvb_get_guint8(tvb, local_offset);
+    RMPP_type_item = proto_tree_add_item_ret_uint(RMPP_header_tree, hf_opa_rmpp_type, tvb, local_offset, 1, ENC_BIG_ENDIAN,
+                                                  (guint32*)&RMPP->Type);
     local_offset += 1;
     proto_tree_add_item(RMPP_header_tree, hf_opa_rmpp_r_resp_time, tvb, local_offset, 1, ENC_BIG_ENDIAN);
     proto_tree_add_item(RMPP_header_tree, hf_opa_rmpp_flags_last, tvb, local_offset, 1, ENC_BIG_ENDIAN);
@@ -2914,8 +2915,8 @@ static gboolean parse_RMPP(proto_tree *parentTree, packet_info *pinfo, tvbuff_t 
     RMPP->resptime_flags = tvb_get_guint8(tvb, local_offset);
     local_offset += 1;
 
-    proto_tree_add_item(RMPP_header_tree, hf_opa_rmpp_status, tvb, local_offset, 1, ENC_BIG_ENDIAN);
-    RMPP->Status = tvb_get_guint8(tvb, local_offset);
+    proto_tree_add_item_ret_uint(RMPP_header_tree, hf_opa_rmpp_status, tvb, local_offset, 1, ENC_BIG_ENDIAN,
+                                 (guint32*)&RMPP->Status);
     local_offset += 1;
 
     if (!(RMPP->resptime_flags & RMPP_FLAG_ACTIVE_MASK) && RMPP->Type == RMPP_ILLEGAL) {
@@ -5563,7 +5564,7 @@ static gint parse_QuarantinedNodeRecord(proto_tree *parentTree, tvbuff_t *tvb, g
 
     proto_tree_add_item(QuarantinedNodeRecord_header_tree, hf_opa_QuarantinedNodeRecord_QuarantineReasons, tvb, local_offset, 4, ENC_BIG_ENDIAN);
     local_offset += 4;
-    proto_tree_add_item(QuarantinedNodeRecord_header_tree, hf_opa_QuarantinedNodeRecord_ExpectedNodeDesc, tvb, local_offset, 64, ENC_BIG_ENDIAN);
+    proto_tree_add_item(QuarantinedNodeRecord_header_tree, hf_opa_QuarantinedNodeRecord_ExpectedNodeDesc, tvb, local_offset, 64, ENC_NA);
     local_offset += 64;
     proto_tree_add_item(QuarantinedNodeRecord_header_tree, hf_opa_QuarantinedNodeRecord_ExpectedNodeGUID, tvb, local_offset, 8, ENC_BIG_ENDIAN);
     local_offset += 8;
@@ -6062,8 +6063,7 @@ static void parse_SUBNADMN(proto_tree *parentTree, packet_info *pinfo, tvbuff_t 
         old_offset = *offset;
         label = val_to_str_const(MAD.AttributeID, SUBA_Attributes, "Attribute (Unknown SA Attribute!)");
         SA_record_tree = proto_tree_add_subtree_format(parentTree, tvb, old_offset,
-            (SA_HEADER.AttributeOffset * 8), ett_rmpp_sa_record, NULL, "%.*s Record %u: ",
-            (gint)strlen(&label[11]) - 1, &label[11], r);
+            (SA_HEADER.AttributeOffset * 8), ett_rmpp_sa_record, NULL, "%s Record %u: ", label, r);
 
         if (!parse_SUBA_Attribute(SA_record_tree, tvb, offset, &MAD, &RMPP, &SA_HEADER)) {
             expert_add_info_format(pinfo, NULL, &ei_opa_mad_no_attribute_dissector,
@@ -8741,7 +8741,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_rmpp_status, {
                 "RMPP Status", "opa.rmpp.rmppstatus",
-                FT_UINT8, BASE_HEX, VALS(RMPP_Status), 0xFF, NULL, HFILL }
+                FT_UINT8, BASE_HEX, VALS(RMPP_Status), 0x0, NULL, HFILL }
         },
         { &hf_opa_rmpp_data1, {
                 "RMPP Data 1", "opa.rmpp.data1",
@@ -8980,7 +8980,7 @@ void proto_register_opa_mad(void)
         /* Trap 128 */
         { &hf_opa_Trap_LID, {
                 "LIDADDR", "opa.trap.lidaddr",
-                FT_UINT16, BASE_HEX, NULL, 0x0, NULL, HFILL }
+                FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }
         },
 
         /* Trap 129, 130, 131 */
@@ -9116,7 +9116,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_Trap_DataValid_Gid2, {
                 "Gid2", "opa.trap.datavalid.gid2",
-                FT_BOOLEAN, 16, TFS(&tfs_valid_invalid), 0x01000, NULL, HFILL }
+                FT_BOOLEAN, 16, TFS(&tfs_valid_invalid), 0x0100, NULL, HFILL }
         },
         { &hf_opa_Trap_DataValid_Reserved, {
                 "DataValid", "opa.trap.datavalid.reserved",
@@ -9247,7 +9247,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_NodeDescription_NodeString, {
                 "NodeString", "opa.nodedescription.nodestring",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
 
 /************
@@ -9927,7 +9927,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_PortInfo_BufferUnits_VL15CreditRate, {
                 "BufferUnits VL15Credit", "opa.portinfo.bufferunits.vl15credit",
-                FT_UINT32, BASE_HEX, NULL, 0x0000007C0, NULL, HFILL }
+                FT_UINT32, BASE_HEX, NULL, 0x000007C0, NULL, HFILL }
         },
         { &hf_opa_PortInfo_BufferUnits_CreditAck, {
                 "BufferUnits CreditAck", "opa.portinfo.bufferunits.creditack",
@@ -10422,7 +10422,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_CableInfo_DataStream, {
                 "Data", "opa.cableinfo.datastream",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
 
 /************
@@ -10880,7 +10880,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_ServiceRecord_ServiceName, {
                 "ServiceName", "opa.servicerecord.servicename",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_ServiceRecord_ServiceData, {
                 "ServiceData", "opa.servicerecord.servicedata",
@@ -10894,7 +10894,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_ServiceAssociationRecord_ServiceName, {
                 "ServiceName", "opa.serviceassociationrecord.servicename",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
 
 /**************
@@ -11011,7 +11011,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_MCMemberRecord_MLID, {
                 "MLID", "opa.mcmemberrecord.mlid",
-                FT_UINT16, BASE_HEX, NULL, 0x0, NULL, HFILL }
+                FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_MCMemberRecord_MTUSelector, {
                 "MTU Selector", "opa.mcmemberrecord.mtuselector",
@@ -12098,7 +12098,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetGroupList_groupName, {
                 "Group Name", "opa.pa.getgrouplist.groupname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
 
         /* GetGroupInfo */
@@ -12108,7 +12108,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetGroupInfo_groupName, {
                 "Group Name", "opa.pa.getgroupinfo.groupname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetGroupInfo_numInternalPorts, {
                 "numInternalPorts", "opa.pa.getgroupinfo.numinternalports",
@@ -12216,11 +12216,11 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetGroupInfo_maxInternalMBps, {
                 "maxInternalMBps", "opa.pa.getgroupinfo.maxinternalmbps",
-                FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }
+                FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetGroupInfo_maxExternalMBps, {
                 "maxExternalMBps", "opa.pa.getgroupinfo.maxexternalmbps",
-                FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }
+                FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }
         },
 
         /* GetGroupConfig */
@@ -12230,7 +12230,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetGroupConfig_groupName, {
                 "Group Name", "opa.pa.getgroupconfig.groupname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetGroupConfig_Port_NodeGUID, {
                 "NodeGUID", "opa.pa.getgroupconfig.port.nodeguid",
@@ -12238,7 +12238,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetGroupConfig_Port_nodeDesc, {
                 "nodeDesc", "opa.pa.getgroupconfig.port.nodedesc",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetGroupConfig_Port_NodeLID, {
                 "NodeLID", "opa.pa.getgroupconfig.port.nodelid",
@@ -12798,7 +12798,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetFocusPorts_groupName, {
                 "Group Name", "opa.pa.getfocusports.groupname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetFocusPorts_select, {
                 "select", "opa.pa.getfocusports.select",
@@ -12846,7 +12846,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetFocusPorts_nodeDesc, {
                 "nodeDesc", "opa.pa.getfocusports.nodedesc",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetFocusPorts_neighborLid, {
                 "neighborLid", "opa.pa.getfocusports.neighborlid",
@@ -12866,7 +12866,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetFocusPorts_neighborNodeDesc, {
                 "neighborNodeDesc", "opa.pa.getfocusports.neighbornodedesc",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
 
         /* GetImageInfo */
@@ -12928,7 +12928,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetImageInfo_lid, {
                 "lid", "opa.pa.getimageinfo.sminfo.lid",
-                FT_UINT16, BASE_HEX, NULL, 0x0, NULL, HFILL }
+                FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetImageInfo_state, {
                 "state", "opa.pa.getimageinfo.sminfo.state",
@@ -12948,7 +12948,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetImageInfo_smNodeDesc, {
                 "nodeDesc", "opa.pa.getimageinfo.sminfo.nodedesc",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
 
         /* GetVFList */
@@ -12958,7 +12958,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetVFList_vfName, {
                 "VF Name", "opa.pa.getvflist.vfname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
 
         /* GetVFInfo */
@@ -12968,7 +12968,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetVFInfo_vfName, {
                 "VF Name", "opa.pa.getvfinfo.vfname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetVFInfo_numPorts, {
                 "numPorts", "opa.pa.getvfinfo.numports",
@@ -13074,7 +13074,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetVFConfig_vfName, {
                 "VF Name", "opa.pa.getvfconfig.vfname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetVFConfig_Port_NodeGUID, {
                 "NodeGUID", "opa.pa.getvfconfig.port.nodeguid",
@@ -13082,11 +13082,11 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetVFConfig_Port_nodeDesc, {
                 "nodeDesc", "opa.pa.getvfconfig.port.nodedesc",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetVFConfig_Port_NodeLID, {
                 "NodeLID", "opa.pa.getvfconfig.port.nodelid",
-                FT_UINT16, BASE_HEX, NULL, 0x0, NULL, HFILL }
+                FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetVFConfig_Port_PortNumber, {
                 "PortNumber", "opa.pa.getvfconfig.port.portnumber",
@@ -13100,7 +13100,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetVFPortCounters_vfName, {
                 "VF Name", "opa.pa.getvfportcounters.vfname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetVFPortCounters_nodeLID, {
                 "nodeLID", "opa.pa.getvfportcounters.nodelid",
@@ -13178,7 +13178,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_ClearVFPortCounters_vfName, {
                 "VF Name", "opa.pa.clearvfportcounters.vfname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_ClearVFPortCounters_nodeLID, {
                 "nodeLID", "opa.pa.clearvfportcounters.nodelid",
@@ -13260,7 +13260,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetVFFocusPorts_vfName, {
                 "VF Name", "opa.pa.getvffocusports.vfname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetVFFocusPorts_select, {
                 "select", "opa.pa.getvffocusports.select",
@@ -13276,7 +13276,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetVFFocusPorts_nodeLID, {
                 "nodeLID", "opa.pa.getvffocusports.nodelid",
-                FT_UINT16, BASE_HEX, NULL, 0x0, NULL, HFILL }
+                FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetVFFocusPorts_portNumber, {
                 "portNumber", "opa.pa.getvffocusports.portnumber",
@@ -13308,11 +13308,11 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetVFFocusPorts_nodeDesc, {
                 "nodeDesc", "opa.pa.getvffocusports.nodedesc",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetVFFocusPorts_neighborLid, {
                 "neighborLid", "opa.pa.getvffocusports.neighborlid",
-                FT_UINT16, BASE_HEX, NULL, 0x0, NULL, HFILL }
+                FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_GetVFFocusPorts_neighborPortNumber, {
                 "neighborPortNumber", "opa.pa.getvffocusports.neighborportnumber",
@@ -13328,7 +13328,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_GetVFFocusPorts_neighborNodeDesc, {
                 "neighborNodeDesc", "opa.pa.getvffocusports.neighbornodedesc",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
 
         /* VFInfoRecord */
@@ -13346,7 +13346,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_VFInfoRecord_vfName, {
                 "VF Name", "opa.vfinforecord.vfname",
-                FT_STRING, STR_ASCII, NULL, 0x0, NULL, HFILL }
+                FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_VFInfoRecord_MGID, {
                 "M GID", "opa.vfinforecord.mgid",
@@ -13451,7 +13451,7 @@ void proto_register_opa_mad(void)
         },
         { &hf_opa_QuarantinedNodeRecord_ExpectedNodeDesc, {
                 "Expected Node Desc", "opa.quarantinednoderecord.expectednodedesc",
-                FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }
+                FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }
         },
         { &hf_opa_QuarantinedNodeRecord_ExpectedNodeGUID, {
                 "Expected Node GUID", "opa.quarantinednoderecord.expectednodeguid",
@@ -13662,7 +13662,7 @@ void proto_register_opa_mad(void)
     range_convert_str(wmem_epan_scope(), &global_mad_reserved_class, OPA_RESERVED_RANGE_STR, 0xFF);
     range_convert_str(wmem_epan_scope(), &global_mad_opa_class, OPA_MGMTCLASS_RANGE_STR, 0xFF);
 
-    opa_mad_module = prefs_register_protocol(proto_opa_mad, proto_reg_handoff_opa_mad);
+    opa_mad_module = prefs_register_protocol(proto_opa_mad, NULL);
     prefs_register_bool_preference(opa_mad_module, "parse_mad_error",
         "Enable Parsing of Mad Payload on Mad Status Error",
         "Attempt to parse mad payload even when MAD.Status is non-zero",

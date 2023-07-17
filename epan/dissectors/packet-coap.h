@@ -23,6 +23,13 @@
 #define COAP_OBJECT_SECURITY_KID_MASK				0x08
 #define COAP_OBJECT_SECURITY_PIVLEN_MASK			0x07
 
+/* Parent protocol for CoAP */
+typedef enum {
+	PARENT_WEBSOCKETS,	/* WebSockets */
+	PARENT_TCP_TLS,		/* TCP or TLS */
+	PARENT_OTHER		/* UDP, WAP, other packet-based protocols */
+} coap_parent_protocol;
+
 /* CoAP Message information */
 typedef struct {
 	const gchar *ctype_str;
@@ -32,6 +39,7 @@ typedef struct {
 	guint block_mflag;
 	wmem_strbuf_t *uri_str_strbuf;		/* the maximum is 1024 > 510 = Uri-Host:255 + Uri-Path:255 x 2 */
 	wmem_strbuf_t *uri_query_strbuf;	/* the maximum is 1024 >         765 = Uri-Query:255 x 3 */
+	gboolean is_coap_for_tmf;		/* CoAP for Thread Management Framework */
 	gboolean object_security;
 	oscore_info_t *oscore_info;		/* OSCORE data needed to decrypt */
 } coap_info;
@@ -93,6 +101,11 @@ typedef struct coap_common_dissect {
 		int opt_block_mflag;
 		int opt_block_size;
 		int opt_uri_query;
+		int opt_echo;
+		int opt_no_response;
+		int opt_request_tag;
+		int opt_ocf_version;
+		int opt_ocf_accept_version;
 		int opt_unknown;
 		int opt_object_security_reserved;
 		int opt_object_security_kid_context_present;
@@ -140,7 +153,7 @@ coap_common_dissect_t name = {							\
 		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,				\
 		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,				\
 		-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,				\
-		-1, 								\
+		-1, -1, -1, -1, -1, -1,						\
 		},								\
 	/* ett */ {								\
 		-1, -1,								\
@@ -351,6 +364,33 @@ coap_common_dissect_t name = {							\
 	{ & name .hf.opt_uri_query,						\
 	  { "Uri-Query",  prefix ".opt.uri_query",				\
 	    FT_STRING, BASE_NONE, NULL, 0x0,					\
+	    NULL, HFILL }							\
+	},									\
+	{ & name .hf.opt_echo,							\
+	  { "Echo",  prefix ".opt.opt_echo",					\
+	    FT_BYTES, BASE_NONE, NULL, 0x0,					\
+	    NULL, HFILL }							\
+	},									\
+	{ & name .hf.opt_no_response,						\
+	  { "No-Response",  prefix ".opt.opt_no_response",			\
+	    FT_UINT8, BASE_DEC, NULL, 0x0,					\
+	    NULL, HFILL }							\
+	},									\
+	{ & name .hf.opt_request_tag,						\
+	  { "Request-Tag",  prefix ".opt.opt_request_tag",			\
+	    FT_BYTES, BASE_NONE, NULL, 0x0,					\
+	    NULL, HFILL }							\
+	},									\
+	{ & name .hf.opt_ocf_version,						\
+	  { "OCF-Content-Format-Version",					\
+	    prefix ".opt.opt_ocf_version",					\
+	    FT_UINT8, BASE_DEC, NULL, 0x0,					\
+	    NULL, HFILL }							\
+	},									\
+	{ & name .hf.opt_ocf_accept_version,					\
+	  { "OCF-Accept-Content-Format-Version",				\
+	    prefix ".opt.opt_ocf_accept_version",				\
+	    FT_UINT8, BASE_DEC, NULL, 0x0,					\
 	    NULL, HFILL }							\
 	},									\
 	{ & name .hf.opt_unknown,						\

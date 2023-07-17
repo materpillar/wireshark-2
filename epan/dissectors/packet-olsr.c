@@ -26,6 +26,7 @@
 
 void proto_register_olsr(void);
 void proto_reg_handoff_olsr(void);
+static dissector_handle_t olsr_handle;
 
 #define UDP_PORT_OLSR   698
 #define HELLO   1
@@ -204,7 +205,7 @@ static int dissect_olsrorg_lq_tc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
       nlq = tvb_get_guint8(tvb, offset + 5);
 
       address_group = proto_tree_add_bytes_format_value(olsr_tree, hf_olsr_neighbor, tvb, offset, 8,
-          NULL, "%s (%d/%d)", tvb_ip_to_str(tvb, offset), lq, nlq);
+          NULL, "%s (%d/%d)", tvb_ip_to_str(pinfo->pool, tvb, offset), lq, nlq);
 
       address_tree = proto_item_add_subtree(address_group, ett_olsr_message_neigh);
 
@@ -220,7 +221,7 @@ static int dissect_olsrorg_lq_tc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
       nlq = tvb_get_guint8(tvb, offset + 17);
 
       address_group = proto_tree_add_bytes_format_value(olsr_tree, hf_olsr_neighbor, tvb, offset, 20,
-          NULL, "%s (%d/%d)", tvb_ip6_to_str(tvb, offset), lq, nlq);
+          NULL, "%s (%d/%d)", tvb_ip6_to_str(pinfo->pool, tvb, offset), lq, nlq);
 
       address_tree = proto_item_add_subtree(address_group, ett_olsr_message_neigh);
 
@@ -276,7 +277,7 @@ static int dissect_olsr_hello(tvbuff_t *tvb, packet_info *pinfo, proto_tree *ols
   proto_item *ti;
   proto_tree *link_type_tree;
 
-  guint16     message_size = 0;
+  guint16     message_size;
 
   if (message_end - offset < 4) {
     proto_tree_add_expert_format(olsr_tree, pinfo, &ei_olsr_not_enough_bytes, tvb, offset, message_end - offset,
@@ -365,7 +366,7 @@ static int handle_olsr_hello_olsrorg(tvbuff_t *tvb, packet_info *pinfo, proto_tr
       nlq = tvb_get_guint8(tvb, offset + 5);
 
       address_group = proto_tree_add_bytes_format_value(olsr_tree, hf_olsr_neighbor, tvb, offset, 8,
-           NULL, "%s (%d/%d)", tvb_ip_to_str(tvb, offset), lq, nlq);
+           NULL, "%s (%d/%d)", tvb_ip_to_str(pinfo->pool, tvb, offset), lq, nlq);
 
       address_tree = proto_item_add_subtree(address_group, ett_olsr_message_neigh);
 
@@ -376,7 +377,7 @@ static int handle_olsr_hello_olsrorg(tvbuff_t *tvb, packet_info *pinfo, proto_tr
       nlq = tvb_get_guint8(tvb, offset + 17);
 
       address_group = proto_tree_add_bytes_format_value(olsr_tree, hf_olsr_neighbor, tvb, offset, 20,
-          NULL, "%s (%d/%d)", tvb_ip6_to_str(tvb, offset), lq, nlq);
+          NULL, "%s (%d/%d)", tvb_ip6_to_str(pinfo->pool, tvb, offset), lq, nlq);
 
       address_tree = proto_item_add_subtree(address_group, ett_olsr_message_neigh);
 
@@ -505,7 +506,7 @@ static int dissect_olsrorg_nameservice(tvbuff_t *tvb, packet_info *pinfo, proto_
           "Not enough bytes for content of last nameservice entry");
       return message_end;
     }
-    proto_tree_add_item(olsr_ns_tree, hf_olsrorg_ns_content, tvb, offset + 20, length, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(olsr_ns_tree, hf_olsrorg_ns_content, tvb, offset + 20, length, ENC_ASCII);
     offset += 4 + 16 + ((length - 1) | 3) + 1;
   }
   return message_end;
@@ -964,6 +965,7 @@ void proto_register_olsr(void) {
   }
 
   proto_olsr = proto_register_protocol("Optimized Link State Routing Protocol", "OLSR", "olsr");
+  olsr_handle = register_dissector("olsr", dissect_olsr, proto_olsr);
 
   proto_register_field_array(proto_olsr, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
@@ -980,9 +982,6 @@ void proto_register_olsr(void) {
 }
 
 void proto_reg_handoff_olsr(void) {
-  dissector_handle_t olsr_handle;
-
-  olsr_handle = create_dissector_handle(dissect_olsr, proto_olsr);
   dissector_add_uint_with_preference("udp.port", UDP_PORT_OLSR, olsr_handle);
 }
 

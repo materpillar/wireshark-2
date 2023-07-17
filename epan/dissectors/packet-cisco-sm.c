@@ -211,7 +211,7 @@ static const value_string sm_pdu_type_value[] = {
 };
 
 /* TODO: Change to useful name once known */
-#define SM_PROTOCOL_X004 0x0004 /* https://bugs.wireshark.org/bugzilla/show_bug.cgi?id=7188 */
+#define SM_PROTOCOL_X004 0x0004 /* https://gitlab.com/wireshark/wireshark/-/issues/7188 */
 /* RUDP/SM stack called BSM V1 (version 1 versus Version 0 used for SS7). */
 #define SM_PROTOCOL_X100 0x0100
 #define SM_PROTOCOL_X101 0x0101
@@ -272,7 +272,7 @@ dissect_sm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
     col_add_fstr(pinfo->cinfo, COL_INFO, "Cisco SM Packet (%s)",
         val_to_str_const(sm_message_type, sm_message_type_value_info,"reserved"));
 
-    ti = proto_tree_add_item(tree, proto_sm, tvb, offset, 0, ENC_NA);
+    ti = proto_tree_add_item(tree, proto_sm, tvb, offset, -1, ENC_NA);
     sm_tree = proto_item_add_subtree(ti, ett_sm);
 
     proto_tree_add_uint_format_value(sm_tree, hf_sm_sm_msg_type, tvb, offset, 4, sm_message_type,

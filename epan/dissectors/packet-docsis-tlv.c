@@ -1,6 +1,6 @@
 /* packet-docsis-tlv.c
  *
- * Routines to Dissect Appendix C TLV's
+ * Routines to Dissect Appendix C TLVs
  * Copyright 2015, Adrian Simionov <daniel.simionov@gmail.com>
  * Copyright 2002, Anand V. Narwani <anand[AT]narwani.org>
  * Copyright 2017, Bruno Verstuyft <bruno.verstuyft@excentis.com>
@@ -20,11 +20,11 @@
 
 #include "packet-docsis-tlv.h"
 
-/* This module will dissect the Appendix C TLV's.  Please see:
+/* This module will dissect the Appendix C TLVs.  Please see:
  * http://www.cablemodem.com/specifications/specifications.html
  *
  * The main dissector is dissect_docsis_tlv.  This routine will dissect
- * top level TLV's and call sub-dissectors for the sub-TLV's.
+ * top level TLVs and call sub-dissectors for the sub-TLVs.
  */
 
 void proto_register_docsis_tlv(void);
@@ -223,6 +223,7 @@ static int hf_docsis_tlv_mcap_dipl_up_upper_band_edge_65 = -1;
 static int hf_docsis_tlv_mcap_dipl_up_upper_band_edge_85 = -1;
 static int hf_docsis_tlv_mcap_dipl_up_upper_band_edge_117 = -1;
 static int hf_docsis_tlv_mcap_dipl_up_upper_band_edge_204 = -1;
+static int hf_docsis_tlv_mcap_low_latency_sup = -1;
 
 static int hf_docsis_tlv_clsfr_ref = -1;
 static int hf_docsis_tlv_clsfr_id = -1;
@@ -568,12 +569,6 @@ static expert_field ei_docsis_tlv_tlvlen_bad = EI_INIT;
 static expert_field ei_docsis_tlv_tlvval_bad = EI_INIT;
 
 
-static const value_string on_off_vals[] = {
-  {0, "Off"},
-  {1, "On"},
-  {0, NULL},
-};
-
 static const true_false_string ena_dis_tfs = {
   "Enable",
   "Disable"
@@ -672,7 +667,7 @@ const value_string docsis_conf_code[] = {
   {  7, "Reject: Service flow exists"},
   {  8, "Reject: Required parameter not present"},
   {  9, "Reject: Header suppression"},
-  { 10, "Reject: Unknown transaction id"},
+  { 10, "Reject: Unknown transaction ID"},
   { 11, "Reject: Authentication failure"},
   { 12, "Reject: Add aborted"},
   { 13, "Reject: Multiple errors"},
@@ -913,13 +908,13 @@ static const value_string docsis_time_prot_perf_sup_vals[] = {
 static void
 fourth_db(char *buf, guint32 value)
 {
-    g_snprintf(buf, ITEM_LABEL_LENGTH, "%.2f dB", value/4.0);
+    snprintf(buf, ITEM_LABEL_LENGTH, "%.2f dB", value/4.0);
 }
 
 static void
 fourth_dbmv(char *buf, guint32 value)
 {
-    g_snprintf(buf, ITEM_LABEL_LENGTH, "%.2f dBmV", value/4.0);
+    snprintf(buf, ITEM_LABEL_LENGTH, "%.2f dBmV", value/4.0);
 }
 
 static reassembly_table ucd_reassembly_table;
@@ -1014,7 +1009,7 @@ dissect_phs_err (tvbuff_t * tvb, packet_info *pinfo, proto_tree * tree, int star
             break;
           case PHS_ERR_MSG:
             proto_tree_add_item (err_tree, hf_docsis_tlv_phs_err_msg, tvb, pos,
-                                 length, ENC_ASCII|ENC_NA);
+                                 length, ENC_ASCII);
             break;
           default:
             dissect_unknown_tlv (tvb, pinfo, err_tree, pos - 2, length + 2);
@@ -1231,7 +1226,7 @@ dissect_sflow_err (tvbuff_t * tvb, packet_info* pinfo, proto_tree * tree, int st
             break;
           case SFW_ERR_MSG:
             proto_tree_add_item (err_tree, hf_docsis_tlv_sflow_err_msg, tvb,
-                                 pos, length, ENC_ASCII|ENC_NA);
+                                 pos, length, ENC_ASCII);
             break;
           default:
             dissect_unknown_tlv (tvb, pinfo, err_tree, pos - 2, length + 2);
@@ -1511,7 +1506,7 @@ dissect_sflow (tvbuff_t * tvb, packet_info* pinfo, proto_tree * tree, int start,
             break;
           case SFW_SERVICE_CLASS_NAME:
             proto_tree_add_item (sflow_tree, hf_docsis_tlv_sflow_classname, tvb,
-                                 pos, length, ENC_ASCII|ENC_NA);
+                                 pos, length, ENC_ASCII);
             break;
           case SFW_ERRORS:
             dissect_sflow_err (tvb, pinfo, sflow_tree, pos, length);
@@ -1852,7 +1847,7 @@ dissect_clsfr_err (tvbuff_t * tvb, packet_info* pinfo, proto_tree * tree, int st
             break;
           case CFR_ERR_MSG:
             proto_tree_add_item (err_tree, hf_docsis_tlv_clsfr_err_msg, tvb,
-                                 pos, length, ENC_ASCII|ENC_NA);
+                                 pos, length, ENC_ASCII);
             break;
           default:
             dissect_unknown_tlv (tvb, pinfo, err_tree, pos - 2, length + 2);
@@ -3019,7 +3014,7 @@ dissect_modemcap (tvbuff_t * tvb, packet_info* pinfo, proto_tree * tree, int sta
                 expert_add_info_format(pinfo, mcap_item, &ei_docsis_tlv_tlvlen_bad, "Wrong TLV length: %u", length);
               }
             break;
-         case CAP_DIPL_DOWN_UPPER_BAND_EDGE:
+          case CAP_DIPL_DOWN_UPPER_BAND_EDGE:
             if (length == 1)
               {
                 static int * const dipl_down_upper_band_edge[] = {
@@ -3051,6 +3046,17 @@ dissect_modemcap (tvbuff_t * tvb, packet_info* pinfo, proto_tree * tree, int sta
 
                 proto_tree_add_bitmask(mcap_tree, tvb, pos, hf_docsis_tlv_mcap_dipl_up_upper_band_edge,
                          ett_docsis_tlv_mcap_dipl_up_upper_band_edge, dipl_up_upper_band_edge, ENC_BIG_ENDIAN);
+              }
+            else
+              {
+                expert_add_info_format(pinfo, mcap_item, &ei_docsis_tlv_tlvlen_bad, "Wrong TLV length: %u", length);
+              }
+            break;
+          case CAP_LOW_LATENCY_SUP:
+            if (length == 1)
+              {
+                proto_tree_add_item (mcap_tree, hf_docsis_tlv_mcap_low_latency_sup, tvb,
+                                     pos, length, ENC_BIG_ENDIAN);
               }
             else
               {
@@ -3210,7 +3216,7 @@ dissect_snmpv3_kickstart(tvbuff_t * tvb, packet_info * pinfo, proto_tree *tree, 
           case SNMPV3_SEC_NAME:
             proto_tree_add_item (snmpv3_tree,
                                  hf_docsis_tlv_snmpv3_kick_name, tvb,
-                                 pos, length, ENC_ASCII|ENC_NA);
+                                 pos, length, ENC_ASCII);
             break;
           case SNMPV3_MGR_PUB_NUM:
             proto_tree_add_item (snmpv3_tree,
@@ -3499,7 +3505,7 @@ dissect_tcc_err(tvbuff_t * tvb, packet_info* pinfo, proto_tree *tree, int start,
           case TCC_ERR_MSG:
             proto_tree_add_item (tccerr_tree,
                                  hf_docsis_tcc_err_msg, tvb,
-                                 pos, length, ENC_ASCII|ENC_NA);
+                                 pos, length, ENC_ASCII);
             break;
           default:
             dissect_unknown_tlv (tvb, pinfo, tccerr_tree, pos - 2, length + 2);
@@ -3889,7 +3895,7 @@ dissect_tcc(tvbuff_t * tvb, packet_info * pinfo,
                 proto_tree_add_item_ret_uint (tcc_tree,
                                      hf_docsis_tlv_tcc_us_ch_id, tvb, pos,
                                      length, ENC_BIG_ENDIAN, &channel_id);
-                /*Only perform reassembly on UCD if TLV is reassembled. fragment_end_seq_next added for the rare cases where UCD end is 254 long.*/
+                /* Only perform reassembly on UCD if TLV is reassembled. fragment_end_seq_next added for the rare cases where UCD end is 254 long. */
                 if(!pinfo->fragmented && *previous_channel_id != -1) {
                   fragment_end_seq_next(&ucd_reassembly_table, pinfo, *previous_channel_id, NULL);
                 }
@@ -3919,7 +3925,7 @@ dissect_tcc(tvbuff_t * tvb, packet_info * pinfo,
               channel_id = *previous_channel_id;
             }
 
-            /*Only perform reassembly on UCD if TLV is reassembled*/
+            /* Only perform reassembly on UCD if TLV is reassembled */
             if(!pinfo->fragmented) {
               reassembled_ucd_item = proto_tree_add_item(tcc_tree, hf_docsis_ucd_reassembled, tvb, 0, -1, ENC_NA);
               reassembled_ucd_tree = proto_item_add_subtree (reassembled_ucd_item, ett_docsis_ucd_reassembled );
@@ -5125,7 +5131,7 @@ dissect_docsis_tlv (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void
         switch (type)
           {
             case TLV_DOWN_FREQ:
-              /* This is ugly.  There are multiple type 1 TLV's that may appear
+              /* This is ugly.  There are multiple type 1 TLVs that may appear
                * in the TLV data, the problem is that they are dependent on
                * message type.  */
               if (length == 4)
@@ -5200,7 +5206,7 @@ dissect_docsis_tlv (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void
               break;
             case TLV_SW_UPG_FILE:
               proto_tree_add_item (tlv_tree, hf_docsis_tlv_sw_file, tvb, pos,
-                                   length, ENC_ASCII|ENC_NA);
+                                   length, ENC_ASCII);
               break;
             case TLV_SNMP_WRITE_CTRL:
               proto_tree_add_item (tlv_tree, hf_docsis_tlv_snmp_access, tvb,
@@ -5555,7 +5561,7 @@ dissect_docsis_tlv (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void
 
         pos = pos + length;
       }                         /* while (pos < total_len) */
-  }                             /*if (tree) */
+  }                             /* if (tree) */
 
   return tvb_captured_length(tvb);
 }
@@ -5676,12 +5682,12 @@ proto_register_docsis_tlv (void)
     },
     {&hf_docsis_tlv_mcap_8021P_filter,
      {".9 802.1P Filtering Support", "docsis_tlv.mcap.dot1pfiltering",
-      FT_UINT8, BASE_DEC, VALS (on_off_vals), 0x80,
+      FT_BOOLEAN, 8, TFS(&tfs_on_off), 0x80,
       "802.1P Filtering Support", HFILL}
     },
     {&hf_docsis_tlv_mcap_8021Q_filter,
      {".9 802.1Q Filtering Support", "docsis_tlv.mcap.dot1qfilt",
-      FT_UINT8, BASE_DEC, VALS (on_off_vals), 0x40,
+      FT_BOOLEAN, 8, TFS(&tfs_on_off), 0x40,
       "802.1Q Filtering Support", HFILL}
     },
     {&hf_docsis_tlv_mcap_xmit_eq_taps_per_sym,
@@ -5716,25 +5722,25 @@ proto_register_docsis_tlv (void)
     },
     {&hf_docsis_tlv_mcap_rnghoff_cm,
      {".16 Ranging Hold-Off (CM)","docsis_tlv.mcap.rnghoffcm",
-      FT_UINT32, BASE_DEC, VALS (on_off_vals), 0x1,
+      FT_BOOLEAN, 32, TFS(&tfs_on_off), 0x00000001,
       "Ranging Hold-Off (CM)", HFILL}
     },
     {&hf_docsis_tlv_mcap_rnghoff_erouter,
      {".16 Ranging Hold-Off (ePS or eRouter)",
       "docsis_tlv.mcap.rnghofferouter",
-      FT_UINT32, BASE_DEC, VALS (on_off_vals), 0x2,
+      FT_BOOLEAN, 32, TFS(&tfs_on_off), 0x00000002,
       "Ranging Hold-Off (ePS or eRouter)", HFILL}
     },
     {&hf_docsis_tlv_mcap_rnghoff_emta,
      {".16 Ranging Hold-Off (eMTA or EDVA)",
       "docsis_tlv.mcap.rnghoffemta",
-      FT_UINT32, BASE_DEC, VALS (on_off_vals), 0x4,
+      FT_BOOLEAN, 32, TFS(&tfs_on_off), 0x00000004,
       "Ranging Hold-Off (eMTA or EDVA)", HFILL}
     },
     {&hf_docsis_tlv_mcap_rnghoff_estb,
      {".16 Ranging Hold-Off (DSG/eSTB)",
       "docsis_tlv.mcap.rnghoffestb",
-      FT_UINT32, BASE_DEC, VALS (on_off_vals), 0x8,
+      FT_BOOLEAN, 32, TFS(&tfs_on_off), 0x00000008,
       "Ranging Hold-Off (DSG/eSTB)", HFILL}
     },
     {&hf_docsis_tlv_mcap_l2vpn,
@@ -5762,37 +5768,37 @@ proto_register_docsis_tlv (void)
     {&hf_docsis_tlv_mcap_us_srate_160,
      {".21 Upstream Symbol Rate 160ksps supported",
       "docsis_tlv.mcap.srate160",
-      FT_UINT8, BASE_DEC, VALS (on_off_vals), 0x1,
+      FT_BOOLEAN, 8, TFS(&tfs_on_off), 0x01,
       "Upstream Symbol Rate 160ksps supported", HFILL}
     },
     {&hf_docsis_tlv_mcap_us_srate_320,
      {".21 Upstream Symbol Rate 320ksps supported",
       "docsis_tlv.mcap.srate320",
-      FT_UINT8, BASE_DEC, VALS (on_off_vals), 0x2,
+      FT_BOOLEAN, 8, TFS(&tfs_on_off), 0x02,
       "Upstream Symbol Rate 320ksps supported", HFILL}
     },
     {&hf_docsis_tlv_mcap_us_srate_640,
      {".21 Upstream Symbol Rate 640ksps supported",
       "docsis_tlv.mcap.srate640",
-      FT_UINT8, BASE_DEC, VALS (on_off_vals), 0x4,
+      FT_BOOLEAN, 8, TFS(&tfs_on_off), 0x04,
       "Upstream Symbol Rate 640ksps supported", HFILL}
     },
     {&hf_docsis_tlv_mcap_us_srate_1280,
      {".21 Upstream Symbol Rate 1280ksps supported",
       "docsis_tlv.mcap.srate1280",
-      FT_UINT8, BASE_DEC, VALS (on_off_vals), 0x8,
+      FT_BOOLEAN, 8, TFS(&tfs_on_off), 0x08,
       "Upstream Symbol Rate 1280ksps supported", HFILL}
     },
     {&hf_docsis_tlv_mcap_us_srate_2560,
      {".21 Upstream Symbol Rate 2560ksps supported",
       "docsis_tlv.mcap.srate2560",
-      FT_UINT8, BASE_DEC, VALS (on_off_vals), 0x10,
+      FT_BOOLEAN, 8, TFS(&tfs_on_off), 0x10,
       "Upstream Symbol Rate 2560ksps supported", HFILL}
     },
     {&hf_docsis_tlv_mcap_us_srate_5120,
      {".21 Upstream Symbol Rate 5120ksps supported",
       "docsis_tlv.mcap.srate5120",
-      FT_UINT8, BASE_DEC, VALS (on_off_vals), 0x20,
+      FT_BOOLEAN, 8, TFS(&tfs_on_off), 0x20,
       "Upstream Symbol Rate 5120ksps supported", HFILL}
     },
     {&hf_docsis_tlv_mcap_sac,
@@ -6280,6 +6286,12 @@ proto_register_docsis_tlv (void)
       FT_BOOLEAN, 8, NULL, 0x10,
       NULL, HFILL}
     },
+    {&hf_docsis_tlv_mcap_low_latency_sup,
+     {".62 Low Latency Support",
+      "docsis_tlv.mcap.low_latancy_sup",
+      FT_UINT8, BASE_HEX, NULL, 0x0,
+      "Low Latency Support", HFILL}
+    },
     {&hf_docsis_tlv_cm_mic,
      {"6 CM MIC", "docsis_tlv.cmmic",
       FT_BYTES, BASE_NONE, NULL, 0x0,
@@ -6544,14 +6556,14 @@ proto_register_docsis_tlv (void)
     },
 #endif
     {&hf_docsis_tlv_ethclsfr_dmac,
-     {"..1 Dest Mac Address", "docsis_tlv.clsfr.eth.dmac",
+     {"..1 Dest MAC Address", "docsis_tlv.clsfr.eth.dmac",
       FT_ETHER, BASE_NONE, NULL, 0x0,
-      "Destination Mac Address", HFILL}
+      "Destination MAC Address", HFILL}
     },
     {&hf_docsis_tlv_ethclsfr_smac,
-     {"..2 Source Mac Address", "docsis_tlv.clsfr.eth.smac",
+     {"..2 Source MAC Address", "docsis_tlv.clsfr.eth.smac",
       FT_ETHER, BASE_NONE, NULL, 0x0,
-      "Source Mac Address", HFILL}
+      "Source MAC Address", HFILL}
     },
     {&hf_docsis_tlv_ethclsfr_ethertype,
      {"..3 Ethertype", "docsis_tlv.clsfr.eth.ethertype",
@@ -6571,9 +6583,9 @@ proto_register_docsis_tlv (void)
       "User Priority", HFILL}
     },
     {&hf_docsis_tlv_dot1qclsfr_vlanid,
-     {"..2 VLAN id", "docsis_tlv.clsfr.dot1q.ethertype",
+     {"..2 VLAN ID", "docsis_tlv.clsfr.dot1q.ethertype",
       FT_UINT16, BASE_DEC, NULL, 0x0,
-      "VLAN Id", HFILL}
+      "VLAN ID", HFILL}
     },
     {&hf_docsis_tlv_dot1qclsfr_vendorspec,
      {"..43 Vendor Specific Encodings", "docsis_tlv.clsfr.dot1q.vendorspec",
@@ -6603,9 +6615,9 @@ proto_register_docsis_tlv (void)
       "Service Flow Reference", HFILL}
     },
     {&hf_docsis_tlv_sflow_id,
-     {".2 Service Flow Id", "docsis_tlv.sflow.id",
+     {".2 Service Flow ID", "docsis_tlv.sflow.id",
       FT_UINT32, BASE_DEC, NULL, 0x0,
-      "Service Flow Id", HFILL}
+      "Service Flow ID", HFILL}
     },
     {&hf_docsis_tlv_sflow_sid,
      {".3 Service Identifier", "docsis_tlv.sflow.sid",
@@ -6706,47 +6718,47 @@ proto_register_docsis_tlv (void)
     },
     {&hf_docsis_tlv_sflow_reqxmit_all_cm_broadcast,
      {"Service flow use \"all CMs\" broadcast request opportunities", "docsis_tlv.sflow.reqxmitpol.all_cm_broadcast",
-      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x01,
+      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x00000001,
       NULL, HFILL}
     },
     {&hf_docsis_tlv_sflow_reqxmit_priority_multicast,
      {"Service flow use priority multicast request opportunities", "docsis_tlv.sflow.reqxmitpol.priority_multicast",
-      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x02,
+      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x00000002,
       NULL, HFILL}
     },
     {&hf_docsis_tlv_sflow_reqxmit_req_data_requests,
      {"Service flow use Request/Data opportunities for requests", "docsis_tlv.sflow.reqxmitpol.req_data_requests",
-      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x04,
+      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x00000004,
       NULL, HFILL}
     },
     {&hf_docsis_tlv_sflow_reqxmit_req_data_data,
      {"Service flow use Request/Data opportunities for data", "docsis_tlv.sflow.reqxmitpol.req_data_data",
-      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x08,
+      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x00000008,
       NULL, HFILL}
     },
     {&hf_docsis_tlv_sflow_reqxmit_piggy_back,
      {"Service flow use piggy back requests with data", "docsis_tlv.sflow.reqxmitpol.piggy_back",
-      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x10,
+      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x00000010,
       NULL, HFILL}
     },
     {&hf_docsis_tlv_sflow_reqxmit_concatenate_data,
      {"Service flow concatenate data", "docsis_tlv.sflow.reqxmitpol.concatenate_data",
-      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x20,
+      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x00000020,
       NULL, HFILL}
     },
     {&hf_docsis_tlv_sflow_reqxmit_fragment,
      {"Service flow fragment data", "docsis_tlv.sflow.reqxmitpol.fragment",
-      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x40,
+      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x00000040,
       NULL, HFILL}
     },
     {&hf_docsis_tlv_sflow_reqxmit_suppress_payload,
      {"Service flow suppress payload headers", "docsis_tlv.sflow.reqxmitpol.suppress_payload",
-      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x80,
+      FT_BOOLEAN, 32, TFS(&tfs_must_not_must), 0x00000080,
       NULL, HFILL}
     },
     {&hf_docsis_tlv_sflow_reqxmit_drop_packets,
      {"Service flow drop packets that do not fit in the UGS size", "docsis_tlv.sflow.reqxmitpol.drop_packets",
-      FT_BOOLEAN, 32, TFS(&tfs_must_must_not), 0x100,
+      FT_BOOLEAN, 32, TFS(&tfs_must_must_not), 0x00000100,
       NULL, HFILL}
     },
     {&hf_docsis_tlv_sflow_nominal_polling,
@@ -6837,9 +6849,9 @@ proto_register_docsis_tlv (void)
       "Classifier Reference", HFILL}
     },
     {&hf_docsis_tlv_phs_class_id,
-     {".2 Classifier Id", "docsis_tlv.phs.classid",
+     {".2 Classifier ID", "docsis_tlv.phs.classid",
       FT_UINT16, BASE_DEC, NULL, 0x0,
-      "Classifier Id", HFILL}
+      "Classifier ID", HFILL}
     },
     {&hf_docsis_tlv_phs_sflow_ref,
      {".3 Service flow reference", "docsis_tlv.phs.sflowref",
@@ -6847,9 +6859,9 @@ proto_register_docsis_tlv (void)
       "Service Flow Reference", HFILL}
     },
     {&hf_docsis_tlv_phs_sflow_id,
-     {".4 Service flow Id", "docsis_tlv.phs.sflowid",
+     {".4 Service flow ID", "docsis_tlv.phs.sflowid",
       FT_UINT16, BASE_DEC, NULL, 0x0,
-      "Service Flow Id", HFILL}
+      "Service Flow ID", HFILL}
     },
     {&hf_docsis_tlv_phs_dsc_action,
      {".5 DSC Action", "docsis_tlv.phs.dscaction",
@@ -7864,7 +7876,7 @@ proto_register_docsis_tlv (void)
 
   expert_module_t* expert_docsis_tlv;
 
-  proto_docsis_tlv = proto_register_protocol ("DOCSIS Appendix C TLV's", "DOCSIS TLVs", "docsis_tlv");
+  proto_docsis_tlv = proto_register_protocol ("DOCSIS Appendix C TLVs", "DOCSIS TLVs", "docsis_tlv");
 
   proto_register_field_array (proto_docsis_tlv, hf, array_length (hf));
   proto_register_subtree_array (ett, array_length (ett));

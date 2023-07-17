@@ -23,6 +23,8 @@
 void proto_register_ajp13(void);
 void proto_reg_handoff_ajp13(void);
 
+static dissector_handle_t ajp13_handle;
+
 #define AJP13_TCP_PORT 8009 /* Not IANA registered */
 
 /* IMPORTANT IMPLEMENTATION NOTES
@@ -170,7 +172,6 @@ static int hf_ajp13_nhdr   = -1;
 
 /* response headers */
 static int hf_ajp13_unknown_header    = -1;
-static int hf_ajp13_additional_header = -1;
 static int hf_ajp13_content_type      = -1;
 static int hf_ajp13_content_language  = -1;
 static int hf_ajp13_content_length    = -1;
@@ -309,7 +310,7 @@ ajp13_get_nstring(tvbuff_t *tvb, gint offset, guint16* ret_len)
   if (len == 0xFFFF)
     len = 0;
 
-  return tvb_format_text(tvb, offset+2, MIN(len, ITEM_LABEL_LENGTH));
+  return tvb_format_text(wmem_packet_scope(), tvb, offset+2, len);
 }
 
 
@@ -422,9 +423,13 @@ display_rsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *ajp13_tree, ajp13_con
 
         hval = ajp13_get_nstring(tvb, pos, &hval_len);
 
-        proto_tree_add_string_format(ajp13_tree, hf_ajp13_additional_header,
+        if (hcd >= array_length(rsp_headers)) {
+          hcd = 0;
+        }
+
+        proto_tree_add_string_format(ajp13_tree, *rsp_headers[hcd],
                                 tvb, hpos, hname_len+2+hval_len+2,
-                                wmem_strdup_printf(wmem_packet_scope(), "%s: %s", hname, hval),
+                                wmem_strdup_printf(pinfo->pool, "%s: %s", hname, hval),
                                 "%s: %s", hname, hval);
         pos+=hval_len+2;
       }
@@ -450,7 +455,7 @@ display_rsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *ajp13_tree, ajp13_con
     /* MESSAGE DATA (COPOUT)
      */
     if (ajp13_tree)
-      proto_tree_add_item(ajp13_tree, hf_ajp13_data,  tvb, pos+2, -1, ENC_UTF_8|ENC_NA);
+      proto_tree_add_item(ajp13_tree, hf_ajp13_data,  tvb, pos+2, -1, ENC_UTF_8);
     break;
   }
 }
@@ -505,7 +510,7 @@ display_req_body(tvbuff_t *tvb, proto_tree *ajp13_tree, ajp13_conv_data* cd)
     return;
   }
   cd->content_length -= content_length;
-  proto_tree_add_item(ajp13_tree, hf_ajp13_data, tvb, pos+2, content_length, ENC_UTF_8|ENC_NA);
+  proto_tree_add_item(ajp13_tree, hf_ajp13_data, tvb, pos+2, content_length, ENC_UTF_8);
 }
 
 
@@ -653,9 +658,10 @@ display_req_forward(tvbuff_t *tvb, packet_info *pinfo,
 
       hval = ajp13_get_nstring(tvb, pos, &hval_len);
 
-      pi = proto_tree_add_string_format(ajp13_tree, *req_headers[hid],
-                                     tvb, hpos, 2+hval_len+2, hval,
-                                     "%s", hval);
+
+      pi = proto_tree_add_string_format_value(ajp13_tree, *req_headers[hid],
+                                              tvb, hpos, 2+hval_len+2, hval,
+                                              "%s", hval);
 
       if (hid == 0x08 && !ws_strtou32(hval, NULL, &cd->content_length)) {
         expert_add_info(pinfo, pi, &ei_ajp13_content_length_invalid);
@@ -666,11 +672,15 @@ display_req_forward(tvbuff_t *tvb, packet_info *pinfo,
       hname = ajp13_get_nstring(tvb, pos, &hname_len);
       pos+=hname_len+2;
 
+      if (hcd >= array_length(req_headers)) {
+        hcd = 0;
+      }
+
       hval = ajp13_get_nstring(tvb, pos, &hval_len);
 
-      proto_tree_add_string_format(ajp13_tree, hf_ajp13_additional_header,
+      proto_tree_add_string_format(ajp13_tree, *req_headers[hcd],
                                      tvb, hpos, hname_len+2+hval_len+2,
-                                     wmem_strdup_printf(wmem_packet_scope(), "%s: %s", hname, hval),
+                                     wmem_strdup_printf(pinfo->pool, "%s: %s", hname, hval),
                                      "%s: %s", hname, hval);
       pos+=hval_len+2;
     }
@@ -706,7 +716,7 @@ display_req_forward(tvbuff_t *tvb, packet_info *pinfo,
 
       proto_tree_add_string_format(ajp13_tree, hf_ajp13_req_attribute,
                                      tvb, apos, 1+aname_len+2+aval_len+2,
-                                     wmem_strdup_printf(wmem_packet_scope(), "%s: %s", aname, aval),
+                                     wmem_strdup_printf(pinfo->pool, "%s: %s", aname, aval),
                                      "%s: %s", aname, aval);
     } else if (aid == 0x0B ) {
       /* ssl_key_length */
@@ -722,7 +732,7 @@ display_req_forward(tvbuff_t *tvb, packet_info *pinfo,
       aval = ajp13_get_nstring(tvb, pos, &aval_len);
       pos+=aval_len+2;
 
-      proto_tree_add_string_format(ajp13_tree, *req_attributes[aid],
+      proto_tree_add_string_format_value(ajp13_tree, *req_attributes[aid],
                                      tvb, apos, 1+aval_len+2, aval,
                                      "%s", aval);
     }
@@ -914,10 +924,6 @@ proto_register_ajp13(void)
       { "unknown_header",  "ajp13.unknown_header", FT_STRING, BASE_NONE, NULL, 0x0, "Unknown Header Type",
         HFILL }
     },
-    { &hf_ajp13_additional_header,
-      { "additional_header",  "ajp13.additional_header", FT_STRING, BASE_NONE, NULL, 0x0, "Additional Header Type",
-        HFILL }
-    },
     { &hf_ajp13_content_type,
       { "Content-Type",  "ajp13.content_type", FT_STRING, BASE_NONE, NULL, 0x0, "Content-Type Header",
         HFILL }
@@ -1082,7 +1088,7 @@ proto_register_ajp13(void)
         HFILL }
     },
     { &hf_ajp13_rsmsg,
-      { "RSMSG",  "ajp13.rmsg", FT_STRING, BASE_NONE, NULL, 0x0, "HTTP Status Message",
+      { "RSMSG",  "ajp13.rsmsg", FT_STRING, BASE_NONE, NULL, 0x0, "HTTP Status Message",
         HFILL }
     },
     { &hf_ajp13_data,
@@ -1109,6 +1115,8 @@ proto_register_ajp13(void)
 
   expert_ajp13 = expert_register_protocol(proto_ajp13);
   expert_register_field_array(expert_ajp13, ei, array_length(ei));
+
+  ajp13_handle = register_dissector("ajp13", dissect_ajp13, proto_ajp13);
 }
 
 
@@ -1116,8 +1124,6 @@ proto_register_ajp13(void)
 void
 proto_reg_handoff_ajp13(void)
 {
-  dissector_handle_t ajp13_handle;
-  ajp13_handle = create_dissector_handle(dissect_ajp13, proto_ajp13);
   dissector_add_uint_with_preference("tcp.port", AJP13_TCP_PORT, ajp13_handle);
 }
 

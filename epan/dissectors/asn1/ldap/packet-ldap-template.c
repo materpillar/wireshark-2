@@ -82,6 +82,7 @@
 #include <epan/asn1.h>
 #include <epan/expert.h>
 #include <epan/uat.h>
+#include <epan/charsets.h>
 #include <wsutil/str_util.h>
 #include "packet-frame.h"
 #include "packet-tcp.h"
@@ -221,7 +222,8 @@ static dissector_handle_t gssapi_wrap_handle;
 static dissector_handle_t ntlmssp_handle;
 static dissector_handle_t spnego_handle;
 static dissector_handle_t tls_handle;
-static dissector_handle_t ldap_handle ;
+static dissector_handle_t ldap_handle;
+static dissector_handle_t cldap_handle;
 
 static void prefs_register_ldap(void); /* forward declaration for use in preferences registration */
 
@@ -306,7 +308,7 @@ ldapstat_init(struct register_srt* srt _U_, GArray* srt_array)
 }
 
 static tap_packet_status
-ldapstat_packet(void *pldap, packet_info *pinfo, epan_dissect_t *edt _U_, const void *psi)
+ldapstat_packet(void *pldap, packet_info *pinfo, epan_dissect_t *edt _U_, const void *psi, tap_flags_t flags _U_)
 {
   guint i = 0;
   srt_stat_table *ldap_srt_table;
@@ -483,7 +485,7 @@ attribute_types_update_cb(void *r, char **err)
    */
   c = proto_check_field_name(rec->attribute_type);
   if (c) {
-    *err = g_strdup_printf("Attribute type can't contain '%c'", c);
+    *err = ws_strdup_printf("Attribute type can't contain '%c'", c);
     return FALSE;
   }
 
@@ -576,7 +578,7 @@ attribute_types_post_update_cb(void)
 
       dynamic_hf[i].p_id = hf_id;
       dynamic_hf[i].hfinfo.name = attribute_type;
-      dynamic_hf[i].hfinfo.abbrev = g_strdup_printf("ldap.AttributeValue.%s", attribute_type);
+      dynamic_hf[i].hfinfo.abbrev = ws_strdup_printf("ldap.AttributeValue.%s", attribute_type);
       dynamic_hf[i].hfinfo.type = FT_STRING;
       dynamic_hf[i].hfinfo.display = BASE_NONE;
       dynamic_hf[i].hfinfo.strings = NULL;
@@ -676,8 +678,8 @@ dissect_ldap_AssertionValue(gboolean implicit_tag, tvbuff_t *tvb, int offset, as
     /* This octet string contained a GUID */
     dissect_dcerpc_uuid_t(tvb, offset, actx->pinfo, tree, drep, hf_ldap_guid, &uuid);
 
-    ldapvalue_string=(char*)wmem_alloc(wmem_packet_scope(), 1024);
-    g_snprintf(ldapvalue_string, 1023, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+    ldapvalue_string=(char*)wmem_alloc(actx->pinfo->pool, 1024);
+    snprintf(ldapvalue_string, 1023, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
                uuid.data1, uuid.data2, uuid.data3, uuid.data4[0], uuid.data4[1],
                uuid.data4[2], uuid.data4[3], uuid.data4[4], uuid.data4[5],
                uuid.data4[6], uuid.data4[7]);
@@ -690,8 +692,8 @@ dissect_ldap_AssertionValue(gboolean implicit_tag, tvbuff_t *tvb, int offset, as
     /* get flag value to populate ldapvalue_string */
     flags=tvb_get_letohl(tvb, offset);
 
-    ldapvalue_string=(char*)wmem_alloc(wmem_packet_scope(), 1024);
-    g_snprintf(ldapvalue_string, 1023, "0x%08x",flags);
+    ldapvalue_string=(char*)wmem_alloc(actx->pinfo->pool, 1024);
+    snprintf(ldapvalue_string, 1023, "0x%08x",flags);
 
     /* populate bitmask subtree */
     offset = dissect_mscldap_ntver_flags(tree, tvb, offset);
@@ -717,9 +719,9 @@ dissect_ldap_AssertionValue(gboolean implicit_tag, tvbuff_t *tvb, int offset, as
 
   /* convert the string into a printable string */
   if(is_ascii){
-    ldapvalue_string= tvb_get_string_enc(wmem_packet_scope(), tvb, offset, len, ENC_UTF_8|ENC_NA);
+    ldapvalue_string= tvb_get_string_enc(actx->pinfo->pool, tvb, offset, len, ENC_UTF_8|ENC_NA);
   } else {
-    ldapvalue_string= tvb_bytes_to_str_punct(wmem_packet_scope(), tvb, offset, len, ':');
+    ldapvalue_string= tvb_bytes_to_str_punct(actx->pinfo->pool, tvb, offset, len, ':');
   }
 
   proto_tree_add_string(tree, hf_index, tvb, offset, len, ldapvalue_string);
@@ -830,7 +832,7 @@ ldap_match_call_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gu
       case LDAP_REQ_COMPARE:
       case LDAP_REQ_EXTENDED:
 
-        /* this a a request - add it to the unmatched list */
+        /* this is a request - add it to the unmatched list */
 
         /* check that we don't already have one of those in the
            unmatched list and if so remove it */
@@ -1056,6 +1058,10 @@ static void
   ldap_conv_info_t *ldap_info = NULL;
   proto_item *ldap_item = NULL;
   proto_tree *ldap_tree = NULL;
+  guint32 sasl_length = 0;
+  guint32 remaining_length = 0;
+  guint8 sasl_start[2] = { 0, };
+  gboolean detected_sasl_security = FALSE;
 
   ldm_tree = NULL;
 
@@ -1094,12 +1100,29 @@ static void
   * check if it looks like it could be a SASL blob here
   * and in that case just assume it is GSS-SPNEGO
   */
-  if(!doing_sasl_security && (tvb_bytes_exist(tvb, offset, 5))
-    &&(tvb_get_ntohl(tvb, offset)<=(guint)(tvb_reported_length_remaining(tvb, offset)-4))
-    &&(tvb_get_guint8(tvb, offset+4)==0x60) ){
+  if(!doing_sasl_security && tvb_bytes_exist(tvb, offset, 6)) {
+      sasl_length = tvb_get_ntohl(tvb, offset);
+      remaining_length = tvb_reported_length_remaining(tvb, offset);
+      sasl_start[0] = tvb_get_guint8(tvb, offset+4);
+      sasl_start[1] = tvb_get_guint8(tvb, offset+5);
+  }
+  if ((sasl_length + 4) <= remaining_length) {
+      if (sasl_start[0] == 0x05 && sasl_start[1] == 0x04) {
+        /*
+         * Likely modern kerberos signing
+         */
+        detected_sasl_security = TRUE;
+      } else if (sasl_start[0] == 0x60) {
+        /*
+         * Likely ASN.1 based kerberos
+         */
+        detected_sasl_security = TRUE;
+      }
+  }
+  if (detected_sasl_security) {
       ldap_info->auth_type=LDAP_AUTH_SASL;
       ldap_info->first_auth_frame=pinfo->num;
-      ldap_info->auth_mech=wmem_strdup(wmem_file_scope(), "GSS-SPNEGO");
+      ldap_info->auth_mech=wmem_strdup(wmem_file_scope(), "UNKNOWN");
       doing_sasl_security=TRUE;
   }
 
@@ -1188,13 +1211,13 @@ static void
 
     proto_tree_add_uint(ldap_tree, hf_ldap_sasl_buffer_length, sasl_tvb, 0, 4, sasl_len);
 
-    sasl_tree = proto_tree_add_subtree(ldap_tree, sasl_tvb, 0, sasl_msg_len, ett_ldap_sasl_blob, NULL, "SASL Buffer");
+    sasl_tree = proto_tree_add_subtree(ldap_tree, sasl_tvb, 4, sasl_msg_len - 4, ett_ldap_sasl_blob, NULL, "SASL Buffer");
 
     if (ldap_info->auth_mech != NULL &&
       ((strcmp(ldap_info->auth_mech, "GSS-SPNEGO") == 0) ||
       /* auth_mech may have been set from the bind */
       (strcmp(ldap_info->auth_mech, "GSSAPI") == 0))) {
-        tvbuff_t *gssapi_tvb, *plain_tvb = NULL, *decr_tvb= NULL;
+        tvbuff_t *gssapi_tvb = NULL;
         int ver_len;
         int tmp_length;
         gssapi_encrypt_info_t gssapi_encrypt;
@@ -1224,6 +1247,9 @@ static void
           return;
         }
         if (gssapi_encrypt.gssapi_decrypted_tvb) {
+          tvbuff_t *decr_tvb = gssapi_encrypt.gssapi_decrypted_tvb;
+          proto_tree *enc_tree = NULL;
+
           /*
            * The LDAP payload (blob) was encrypted and we were able to decrypt it.
            * The data was signed via a MIC token, sealed (encrypted), and "wrapped"
@@ -1231,20 +1257,17 @@ static void
            * one or more LDAPMessages such as searchRequest messages within this
            * payload.
            */
-          col_set_str(pinfo->cinfo, COL_INFO, "SASL GSS-API Decrypted payload: ");
+          col_set_str(pinfo->cinfo, COL_INFO, "SASL GSS-API Privacy (decrypted): ");
 
           if (sasl_tree) {
-            proto_tree *enc_tree;
             guint decr_len = tvb_reported_length(decr_tvb);
 
-            decr_tvb = gssapi_encrypt.gssapi_decrypted_tvb;
-
             enc_tree = proto_tree_add_subtree_format(sasl_tree, decr_tvb, 0, -1,
-              ett_ldap_payload, NULL, "GSS-API Decrypted payload (%d byte%s)",
+              ett_ldap_payload, NULL, "GSS-API Encrypted payload (%d byte%s)",
               decr_len, plurality(decr_len, "", "s"));
-
-            dissect_ldap_payload(decr_tvb, pinfo, enc_tree, ldap_info, is_mscldap);
           }
+
+          dissect_ldap_payload(decr_tvb, pinfo, enc_tree, ldap_info, is_mscldap);
         }
         else if (gssapi_encrypt.gssapi_data_encrypted) {
           /*
@@ -1257,6 +1280,9 @@ static void
           proto_tree_add_item(sasl_tree, hf_ldap_gssapi_encrypted_payload, gssapi_tvb, ver_len, -1, ENC_NA);
         }
         else {
+          tvbuff_t *plain_tvb = tvb_new_subset_remaining(gssapi_tvb, ver_len);
+          proto_tree *plain_tree = NULL;
+
           /*
           * The payload was not encrypted (sealed) but was signed via a MIC token.
           * If krb5_tok_id == KRB_TOKEN_CFX_WRAP, the payload was wrapped within
@@ -1266,18 +1292,14 @@ static void
           col_set_str(pinfo->cinfo, COL_INFO, "SASL GSS-API Integrity: ");
 
           if (sasl_tree) {
-            guint plain_len;
-            proto_tree *plain_tree;
-
-            plain_tvb = tvb_new_subset_remaining(gssapi_tvb, ver_len);
-            plain_len = tvb_reported_length(plain_tvb);
+            guint plain_len = tvb_reported_length(plain_tvb);
 
             plain_tree = proto_tree_add_subtree_format(sasl_tree, plain_tvb, 0, -1,
               ett_ldap_payload, NULL, "GSS-API payload (%d byte%s)",
               plain_len, plurality(plain_len, "", "s"));
-
-            dissect_ldap_payload(plain_tvb, pinfo, plain_tree, ldap_info, is_mscldap);
           }
+
+          dissect_ldap_payload(plain_tvb, pinfo, plain_tree, ldap_info, is_mscldap);
         }
     }
   } else {
@@ -1291,11 +1313,7 @@ static void
   }
 }
 
-/*
- * prepend_dot is no longer used, but is being left in place in order to
- * maintain ABI compatibility.
- */
-int dissect_mscldap_string(tvbuff_t *tvb, int offset, char *str, int max_len, gboolean prepend_dot _U_)
+int dissect_mscldap_string(tvbuff_t *tvb, int offset, int max_len, char **str)
 {
   int compr_len;
   const gchar *name;
@@ -1303,7 +1321,7 @@ int dissect_mscldap_string(tvbuff_t *tvb, int offset, char *str, int max_len, gb
 
   /* The name data MUST start at offset 0 of the tvb */
   compr_len = get_dns_name(tvb, offset, max_len, 0, &name, &name_len);
-  g_strlcpy(str, name, max_len);
+  *str = get_utf_8_string(wmem_packet_scope(), name, name_len);
   return offset + compr_len;
 }
 
@@ -1402,7 +1420,7 @@ static int dissect_mscldap_netlogon_flags(proto_tree *parent_tree, tvbuff_t *tvb
 static int dissect_NetLogon_PDU(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
   int old_offset, offset=0;
-  char str[256];
+  char *str;
   guint16 itype;
   guint16 len;
   guint32 version;
@@ -1466,17 +1484,17 @@ static int dissect_NetLogon_PDU(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
 
         /* Forest */
         old_offset=offset;
-        offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+        offset=dissect_mscldap_string(tvb, offset, 255, &str);
         proto_tree_add_string(tree, hf_mscldap_forest, tvb, old_offset, offset-old_offset, str);
 
         /* Domain */
         old_offset=offset;
-        offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+        offset=dissect_mscldap_string(tvb, offset, 255, &str);
         proto_tree_add_string(tree, hf_mscldap_domain, tvb, old_offset, offset-old_offset, str);
 
         /* Hostname */
         old_offset=offset;
-        offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+        offset=dissect_mscldap_string(tvb, offset, 255, &str);
         proto_tree_add_string(tree, hf_mscldap_hostname, tvb, old_offset, offset-old_offset, str);
 
         /* DC IP Address */
@@ -1502,42 +1520,42 @@ static int dissect_NetLogon_PDU(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tre
 
       /* Forest */
       old_offset=offset;
-      offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+      offset=dissect_mscldap_string(tvb, offset, 255, &str);
       proto_tree_add_string(tree, hf_mscldap_forest, tvb, old_offset, offset-old_offset, str);
 
       /* Domain */
       old_offset=offset;
-      offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+      offset=dissect_mscldap_string(tvb, offset, 255, &str);
       proto_tree_add_string(tree, hf_mscldap_domain, tvb, old_offset, offset-old_offset, str);
 
       /* Hostname */
       old_offset=offset;
-      offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+      offset=dissect_mscldap_string(tvb, offset, 255, &str);
       proto_tree_add_string(tree, hf_mscldap_hostname, tvb, old_offset, offset-old_offset, str);
 
       /* NetBIOS Domain */
       old_offset=offset;
-      offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+      offset=dissect_mscldap_string(tvb, offset, 255, &str);
       proto_tree_add_string(tree, hf_mscldap_nb_domain, tvb, old_offset, offset-old_offset, str);
 
       /* NetBIOS Hostname */
       old_offset=offset;
-      offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+      offset=dissect_mscldap_string(tvb, offset, 255, &str);
       proto_tree_add_string(tree, hf_mscldap_nb_hostname, tvb, old_offset, offset-old_offset, str);
 
       /* User */
       old_offset=offset;
-      offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+      offset=dissect_mscldap_string(tvb, offset, 255, &str);
       proto_tree_add_string(tree, hf_mscldap_username, tvb, old_offset, offset-old_offset, str);
 
       /* Server Site */
       old_offset=offset;
-      offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+      offset=dissect_mscldap_string(tvb, offset, 255, &str);
       proto_tree_add_string(tree, hf_mscldap_sitename, tvb, old_offset, offset-old_offset, str);
 
       /* Client Site */
       old_offset=offset;
-      offset=dissect_mscldap_string(tvb, offset, str, 255, FALSE);
+      offset=dissect_mscldap_string(tvb, offset, 255, &str);
       proto_tree_add_string(tree, hf_mscldap_clientsitename, tvb, old_offset, offset-old_offset, str);
 
       /* get the version number from the end of the buffer, as the
@@ -1655,12 +1673,12 @@ dissect_ldap_oid(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* 
    *       proto_tree_add_oid() instead.
    */
 
-  oid=tvb_get_string_enc(wmem_packet_scope(), tvb, 0, tvb_reported_length(tvb), ENC_UTF_8|ENC_NA);
+  oid=tvb_get_string_enc(pinfo->pool, tvb, 0, tvb_reported_length(tvb), ENC_UTF_8|ENC_NA);
   if(!oid){
     return tvb_captured_length(tvb);
   }
 
-  oidname=oid_resolved_from_string(wmem_packet_scope(), oid);
+  oidname=oid_resolved_from_string(pinfo->pool, oid);
 
   if(oidname){
     proto_tree_add_string_format_value(tree, hf_ldap_oid, tvb, 0, tvb_reported_length(tvb), oid, "%s (%s)",oid,oidname);
@@ -1732,8 +1750,8 @@ dissect_ldap_guid(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dat
   /* This octet string contained a GUID */
   dissect_dcerpc_uuid_t(tvb, 0, pinfo, tree, drep, hf_ldap_guid, &uuid);
 
-  ldapvalue_string=(char*)wmem_alloc(wmem_packet_scope(), 1024);
-  g_snprintf(ldapvalue_string, 1023, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+  ldapvalue_string=(char*)wmem_alloc(pinfo->pool, 1024);
+  snprintf(ldapvalue_string, 1023, "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
              uuid.data1, uuid.data2, uuid.data3, uuid.data4[0], uuid.data4[1],
              uuid.data4[2], uuid.data4[3], uuid.data4[4], uuid.data4[5],
              uuid.data4[6], uuid.data4[7]);
@@ -2098,7 +2116,7 @@ void proto_register_ldap(void) {
 
     { &hf_mscldap_netlogon_flags_fnc,
       { "FDC", "mscldap.netlogon.flags.forestnc", FT_BOOLEAN, 32,
-        TFS(&tfs_ads_fnc), 0x80000000, "Is the the NC the default forest root(Windows 2008)?", HFILL }},
+        TFS(&tfs_ads_fnc), 0x80000000, "Is the NC the default forest root(Windows 2008)?", HFILL }},
 
     { &hf_ldap_guid,
       { "GUID", "ldap.guid", FT_GUID, BASE_NONE,
@@ -2235,10 +2253,11 @@ void proto_register_ldap(void) {
   proto_cldap = proto_register_protocol(
           "Connectionless Lightweight Directory Access Protocol",
           "CLDAP", "cldap");
+  cldap_handle = register_dissector("cldap", dissect_mscldap, proto_cldap);
 
   ldap_tap=register_tap("ldap");
 
-  ldap_name_dissector_table = register_dissector_table("ldap.name", "LDAP Attribute Type Dissectors", proto_cldap, FT_STRING, BASE_NONE);
+  ldap_name_dissector_table = register_dissector_table("ldap.name", "LDAP Attribute Type Dissectors", proto_cldap, FT_STRING, STRING_CASE_SENSITIVE);
 
   register_srt_table(proto_ldap, NULL, 1, ldapstat_packet, ldapstat_init, NULL);
 }
@@ -2248,9 +2267,6 @@ void proto_register_ldap(void) {
 void
 proto_reg_handoff_ldap(void)
 {
-  dissector_handle_t cldap_handle;
-
-  cldap_handle = create_dissector_handle(dissect_mscldap, proto_cldap);
   dissector_add_uint_with_preference("udp.port", UDP_PORT_CLDAP, cldap_handle);
 
   gssapi_handle = find_dissector_add_dependency("gssapi", proto_ldap);
@@ -2266,10 +2282,11 @@ proto_reg_handoff_ldap(void)
   oid_add_from_string("ISO assigned OIDs, USA",                                                     "1.2.840");
 
 /*  http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dsml/dsml/ldap_controls_and_session_support.asp */
+/*  https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/3c5e87db-4728-4f29-b164-01dd7d7391ea */
   oid_add_from_string("LDAP_PAGED_RESULT_OID_STRING","1.2.840.113556.1.4.319");
   oid_add_from_string("LDAP_SERVER_SHOW_DELETED_OID","1.2.840.113556.1.4.417");
   oid_add_from_string("LDAP_SERVER_SORT_OID","1.2.840.113556.1.4.473");
-  oid_add_from_string("LDAP_CONTROL_SORT_RESP_OID","1.2.840.113556.1.4.474");
+  oid_add_from_string("LDAP_SERVER_RESP_SORT_OID","1.2.840.113556.1.4.474");
   oid_add_from_string("LDAP_SERVER_CROSSDOM_MOVE_TARGET_OID","1.2.840.113556.1.4.521");
   oid_add_from_string("LDAP_SERVER_NOTIFICATION_OID","1.2.840.113556.1.4.528");
   oid_add_from_string("LDAP_SERVER_EXTENDED_DN_OID","1.2.840.113556.1.4.529");
@@ -2279,26 +2296,61 @@ proto_reg_handoff_ldap(void)
   oid_add_from_string("managedObjects","1.2.840.113556.1.4.654");
   oid_add_from_string("LDAP_CAP_ACTIVE_DIRECTORY_OID","1.2.840.113556.1.4.800");
   oid_add_from_string("LDAP_SERVER_SD_FLAGS_OID","1.2.840.113556.1.4.801");
-  oid_add_from_string("LDAP_OID_COMPARATOR_OR","1.2.840.113556.1.4.804");
+  oid_add_from_string("LDAP_SERVER_RANGE_OPTION_OID","1.2.840.113556.1.4.802");
+  oid_add_from_string("LDAP_MATCHING_RULE_BIT_AND", "1.2.840.113556.1.4.803");
+  oid_add_from_string("LDAP_MATCHING_RULE_BIT_OR","1.2.840.113556.1.4.804");
   oid_add_from_string("LDAP_SERVER_TREE_DELETE_OID","1.2.840.113556.1.4.805");
   oid_add_from_string("LDAP_SERVER_DIRSYNC_OID","1.2.840.113556.1.4.841");
-  oid_add_from_string("None","1.2.840.113556.1.4.970");
+  oid_add_from_string("LDAP_SERVER_GET_STATS_OID","1.2.840.113556.1.4.970");
   oid_add_from_string("LDAP_SERVER_VERIFY_NAME_OID","1.2.840.113556.1.4.1338");
   oid_add_from_string("LDAP_SERVER_DOMAIN_SCOPE_OID","1.2.840.113556.1.4.1339");
   oid_add_from_string("LDAP_SERVER_SEARCH_OPTIONS_OID","1.2.840.113556.1.4.1340");
+  oid_add_from_string("LDAP_SERVER_RODC_DCPROMO_OID","1.2.840.113556.1.4.1341");
   oid_add_from_string("LDAP_SERVER_PERMISSIVE_MODIFY_OID","1.2.840.113556.1.4.1413");
   oid_add_from_string("LDAP_SERVER_ASQ_OID","1.2.840.113556.1.4.1504");
   oid_add_from_string("LDAP_CAP_ACTIVE_DIRECTORY_V51_OID","1.2.840.113556.1.4.1670");
+  oid_add_from_string("msDS-SDReferenceDomain","1.2.840.113556.1.4.1711");
+  oid_add_from_string("msDS-AdditionalDnsHostName","1.2.840.113556.1.4.1717");
   oid_add_from_string("LDAP_SERVER_FAST_BIND_OID","1.2.840.113556.1.4.1781");
   oid_add_from_string("LDAP_CAP_ACTIVE_DIRECTORY_LDAP_INTEG_OID","1.2.840.113556.1.4.1791");
   oid_add_from_string("msDS-ObjectReference","1.2.840.113556.1.4.1840");
   oid_add_from_string("msDS-QuotaEffective","1.2.840.113556.1.4.1848");
   oid_add_from_string("LDAP_CAP_ACTIVE_DIRECTORY_ADAM_OID","1.2.840.113556.1.4.1851");
+  oid_add_from_string("LDAP_SERVER_QUOTA_CONTROL_OID","1.2.840.113556.1.4.1852");
   oid_add_from_string("msDS-PortSSL","1.2.840.113556.1.4.1860");
+  oid_add_from_string("LDAP_CAP_ACTIVE_DIRECTORY_ADAM_DIGEST_OID", "1.2.840.113556.1.4.1880");
+  oid_add_from_string("LDAP_SERVER_SHUTDOWN_NOTIFY_OID","1.2.840.113556.1.4.1907");
+  oid_add_from_string("LDAP_CAP_ACTIVE_DIRECTORY_PARTIAL_SECRETS_OID", "1.2.840.113556.1.4.1920");
+  oid_add_from_string("LDAP_CAP_ACTIVE_DIRECTORY_V60_OID", "1.2.840.113556.1.4.1935");
+  oid_add_from_string("LDAP_MATCHING_RULE_TRANSITIVE_EVAL", "1.2.840.113556.1.4.1941");
+  oid_add_from_string("LDAP_SERVER_RANGE_RETRIEVAL_NOERR_OID","1.2.840.113556.1.4.1948");
   oid_add_from_string("msDS-isRODC","1.2.840.113556.1.4.1960");
-  oid_add_from_string("msDS-SDReferenceDomain","1.2.840.113556.1.4.1711");
-  oid_add_from_string("msDS-AdditionalDnsHostName","1.2.840.113556.1.4.1717");
-  oid_add_from_string("None","1.3.6.1.4.1.1466.101.119.1");
+  oid_add_from_string("LDAP_SERVER_FORCE_UPDATE_OID","1.2.840.113556.1.4.1974");
+  oid_add_from_string("LDAP_SERVER_DN_INPUT_OID","1.2.840.113556.1.4.2026");
+  oid_add_from_string("LDAP_SERVER_SHOW_RECYCLED_OID","1.2.840.113556.1.4.2064");
+  oid_add_from_string("LDAP_SERVER_SHOW_DEACTIVATED_LINK_OID","1.2.840.113556.1.4.2065");
+  oid_add_from_string("LDAP_SERVER_POLICY_HINTS_DEPRECATED_OID","1.2.840.113556.1.4.2066");
+  oid_add_from_string("LDAP_CAP_ACTIVE_DIRECTORY_V61_R2_OID", "1.2.840.113556.1.4.2080");
+  oid_add_from_string("LDAP_SERVER_DIRSYNC_EX_OID","1.2.840.113556.1.4.2090");
+  oid_add_from_string("LDAP_SERVER_TREE_DELETE_EX_OID","1.2.840.113556.1.4.2204");
+  oid_add_from_string("LDAP_SERVER_UPDATE_STATS_OID","1.2.840.113556.1.4.2205");
+  oid_add_from_string("LDAP_SERVER_SEARCH_HINTS_OID","1.2.840.113556.1.4.2206");
+  oid_add_from_string("LDAP_SERVER_EXPECTED_ENTRY_COUNT_OID","1.2.840.113556.1.4.2211");
+  oid_add_from_string("LDAP_SERVER_BATCH_REQUEST_OID", "1.2.840.113556.1.4.2212");
+  oid_add_from_string("LDAP_CAP_ACTIVE_DIRECTORY_W8_OID", "1.2.840.113556.1.4.2237");
+  oid_add_from_string("LDAP_SERVER_POLICY_HINTS_OID","1.2.840.113556.1.4.2239");
+  oid_add_from_string("LDAP_MATCHING_RULE_DN_WITH_DATA", "1.2.840.113556.1.4.2253");
+  oid_add_from_string("LDAP_SERVER_SET_OWNER_OID","1.2.840.113556.1.4.2255");
+  oid_add_from_string("LDAP_SERVER_BYPASS_QUOTA_OID","1.2.840.113556.1.4.2256");
+  oid_add_from_string("LDAP_SERVER_LINK_TTL_OID","1.2.840.113556.1.4.2309");
+  oid_add_from_string("LDAP_SERVER_SET_CORRELATION_ID_OID","1.2.840.113556.1.4.2330");
+  oid_add_from_string("LDAP_SERVER_THREAD_TRACE_OVERRIDE_OID","1.2.840.113556.1.4.2354");
+
+  /* RFC4532 */
+  oid_add_from_string("LDAP_SERVER_WHO_AM_I_OID", "1.3.6.1.4.1.4203.1.11.3");
+
+  /* Mark Wahl (Critical Angle) */
+  oid_add_from_string("DYNAMIC_REFRESH","1.3.6.1.4.1.1466.101.119.1");
   oid_add_from_string("LDAP_START_TLS_OID","1.3.6.1.4.1.1466.20037");
 
   oid_add_from_string("inetOrgPerson", "2.16.840.1.113730.3.2.2");
@@ -2325,12 +2377,6 @@ proto_reg_handoff_ldap(void)
   oid_add_from_string("Proxied Authorization (version 2) Control",                                  "2.16.840.1.113730.3.4.18");
   oid_add_from_string("Chaining loop detection",                                                    "2.16.840.1.113730.3.4.19");
   oid_add_from_string("iPlanet Replication Modrdn Extra Mods Control",                              "2.16.840.1.113730.3.4.999");
-
-
-  oid_add_from_string("LDAP_SERVER_QUOTA_CONTROL_OID",         "1.2.840.113556.1.4.1852");
-  oid_add_from_string("LDAP_SERVER_RANGE_OPTION_OID",          "1.2.840.113556.1.4.802");
-  oid_add_from_string("LDAP_SERVER_SHUTDOWN_NOTIFY_OID",       "1.2.840.113556.1.4.1907");
-  oid_add_from_string("LDAP_SERVER_RANGE_RETRIEVAL_NOERR_OID", "1.2.840.113556.1.4.1948");
 
 
   dissector_add_string("ldap.name", "netlogon", create_dissector_handle(dissect_NetLogon_PDU, proto_cldap));

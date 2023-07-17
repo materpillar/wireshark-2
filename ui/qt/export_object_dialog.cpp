@@ -13,13 +13,15 @@
 #include <ui/alert_box.h>
 #include <wsutil/utf8_entities.h>
 
-#include "wireshark_application.h"
+#include "main_application.h"
 #include "ui/qt/widgets/wireshark_file_dialog.h"
 #include <ui/qt/widgets/export_objects_view.h>
 #include <ui/qt/models/export_objects_model.h>
+#include <ui/qt/utils/qt_ui_utils.h>
 
 #include <QDialogButtonBox>
 #include <QMessageBox>
+#include <QMimeDatabase>
 #include <QPushButton>
 #include <QComboBox>
 #include <QDir>
@@ -52,9 +54,9 @@ ExportObjectDialog::ExportObjectDialog(QWidget &parent, CaptureFile &cf, registe
     eo_ui_->progressBar->setAttribute(Qt::WA_MacSmallSize, true);
 #endif
 
-    connect(&model_, SIGNAL(rowsInserted(QModelIndex,int,int)),
-            this, SLOT(modelDataChanged(QModelIndex, int, int)));
-    connect(&model_, SIGNAL(modelReset()), this, SLOT(modelRowsReset()));
+    connect(&model_, &ExportObjectModel::rowsInserted,
+            this, &ExportObjectDialog::modelDataChanged);
+    connect(&model_, &ExportObjectModel::modelReset, this, &ExportObjectDialog::modelRowsReset);
     connect(eo_ui_->filterLine, &QLineEdit::textChanged, &proxyModel_, &ExportObjectProxyModel::setTextFilterString);
     connect(eo_ui_->objectTree, &ExportObjectsTreeView::currentIndexChanged, this, &ExportObjectDialog::currentHasChanged);
 
@@ -71,14 +73,14 @@ ExportObjectDialog::ExportObjectDialog(QWidget &parent, CaptureFile &cf, registe
     contentTypes << tr("All Content-Types");
     eo_ui_->cmbContentType->addItems(contentTypes);
 
-    setWindowTitle(wsApp->windowTitleString(QStringList() << tr("Export") << tr("%1 object list").arg(proto_get_protocol_short_name(find_protocol_by_id(get_eo_proto_id(eo))))));
+    setWindowTitle(mainApp->windowTitleString(QStringList() << tr("Export") << tr("%1 object list").arg(proto_get_protocol_short_name(find_protocol_by_id(get_eo_proto_id(eo))))));
 
     if (save_bt_) save_bt_->setEnabled(false);
     if (save_all_bt_) save_all_bt_->setEnabled(false);
     if (close_bt) close_bt->setDefault(true);
 
-    connect(&cap_file_, SIGNAL(captureEvent(CaptureEvent)),
-            this, SLOT(captureEvent(CaptureEvent)));
+    connect(&cap_file_, &CaptureFile::captureEvent,
+            this, &ExportObjectDialog::captureEvent);
 }
 
 ExportObjectDialog::~ExportObjectDialog()
@@ -95,16 +97,30 @@ void ExportObjectDialog::currentHasChanged(QModelIndex current)
         QModelIndex sibl = current.sibling(current.row(), ExportObjectModel::colPacket);
         if (eo_ui_->buttonBox->button(QDialogButtonBox::Open))
         {
-            QString cont = sibl.sibling(current.row(), ExportObjectModel::colContent).data().toString();
-            /* For security reasons application and unknown are disabled */
-            eo_ui_->buttonBox->button(QDialogButtonBox::Open)->setEnabled(! cont.startsWith("application/") && ! cont.startsWith("unknown/"));
+            QString mime_type = sibl.sibling(current.row(), ExportObjectModel::colContent).data().toString();
+            eo_ui_->buttonBox->button(QDialogButtonBox::Open)->setEnabled(mimeTypeIsPreviewable(mime_type));
         }
-        wsApp->gotoFrame(sibl.data().toInt());
+        mainApp->gotoFrame(sibl.data().toInt());
     }
+}
+
+bool ExportObjectDialog::mimeTypeIsPreviewable(QString mime_type)
+{
+    // XXX This excludes everything except HTTP. Maybe that's a good thing?
+    // Take care when adding to this, e.g. text/html or image/svg might contain JavaScript.
+    QStringList previewable_mime_types = QStringList()
+            << "text/plain"
+            << "image/gif" << "image/jpeg" << "image/png";
+
+    if (previewable_mime_types.contains(mime_type)) {
+        return true;
+    }
+    return false;
 }
 
 void ExportObjectDialog::modelDataChanged(const QModelIndex&, int from, int to)
 {
+    bool contentTypes_changed = false;
     bool enabled = (model_.rowCount() > 0);
     if (save_bt_) save_bt_->setEnabled(enabled);
     if (save_all_bt_) save_all_bt_->setEnabled(enabled);
@@ -118,23 +134,26 @@ void ExportObjectDialog::modelDataChanged(const QModelIndex&, int from, int to)
             if (dataType.length() > 0 && ! contentTypes.contains(dataType))
             {
                 contentTypes << dataType;
-                contentTypes.sort(Qt::CaseInsensitive);
-                QString selType = eo_ui_->cmbContentType->currentText();
-                eo_ui_->cmbContentType->clear();
-                eo_ui_->cmbContentType->addItems(contentTypes);
-                if (contentTypes.contains(selType) )
-                    eo_ui_->cmbContentType->setCurrentText(selType);
+                contentTypes_changed = true;
             }
         }
+    }
+    if (contentTypes_changed) {
+        contentTypes.sort(Qt::CaseInsensitive);
+        QString selType = eo_ui_->cmbContentType->currentText();
+        eo_ui_->cmbContentType->clear();
+        eo_ui_->cmbContentType->addItem(tr("All Content-Types"));
+        eo_ui_->cmbContentType->addItems(contentTypes);
+        if (contentTypes.contains(selType) )
+            eo_ui_->cmbContentType->setCurrentText(selType);
     }
 }
 
 void ExportObjectDialog::modelRowsReset()
 {
     contentTypes.clear();
-    contentTypes << tr("All Content-Types");
     eo_ui_->cmbContentType->clear();
-    eo_ui_->cmbContentType->addItems(contentTypes);
+    eo_ui_->cmbContentType->addItem(tr("All Content-Types"));
 
     if (save_bt_) save_bt_->setEnabled(false);
     if (save_all_bt_) save_all_bt_->setEnabled(false);
@@ -182,7 +201,7 @@ void ExportObjectDialog::captureEvent(CaptureEvent e)
 
 void ExportObjectDialog::on_buttonBox_helpRequested()
 {
-    wsApp->helpTopicAction(HELP_EXPORT_OBJECT_LIST);
+    mainApp->helpTopicAction(HELP_EXPORT_OBJECT_LIST);
 }
 
 void ExportObjectDialog::on_buttonBox_clicked(QAbstractButton *button)
@@ -199,8 +218,16 @@ void ExportObjectDialog::on_buttonBox_clicked(QAbstractButton *button)
         QString temp;
         saveCurrentEntry(&temp);
 
-        if (temp.length() > 0)
-            QDesktopServices::openUrl(QUrl(QString("file:///").append(temp), QUrl::TolerantMode));
+        if (temp.length() > 0) {
+            QMimeDatabase mime_db;
+            QMimeType mime_type = mime_db.mimeTypeForFile(temp, QMimeDatabase::MatchContent);
+            if (mimeTypeIsPreviewable(mime_type.name())) {
+                QDesktopServices::openUrl(QUrl(QString("file:///").append(temp), QUrl::TolerantMode));
+            } else {
+                desktop_show_in_folder(temp);
+            }
+
+        }
         break;
     }
     default: // Help, Cancel
@@ -217,7 +244,7 @@ void ExportObjectDialog::on_cmbContentType_currentIndexChanged(int index)
 
 void ExportObjectDialog::saveCurrentEntry(QString *tempFile)
 {
-    QDir path(wsApp->lastOpenDir());
+    QDir path(mainApp->lastOpenDir());
 
     QModelIndex proxyIndex = eo_ui_->objectTree->currentIndex();
     if (!proxyIndex.isValid())
@@ -235,7 +262,7 @@ void ExportObjectDialog::saveCurrentEntry(QString *tempFile)
     if (!tempFile)
     {
         GString *safe_filename = eo_massage_str(entry_filename.toUtf8().constData(), EXPORT_OBJECT_MAXFILELEN, 0);
-        file_name = WiresharkFileDialog::getSaveFileName(this, wsApp->windowTitleString(tr("Save Object As…")),
+        file_name = WiresharkFileDialog::getSaveFileName(this, mainApp->windowTitleString(tr("Save Object As…")),
                                                 safe_filename->str);
         g_string_free(safe_filename, TRUE);
     } else {
@@ -252,7 +279,7 @@ void ExportObjectDialog::saveCurrentEntry(QString *tempFile)
 
 void ExportObjectDialog::saveAllEntries()
 {
-    QDir save_in_dir(wsApp->lastOpenDir());
+    QDir save_in_dir(mainApp->lastOpenDir());
     QString save_in_path;
 
     //
@@ -265,7 +292,7 @@ void ExportObjectDialog::saveAllEntries()
     // as the native dialog is used, and it supports that; does
     // that also work on Windows and with Qt's own dialog?
     //
-    save_in_path = WiresharkFileDialog::getExistingDirectory(this, wsApp->windowTitleString(tr("Save All Objects In…")),
+    save_in_path = WiresharkFileDialog::getExistingDirectory(this, mainApp->windowTitleString(tr("Save All Objects In…")),
                                                      save_in_dir.canonicalPath(),
                                                      QFileDialog::ShowDirsOnly);
 
@@ -274,16 +301,3 @@ void ExportObjectDialog::saveAllEntries()
 
     model_.saveAllEntries(save_in_path);
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

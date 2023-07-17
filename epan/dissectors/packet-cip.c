@@ -3,9 +3,10 @@
  * CIP Home: www.odva.org
  *
  * This dissector includes items from:
- *    CIP Volume 1: Common Industrial Protocol, Edition 3.27
+ *    CIP Volume 1: Common Industrial Protocol, Edition 3.34
  *    CIP Volume 5: Integration of Modbus Devices into the CIP Architecture, Edition 2.17
  *    CIP Volume 7: CIP Safety, Edition 1.9
+ *    CIP Volume 8: CIP Security, Edition 1.11
  *
  * Copyright 2004
  * Magnus Hansson <mah@hms.se>
@@ -33,13 +34,26 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+// There are multiple different ways to add functionality based on CIP class-specific behavior:
+// 1. Dissector Table "cip.io.iface" - Use this when Class 0/1 I/O needs different parsing based on
+//    the CIP Class in the Forward Open
+// 2. Dissector Table "cip.connection.class" - Use this when Class 2/3 data needs different parsing
+//    based on the CIP Class in the Forward Open
+// 3. Dissector Table "cip.class.iface" - Use this when a CIP Class has significantly different
+//    behavior that would be best handled through a separate dissector
+// 4. Dissector Table "cip.data_segment.iface" - Unknown. This may be removed in the future
+// 5. attribute_info_t: Use this to add handling for an attribute, using a 3 tuple key (Class, Instance, Attribute)
+//    See 'cip_attribute_vals' for an example.
+// 6. cip_service_info_t: Use this to add handling for a service, using a 2 tuple key (Class, Service)
+//    See 'cip_obj_spec_service_table' for an example.
+
 #include "config.h"
 
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
 #include <epan/proto_data.h>
-#include <wmem/wmem_list.h>
+#include <epan/wmem_scopes.h>
 #include "packet-cip.h"
 #include "packet-cipmotion.h"
 #include "packet-cipsafety.h"
@@ -58,6 +72,7 @@ static dissector_handle_t cip_handle;
 static dissector_handle_t cip_class_generic_handle;
 static dissector_handle_t cip_class_cm_handle;
 static dissector_handle_t cip_class_pccc_handle;
+static dissector_handle_t cip_class_mb_handle;
 static dissector_handle_t modbus_handle;
 static dissector_handle_t cip_class_cco_handle;
 static heur_dissector_list_t  heur_subdissector_service;
@@ -104,14 +119,20 @@ static int hf_cip_cm_timeout_tick = -1;
 static int hf_cip_cm_timeout = -1;
 static int hf_cip_cm_ot_connid = -1;
 static int hf_cip_cm_to_connid = -1;
+static int hf_cip_connid = -1;
 static int hf_cip_cm_conn_serial_num = -1;
 static int hf_cip_cm_orig_serial_num = -1;
 static int hf_cip_cm_vendor = -1;
 static int hf_cip_cm_timeout_multiplier = -1;
 static int hf_cip_cm_ot_rpi = -1;
+static int hf_cip_cm_ot_timeout = -1;
 static int hf_cip_cm_ot_net_params32 = -1;
 static int hf_cip_cm_ot_net_params16 = -1;
 static int hf_cip_cm_to_rpi = -1;
+static int hf_cip_cm_to_timeout = -1;
+
+static int hf_cip_safety_nte_ms = -1;
+
 static int hf_cip_cm_to_net_params32 = -1;
 static int hf_cip_cm_to_net_params16 = -1;
 static int hf_cip_cm_transport_type_trigger = -1;
@@ -344,7 +365,7 @@ static int hf_cip_seg_safety_ounid_snn_timestamp = -1;
 static int hf_cip_seg_safety_ounid_snn_date = -1;
 static int hf_cip_seg_safety_ounid_snn_time = -1;
 static int hf_cip_seg_safety_ounid_nodeid = -1;
-static int hf_cip_seg_safety_ping_eri_multiplier = -1;
+static int hf_cip_seg_safety_ping_epi_multiplier = -1;
 static int hf_cip_seg_safety_time_coord_msg_min_multiplier = -1;
 static int hf_cip_seg_safety_network_time_expected_multiplier = -1;
 static int hf_cip_seg_safety_timeout_multiplier = -1;
@@ -504,7 +525,6 @@ static int hf_time_sync_port_proto_addr_info_port_proto_addr = -1;
 static int hf_time_sync_steps_removed = -1;
 static int hf_time_sync_sys_time_and_offset_time = -1;
 static int hf_time_sync_sys_time_and_offset_offset = -1;
-static int hf_cip_security_state = -1;
 static int hf_port_entry_port = -1;
 static int hf_port_type = -1;
 static int hf_port_number = -1;
@@ -521,6 +541,8 @@ static int hf_32bitheader_coo = -1;
 static int hf_32bitheader_run_idle = -1;
 
 static int hf_cip_connection = -1;
+static int hf_cip_fwd_open_in = -1;
+static int hf_cip_fwd_close_in = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_cip = -1;
@@ -656,6 +678,63 @@ static expert_field ei_mal_opt_service_list = EI_INIT;
 static expert_field ei_mal_padded_epath_size = EI_INIT;
 static expert_field ei_mal_missing_string_data = EI_INIT;
 
+static expert_field ei_cip_safety_open_type1 = EI_INIT;
+static expert_field ei_cip_safety_open_type2a = EI_INIT;
+static expert_field ei_cip_safety_open_type2b = EI_INIT;
+static expert_field ei_cip_no_fwd_close = EI_INIT;
+
+//// Concurrent Connections
+static int hf_cip_cm_cc_version = -1;
+
+static int hf_cip_cc_packet_length = -1;
+static int hf_cip_cc_packet_options = -1;
+static int hf_cip_cc_packet_type = -1;
+static int hf_cip_cc_packet_keepalive = -1;
+static int hf_cip_cc_packet_keepalive_hop_count = -1;
+static int hf_cip_cc_packet_reserved = -1;
+static int hf_cip_cc_packet_seq_number = -1;
+static int hf_cip_cc_crc = -1;
+
+// Parameters for Concurrent Extended Network Segment
+static int hf_ext_net_seg_hops_count = -1;
+static int hf_ext_net_seg_length = -1;
+static int hf_ext_net_seg_hop = -1;
+static int hf_ext_net_seg_hop_egress_cip_port = -1;
+static int hf_ext_net_seg_hop_link_adr_type = -1;
+static int hf_ext_net_seg_hop_number_of_linkadr = -1;
+static int hf_ext_net_seg_link_address = -1;
+static int hf_ext_net_seg_link_ipv4 = -1;
+static int hf_ext_net_seg_link_hostname = -1;
+
+static int proto_cc = -1;
+
+/* Define the tree for the frame */
+static gint ett_cc_header = -1;
+static gint ett_cc_hop = -1;
+
+static expert_field ei_cc_invalid_header_type = EI_INIT;
+
+static const value_string cc_link_adr_type[] = {
+    { 0, "8-bit numeric link addresses" },
+    { 1, "IPv4 addresses" },
+    { 2, "Hostnames" },
+
+    { 0, NULL }
+};
+
+static const value_string cc_packet_type_vals[] = {
+    { 0, "Invalid" },
+    { 1, "Concurrent Connection Packet Format" },
+
+    { 0, NULL }
+};
+
+static gint* ett_cc[] =
+{
+    &ett_cc_header,
+    &ett_cc_hop,
+};
+
 static dissector_table_t   subdissector_class_table;
 static dissector_table_t   subdissector_symbol_table;
 
@@ -678,6 +757,8 @@ static const value_string cip_sc_vals_cm[] = {
    { SC_CM_GET_CONN_DATA,        "Get Connection Data" },
    { SC_CM_SEARCH_CONN_DATA,     "Search Connection Data" },
    { SC_CM_GET_CONN_OWNER,       "Get Connection Owner" },
+   { SC_CM_CONCURRENT_FWD_OPEN,  "Concurrent Forward Open" },
+   { SC_CM_CONCURRENT_FWD_CLOSE, "Concurrent Forward Close" },
 
    { 0,                       NULL }
 };
@@ -750,7 +831,7 @@ const value_string cip_reset_type_vals[] = {
 };
 
 /* Translate function to string - Connection priority */
-static const value_string cip_con_prio_vals[] = {
+const value_string cip_con_prio_vals[] = {
    { 0,        "Low Priority"  },
    { 1,        "High Priority" },
    { 2,        "Scheduled"     },
@@ -769,16 +850,8 @@ static const value_string cip_con_fw_vals[] = {
 
 /* Translate function to string - Connection owner */
 static const value_string cip_con_owner_vals[] = {
-   { 0,        "Exclusive" },
+   { 0,        "Non-Redundant" },
    { 1,        "Redundant" },
-
-   { 0,        NULL        }
-};
-
-/* Translate function to string - Connection direction */
-static const value_string cip_con_dir_vals[] = {
-   { 0,        "Client" },
-   { 1,        "Server" },
 
    { 0,        NULL        }
 };
@@ -811,7 +884,7 @@ static const value_string cip_con_class_vals[] = {
 };
 
 /* Translate function to string - Connection type */
-static const value_string cip_con_type_vals[] = {
+const value_string cip_con_type_vals[] = {
    { CONN_TYPE_NULL,        "Null"           },
    { CONN_TYPE_MULTICAST,   "Multicast"      },
    { CONN_TYPE_P2P,         "Point to Point" },
@@ -821,7 +894,7 @@ static const value_string cip_con_type_vals[] = {
 };
 
 /* Translate function to string - Timeout Multiplier */
-static const value_string cip_con_time_mult_vals[] = {
+const value_string cip_con_time_mult_vals[] = {
    { 0,        "*4"   },
    { 1,        "*8"   },
    { 2,        "*16"  },
@@ -928,14 +1001,6 @@ static const value_string cip_time_sync_network_protocol_vals[] = {
    { 4,      "DeviceNet"    },
    { 5,      "ControlNet"   },
    { 0xFFFF, "Local or Unknown protocol"   },
-   { 0,      NULL           }
-};
-
-static const value_string cip_security_state_vals[] = {
-   { 0,      "Factory Default Configuration"     },
-   { 1,      "Initial Commissioning In Progress" },
-   { 2,      "Configured"   },
-   { 3,      "Incomplete Configuration"    },
    { 0,      NULL           }
 };
 
@@ -1327,7 +1392,7 @@ static const value_string cip_pccc_gs_st_vals[] = {
    { 0,                          NULL }
 };
 
-value_string_ext cip_pccc_gs_st_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_gs_st_vals);
+static value_string_ext cip_pccc_gs_st_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_gs_st_vals);
 
 /* Translate function to string - PCCC Extended Status codes */
 static const value_string cip_pccc_es_st_vals[] = {
@@ -1369,7 +1434,7 @@ static const value_string cip_pccc_es_st_vals[] = {
    { 0,                          NULL }
 };
 
-value_string_ext cip_pccc_es_st_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_es_st_vals);
+static value_string_ext cip_pccc_es_st_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_es_st_vals);
 
 /* Translate PCCC Function Codes */
 static const value_string cip_pccc_fnc_06_vals[] = {
@@ -1388,7 +1453,7 @@ static const value_string cip_pccc_fnc_06_vals[] = {
    { 0,                          NULL }
 };
 
-value_string_ext cip_pccc_fnc_06_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_fnc_06_vals);
+static value_string_ext cip_pccc_fnc_06_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_fnc_06_vals);
 
 static const value_string cip_pccc_fnc_07_vals[] = {
     { PCCC_FNC_07_00, "Disable outputs" },
@@ -1401,7 +1466,7 @@ static const value_string cip_pccc_fnc_07_vals[] = {
    { 0,                          NULL }
 };
 
-value_string_ext cip_pccc_fnc_07_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_fnc_07_vals);
+static value_string_ext cip_pccc_fnc_07_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_fnc_07_vals);
 
 static const value_string cip_pccc_fnc_0f_vals[] = {
     { PCCC_FNC_0F_00, "Word range write" },
@@ -1448,7 +1513,7 @@ static const value_string cip_pccc_fnc_0f_vals[] = {
    { 0,                          NULL }
 };
 
-value_string_ext cip_pccc_fnc_0f_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_fnc_0f_vals);
+static value_string_ext cip_pccc_fnc_0f_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_fnc_0f_vals);
 
 /* Translate PCCC File Types */
 static const value_string cip_pccc_file_types_vals[] = {
@@ -1480,7 +1545,7 @@ static const value_string cip_pccc_file_types_vals[] = {
    { 0,                          NULL }
 };
 
-value_string_ext cip_pccc_file_type_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_file_types_vals);
+static value_string_ext cip_pccc_file_type_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_file_types_vals);
 
 /* Translate PCCC CPU Modes */
 #if 0
@@ -1504,43 +1569,39 @@ static const value_string cip_pccc_cpu_mode_80_vals[] = {
    { 0,                          NULL }
 };
 
-value_string_ext cip_pccc_cpu_mode_80_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_cpu_mode_80_vals);
+static value_string_ext cip_pccc_cpu_mode_80_vals_ext = VALUE_STRING_EXT_INIT(cip_pccc_cpu_mode_80_vals);
 
 /* Translate Vendor IDs */
 static const value_string cip_vendor_vals[] = {
-   {    0,   "Reserved" },
    {    1,   "Rockwell Automation/Allen-Bradley" },
    {    2,   "Namco Controls Corp." },
-   {    3,   "Honeywell Inc." },
-   {    4,   "Parker Hannifin Corp. (Veriflo Division)" },
+   {    3,   "Honeywell International Inc." },
+   {    4,   "Parker Hannifin Corporation" },
    {    5,   "Rockwell Automation/Reliance Elec." },
    {    6,   "Reserved" },
    {    7,   "SMC Corporation" },
    {    8,   "Molex Incorporated" },
-   {    9,   "Western Reserve Controls Corp." },
+   {    9,   "Western Reserve Controls Inc." },
    {   10,   "Advanced Micro Controls Inc. (AMCI)" },
    {   11,   "ASCO Pneumatic Controls" },
-   {   12,   "Banner Engineering Corp." },
+   {   12,   "Banner Engineering Corporation" },
    {   13,   "Belden Wire & Cable Company" },
    {   14,   "Cooper Interconnect" },
-   {   15,   "Reserved" },
-   {   16,   "Daniel Woodhead Co. (Woodhead Connectivity)" },
+   {   16,   "Daniel Woodhead Co." },
    {   17,   "Dearborn Group Inc." },
    {   18,   "Reserved" },
    {   19,   "Helm Instrument Company" },
    {   20,   "Huron Net Works" },
-   {   21,   "Lumberg, Inc." },
-   {   22,   "Online Development Inc.(Automation Value)" },
+   {   21,   "Belden Deutschland GmbH" },
+   {   22,   "Online Development, Inc. (OLDI)" },
    {   23,   "Vorne Industries, Inc." },
-   {   24,   "ODVA Special Reserve" },
+   {   24,   "ODVA" },
    {   25,   "Reserved" },
-   {   26,   "Festo Corporation" },
+   {   26,   "Festo" },
    {   27,   "Reserved" },
    {   28,   "Reserved" },
-   {   29,   "Reserved" },
    {   30,   "Unico, Inc." },
    {   31,   "Ross Controls" },
-   {   32,   "Reserved" },
    {   33,   "Reserved" },
    {   34,   "Hohner Corp." },
    {   35,   "Micro Mo Electronics, Inc." },
@@ -1548,24 +1609,24 @@ static const value_string cip_vendor_vals[] = {
    {   37,   "Yaskawa Electric America formerly Magnetek Drives" },
    {   38,   "Reserved" },
    {   39,   "AVG Automation (Uticor)" },
-   {   40,   "Wago Corporation" },
-   {   41,   "Kinetics (Unit Instruments)" },
+   {   40,   "WAGO Corporation" },
+   {   41,   "Celerity, Inc." },
    {   42,   "IMI Norgren Limited" },
-   {   43,   "BALLUFF, Inc." },
-   {   44,   "Yaskawa Electric America, Inc." },
-   {   45,   "Eurotherm Controls Inc" },
-   {   46,   "ABB Industrial Systems" },
+   {   43,   "BALLUFF" },
+   {   44,   "Yaskawa America, Inc." },
+   {   45,   "Eurotherm by Schneider Electric" },
+   {   46,   "ABB, Inc." },
    {   47,   "Omron Corporation" },
-   {   48,   "TURCk, Inc." },
+   {   48,   "TURCK" },
    {   49,   "Grayhill Inc." },
-   {   50,   "Real Time Automation (C&ID)" },
+   {   50,   "Real Time Automation" },
    {   51,   "Reserved" },
-   {   52,   "Numatics, Inc." },
-   {   53,   "Lutze, Inc." },
+   {   52,   "ASCO Numatics" },
+   {   53,   "LÜTZE" },
    {   54,   "Reserved" },
    {   55,   "Reserved" },
-   {   56,   "Softing GmbH" },
-   {   57,   "Pepperl + Fuchs" },
+   {   56,   "Softing" },
+   {   57,   "Pepperl+Fuchs" },
    {   58,   "Spectrum Controls, Inc." },
    {   59,   "D.I.P. Inc. MKS Inst." },
    {   60,   "Applied Motion Products, Inc." },
@@ -1579,57 +1640,56 @@ static const value_string cip_vendor_vals[] = {
    {   68,   "Eaton Electrical" },
    {   69,   "Reserved" },
    {   70,   "Reserved" },
-   {   71,   "Toshiba International Corp." },
+   {   71,   "Toshiba Corporation" },
    {   72,   "Control Technology Incorporated" },
    {   73,   "TCS (NZ) Ltd." },
    {   74,   "Hitachi, Ltd." },
-   {   75,   "ABB Robotics Products AB" },
+   {   75,   "ABB Robotics" },
    {   76,   "NKE Corporation" },
    {   77,   "Rockwell Software, Inc." },
    {   78,   "Escort Memory Systems (A Datalogic Group Co.)" },
-   {   79,   "Reserved" },
+   {   79,   "Leviton" },
    {   80,   "Industrial Devices Corporation" },
    {   81,   "IXXAT Automation GmbH" },
    {   82,   "Mitsubishi Electric Automation, Inc." },
-   {   83,   "OPTO-22" },
+   {   83,   "OPTO 22" },
    {   84,   "Reserved" },
    {   85,   "Reserved" },
    {   86,   "Horner Electric" },
-   {   87,   "Burkert Werke GmbH & Co. KG" },
+   {   87,   "Buerkert Fluid Control Systems" },
    {   88,   "Reserved" },
    {   89,   "Industrial Indexing Systems, Inc." },
-   {   90,   "HMS Industrial Networks AB" },
+   {   90,   "HMS Networks" },
    {   91,   "Robicon" },
    {   92,   "Helix Technology (Granville-Phillips)" },
    {   93,   "Arlington Laboratory" },
-   {   94,   "Advantech Co. Ltd." },
+   {   94,   "Advantech Corporation" },
    {   95,   "Square D Company" },
    {   96,   "Digital Electronics Corp." },
-   {   97,   "Danfoss" },
+   {   97,   "Danfoss Drives A/S" },
    {   98,   "Reserved" },
    {   99,   "Reserved" },
-   {  100,   "Bosch Rexroth Corporation, Pneumatics" },
+   {  100,   "AVENTICS" },
    {  101,   "Applied Materials, Inc." },
-   {  102,   "Showa Electric Wire & Cable Co." },
+   {  102,   "SWCC Showa Cable Systems Co., Ltd." },
    {  103,   "Pacific Scientific (API Controls Inc.)" },
-   {  104,   "Sharp Manufacturing Systems Corp." },
+   {  104,   "Sharp Manufacturing Systems Corporation" },
    {  105,   "Olflex Wire & Cable, Inc." },
    {  106,   "Reserved" },
    {  107,   "Unitrode" },
-   {  108,   "Beckhoff Automation GmbH" },
+   {  108,   "Beckhoff Automation" },
    {  109,   "National Instruments" },
-   {  110,   "Mykrolis Corporations (Millipore)" },
+   {  110,   "Mykrolis Corporation (Millipore)" },
    {  111,   "International Motion Controls Corp." },
    {  112,   "Reserved" },
    {  113,   "SEG Kempen GmbH" },
    {  114,   "Reserved" },
    {  115,   "Reserved" },
-   {  116,   "MTS Systems Corp." },
+   {  116,   "Temposonics, LLC" },
    {  117,   "Krones, Inc" },
-   {  118,   "Reserved" },
    {  119,   "EXOR Electronic R & D" },
    {  120,   "SIEI S.p.A." },
-   {  121,   "KUKA Roboter GmbH" },
+   {  121,   "KUKA Deutschland GmbH" },
    {  122,   "Reserved" },
    {  123,   "SEC (Samsung Electronics Co., Ltd)" },
    {  124,   "Binary Electronics Ltd" },
@@ -1637,12 +1697,12 @@ static const value_string cip_vendor_vals[] = {
    {  126,   "Reserved" },
    {  127,   "ABB Inc. (Entrelec)" },
    {  128,   "MAC Valves, Inc." },
-   {  129,   "Auma Actuators Inc" },
-   {  130,   "Toyoda Machine Works, Ltd" },
+   {  129,   "AUMA Riester GmbH & Co. KG" },
+   {  130,   "JTEKT Corporation" },
    {  131,   "Reserved" },
    {  132,   "Reserved" },
    {  133,   "Balogh T.A.G., Corporation" },
-   {  134,   "TR Systemtechnik GmbH" },
+   {  134,   "TR Electronic" },
    {  135,   "UNIPULSE Corporation" },
    {  136,   "Reserved" },
    {  137,   "Reserved" },
@@ -1652,7 +1712,7 @@ static const value_string cip_vendor_vals[] = {
    {  141,   "Kuramo Electric Co., Ltd." },
    {  142,   "Creative Micro Designs" },
    {  143,   "GE Industrial Systems" },
-   {  144,   "Leybold Vacuum GmbH" },
+   {  144,   "Leybold GmbH" },
    {  145,   "Siemens Energy & Automation/Drives" },
    {  146,   "Kodensha Ltd" },
    {  147,   "Motion Engineering, Inc." },
@@ -1661,42 +1721,41 @@ static const value_string cip_vendor_vals[] = {
    {  150,   "Melec Inc." },
    {  151,   "Sony Manufacturing Systems Corporation" },
    {  152,   "North American Mfg." },
-   {  153,   "WATLOW" },
+   {  153,   "Watlow" },
    {  154,   "Japan Radio Co., Ltd" },
    {  155,   "NADEX Co., Ltd" },
    {  156,   "Ametek Automation & Process Technologies" },
-   {  157,   "Reserved" },
+   {  157,   "Facts, Inc." },
    {  158,   "KVASER AB" },
-   {  159,   "IDEC IZUMI Corporation" },
+   {  159,   "IDEC Corporation" },
    {  160,   "Mitsubishi Heavy Industries Ltd" },
    {  161,   "Mitsubishi Electric Corporation" },
-   {  162,   "Horiba-STEC Inc." },
-   {  163,   "esd electronic system design gmbh" },
+   {  162,   "HORIBA STEC, Co., Ltd." },
+   {  163,   "esd electronics gmbh" },
    {  164,   "DAIHEN Corporation" },
    {  165,   "Tyco Valves & Controls/Keystone" },
    {  166,   "EBARA Corporation" },
-   {  167,   "Reserved" },
    {  168,   "Reserved" },
-   {  169,   "Hokuyo Electric Co. Ltd" },
+   {  169,   "Hokuyo Automatic Co., Ltd." },
    {  170,   "Pyramid Solutions, Inc." },
    {  171,   "Denso Wave Incorporated" },
    {  172,   "HLS Hard-Line Solutions Inc" },
    {  173,   "Caterpillar, Inc." },
    {  174,   "PDL Electronics Ltd." },
    {  175,   "Reserved" },
-   {  176,   "Red Lion Controls" },
-   {  177,   "ANELVA Corporation" },
+   {  176,   "Red Lion" },
+   {  177,   "CANON ANELVA Corporation" },
    {  178,   "Toyo Denki Seizo KK" },
-   {  179,   "Sanyo Denki Co., Ltd" },
-   {  180,   "Advanced Energy Japan K.K. (Aera Japan)" },
-   {  181,   "Pilz GmbH & Co" },
+   {  179,   "Sanyo Denki Co., Ltd." },
+   {  180,   "Hitachi Metals, Ltd. (formerly Advanced Energy Japan K.K.)" },
+   {  181,   "Pilz GmbH & Co KG" },
    {  182,   "Marsh Bellofram-Bellofram PCD Division" },
    {  183,   "Reserved" },
-   {  184,   "M-SYSTEM Co. Ltd" },
-   {  185,   "Nissin Electric Co., Ltd" },
+   {  184,   "M-SYSTEM Co., Ltd." },
+   {  185,   "Nissin Electric Co., Ltd." },
    {  186,   "Hitachi Metals Ltd." },
-   {  187,   "Oriental Motor Company" },
-   {  188,   "A&D Co., Ltd" },
+   {  187,   "Oriental Motor Co., Ltd" },
+   {  188,   "A&D Company Limited" },
    {  189,   "Phasetronics, Inc." },
    {  190,   "Cummins Engine Company" },
    {  191,   "Deltron Inc." },
@@ -1705,30 +1764,30 @@ static const value_string cip_vendor_vals[] = {
    {  194,   "Reserved" },
    {  195,   "Reserved" },
    {  196,   "Medar, Inc." },
-   {  197,   "Comdel Inc." },
-   {  198,   "Advanced Energy Industries, Inc" },
+   {  197,   "XP Power LLC" },
+   {  198,   "Advanced Energy Industries, Inc." },
    {  199,   "Reserved" },
    {  200,   "DAIDEN Co., Ltd" },
    {  201,   "CKD Corporation" },
    {  202,   "Toyo Electric Corporation" },
    {  203,   "Reserved" },
    {  204,   "AuCom Electronics Ltd" },
-   {  205,   "Shinko Electric Co., Ltd" },
+   {  205,   "Sinfonia Technology Co., Ltd." },
    {  206,   "Vector Informatik GmbH" },
    {  207,   "Reserved" },
    {  208,   "Moog Inc." },
    {  209,   "Contemporary Controls" },
    {  210,   "Tokyo Sokki Kenkyujo Co., Ltd" },
-   {  211,   "Schenck-AccuRate, Inc." },
+   {  211,   "Schenck Process Group" },
    {  212,   "The Oilgear Company" },
    {  213,   "Reserved" },
    {  214,   "ASM Japan K.K." },
    {  215,   "HIRATA Corp." },
-   {  216,   "SUNX Limited" },
-   {  217,   "Meidensha Corp." },
+   {  216,   "Panasonic Industrial Devices SUNX Co., Ltd." },
+   {  217,   "Meidensha Corporation" },
    {  218,   "NIDEC SANKYO CORPORATION (Sankyo Seiki Mfg. Co., Ltd)" },
    {  219,   "KAMRO Corp." },
-   {  220,   "Nippon System Development Co., Ltd" },
+   {  220,   "NSD Co., Ltd." },
    {  221,   "EBARA Technologies Inc." },
    {  222,   "Reserved" },
    {  223,   "Reserved" },
@@ -1751,41 +1810,41 @@ static const value_string cip_vendor_vals[] = {
    {  240,   "Reserved" },
    {  241,   "Leading Edge Design" },
    {  242,   "Humphrey Products" },
-   {  243,   "Schneider Automation, Inc." },
+   {  243,   "Schneider Electric" },
    {  244,   "Westlock Controls Corp." },
    {  245,   "Nihon Weidmuller Co., Ltd" },
-   {  246,   "Brooks Instrument (Div. of Emerson)" },
+   {  246,   "Brooks Instrument" },
    {  247,   "Reserved" },
-   {  248,   " Moeller GmbH" },
+   {  248,   "Eaton Industries GmbH (formerly Moeller GmbH)" },
    {  249,   "Varian Vacuum Products" },
    {  250,   "Yokogawa Electric Corporation" },
    {  251,   "Electrical Design Daiyu Co., Ltd" },
-   {  252,   "Omron Software Co., Ltd" },
-   {  253,   "BOC Edwards" },
+   {  252,   "Omron Software Co., Ltd." },
+   {  253,   "EDWARDS" },
    {  254,   "Control Technology Corporation" },
    {  255,   "Bosch Rexroth" },
-   {  256,   "Turck" },
+   {  256,   "TURCK (formerly InterlinkBT)" },
    {  257,   "Control Techniques PLC" },
-   {  258,   "Hardy Instruments, Inc." },
-   {  259,   "LS Industrial Systems" },
+   {  258,   "Hardy Process Solutions" },
+   {  259,   "LS ELECTRIC" },
    {  260,   "E.O.A. Systems Inc." },
    {  261,   "Reserved" },
    {  262,   "New Cosmos Electric Co., Ltd." },
-   {  263,   "Sense Eletronica LTDA" },
+   {  263,   "Sense Sense Eletronica LTDA" },
    {  264,   "Xycom, Inc." },
    {  265,   "Baldor Electric" },
    {  266,   "Reserved" },
    {  267,   "Patlite Corporation" },
    {  268,   "Reserved" },
    {  269,   "Mogami Wire & Cable Corporation" },
-   {  270,   "Welding Technology Corporation (WTC)" },
+   {  270,   "Welding Technology Corporation" },
    {  271,   "Reserved" },
    {  272,   "Deutschmann Automation GmbH" },
    {  273,   "ICP Panel-Tec Inc." },
-   {  274,   "Bray Controls USA" },
+   {  274,   "Bray International, Inc" },
    {  275,   "Reserved" },
    {  276,   "Status Technologies" },
-   {  277,   "Trio Motion Technology Ltd" },
+   {  277,   "Trio Motion Technology ltd" },
    {  278,   "Sherrex Systems Ltd" },
    {  279,   "Adept Technology, Inc." },
    {  280,   "Spang Power Electronics" },
@@ -1795,7 +1854,7 @@ static const value_string cip_vendor_vals[] = {
    {  284,   "IMAX Corporation" },
    {  285,   "Electronic Innovation, Inc. (Falter Engineering)" },
    {  286,   "Netlogic Inc." },
-   {  287,   "Bosch Rexroth Corporation, Indramat" },
+   {  287,   "Bosch Rexroth AG" },
    {  288,   "Reserved" },
    {  289,   "Reserved" },
    {  290,   "Murata  Machinery Ltd." },
@@ -1817,7 +1876,7 @@ static const value_string cip_vendor_vals[] = {
    {  306,   "Schleicher GmbH & Co." },
    {  307,   "Hirose Electric Co., Ltd" },
    {  308,   "Western Servo Design Inc." },
-   {  309,   "Prosoft Technology" },
+   {  309,   "ProSoft Technology" },
    {  310,   "Reserved" },
    {  311,   "Towa Shoko Co., Ltd" },
    {  312,   "Kyopal Co., Ltd" },
@@ -1827,14 +1886,14 @@ static const value_string cip_vendor_vals[] = {
    {  316,   "Aera Corporation" },
    {  317,   "STA Reutlingen" },
    {  318,   "Reserved" },
-   {  319,   "Fuji Electric Co., Ltd." },
+   {  319,   "Fuji Electric Group" },
    {  320,   "Reserved" },
    {  321,   "Reserved" },
-   {  322,   "ifm efector, inc." },
+   {  322,   "ifm electronic gmbh" },
    {  323,   "Reserved" },
    {  324,   "IDEACOD-Hohner Automation S.A." },
    {  325,   "CommScope Inc." },
-   {  326,   "GE Fanuc Automation North America, Inc." },
+   {  326,   "Intelligent Platforms, LLC." },
    {  327,   "Matsushita Electric Industrial Co., Ltd" },
    {  328,   "Okaya Electronics Corporation" },
    {  329,   "KASHIYAMA Industries, Ltd" },
@@ -1852,19 +1911,18 @@ static const value_string cip_vendor_vals[] = {
    {  341,   "BF ENTRON Ltd. (British Federal)" },
    {  342,   "Bekaert Engineering NV" },
    {  343,   "Ferran  Scientific Inc." },
-   {  344,   "KEBA AG" },
+   {  344,   "KEBA Industrial Automation GmbH" },
    {  345,   "Endress + Hauser" },
-   {  346,   "Reserved" },
+   {  346,   "Lincoln Electric Company" },
    {  347,   "ABB ALSTOM Power UK Ltd. (EGT)" },
    {  348,   "Berger Lahr GmbH" },
    {  349,   "Reserved" },
    {  350,   "Federal Signal Corp." },
    {  351,   "Kawasaki Robotics (USA), Inc." },
    {  352,   "Bently Nevada Corporation" },
-   {  353,   "Reserved" },
-   {  354,   "FRABA Posital GmbH" },
+   {  354,   "FRABA Posital" },
    {  355,   "Elsag Bailey, Inc." },
-   {  356,   "Fanuc Robotics America" },
+   {  356,   "FANUC Robotics America" },
    {  357,   "Reserved" },
    {  358,   "Surface Combustion, Inc." },
    {  359,   "Reserved" },
@@ -1906,14 +1964,14 @@ static const value_string cip_vendor_vals[] = {
    {  395,   "Suzuki Motor Corporation" },
    {  396,   "Custom Servo Motors Inc." },
    {  397,   "PACE Control Systems" },
-   {  398,   "Reserved" },
+   {  398,   "Selectron Systems AG" },
    {  399,   "Reserved" },
    {  400,   "LINTEC Co., Ltd." },
    {  401,   "Hitachi Cable Ltd." },
    {  402,   "BUSWARE Direct" },
    {  403,   "Eaton Electric B.V. (former Holec Holland N.V.)" },
-   {  404,   "VAT Vakuumventile AG" },
-   {  405,   "Scientific Technologies Incorporated" },
+   {  404,   "VAT Vacuum Valves AG" },
+   {  405,   "Omron Robotics and Safety Technologies, Inc." },
    {  406,   "Alfa Instrumentos Eletronicos Ltda" },
    {  407,   "TWK Elektronik GmbH" },
    {  408,   "ABB Welding Systems AB" },
@@ -1921,8 +1979,8 @@ static const value_string cip_vendor_vals[] = {
    {  410,   "Kimura Electric Co., Ltd" },
    {  411,   "Nissei Plastic Industrial Co., Ltd" },
    {  412,   "Reserved" },
-   {  413,   "Kistler-Morse Corporation" },
-   {  414,   "Proteous Industries Inc." },
+   {  413,   "Kistler-Morse" },
+   {  414,   "Proteus Industries Inc." },
    {  415,   "IDC Corporation" },
    {  416,   "Nordson Corporation" },
    {  417,   "Rapistan Systems" },
@@ -1932,7 +1990,7 @@ static const value_string cip_vendor_vals[] = {
    {  421,   "Z-World Engineering" },
    {  422,   "Honda R&D Co., Ltd." },
    {  423,   "Bionics Instrument Co., Ltd." },
-   {  424,   "Teknic, Inc." },
+   {  424,   "Teknic, Incorporated" },
    {  425,   "R.Stahl, Inc." },
    {  426,   "Reserved" },
    {  427,   "Ryco Graphic Manufacturing Inc." },
@@ -1940,18 +1998,17 @@ static const value_string cip_vendor_vals[] = {
    {  429,   "Koganei Corporation" },
    {  430,   "Reserved" },
    {  431,   "Nichigoh Communication Electric Wire Co., Ltd." },
-   {  432,   "Reserved" },
    {  433,   "Fujikura Ltd." },
    {  434,   "AD Link Technology Inc." },
-   {  435,   "StoneL Corporation" },
+   {  435,   "Valmet Flow Control Inc (formerly StoneL)" },
    {  436,   "Computer Optical Products, Inc." },
    {  437,   "CONOS Inc." },
-   {  438,   "Erhardt + Leimer GmbH" },
+   {  438,   "Erhardt+Leimer GmbH" },
    {  439,   "UNIQUE Co. Ltd" },
    {  440,   "Roboticsware, Inc." },
    {  441,   "Nachi Fujikoshi Corporation" },
    {  442,   "Hengstler GmbH" },
-   {  443,   "Reserved" },
+   {  443,   "Vacon Plc" },
    {  444,   "SUNNY GIKEN Inc." },
    {  445,   "Lenze Drive Systems GmbH" },
    {  446,   "CD Systems B.V." },
@@ -1960,8 +2017,8 @@ static const value_string cip_vendor_vals[] = {
    {  449,   "Embedded System Products, Inc." },
    {  450,   "Reserved" },
    {  451,   "Mencom Corporation" },
-   {  452,   "Reserved" },
-   {  453,   "Matsushita Welding Systems Co., Ltd." },
+   {  452,   "Kollmorgen" },
+   {  453,   "Panasonic Connect Co., Ltd." },
    {  454,   "Dengensha Mfg. Co. Ltd." },
    {  455,   "Quinn Systems Ltd." },
    {  456,   "Tellima Technology Ltd" },
@@ -1972,14 +2029,14 @@ static const value_string cip_vendor_vals[] = {
    {  461,   "INSTRUMAR Limited" },
    {  462,   "Reserved" },
    {  463,   "Navistar International Transportation Corp" },
-   {  464,   "Huettinger Elektronik GmbH + Co. KG" },
+   {  464,   "TRUMPF Huettinger" },
    {  465,   "OCM Technology Inc." },
    {  466,   "Professional Supply Inc." },
    {  467,   "Control Solutions" },
    {  468,   "Baumer IVO GmbH & Co. KG" },
    {  469,   "Worcester Controls Corporation" },
    {  470,   "Pyramid Technical Consultants, Inc." },
-   {  471,   "Reserved" },
+   {  471,   "Eilersen Electric A/S" },
    {  472,   "Apollo Fire Detectors Limited" },
    {  473,   "Avtron Manufacturing, Inc." },
    {  474,   "Reserved" },
@@ -1990,13 +2047,13 @@ static const value_string cip_vendor_vals[] = {
    {  479,   "Tatsuta Electric Wire & Cable Co., Ltd." },
    {  480,   "MECS Corporation" },
    {  481,   "Tahara Electric" },
-   {  482,   "Koyo Electronics" },
+   {  482,   "JTEKT ELECTRONICS CORPORATION" },
    {  483,   "Clever Devices" },
    {  484,   "GCD Hardware & Software GmbH" },
    {  485,   "Reserved" },
    {  486,   "Miller Electric Mfg Co." },
    {  487,   "GEA Tuchenhagen GmbH" },
-   {  488,   "Riken Keiki Co., LTD" },
+   {  488,   "Riken Keiki Co., Ltd." },
    {  489,   "Keisokugiken Corporation" },
    {  490,   "Fuji Machine Mfg. Co., Ltd" },
    {  491,   "Reserved" },
@@ -2009,7 +2066,7 @@ static const value_string cip_vendor_vals[] = {
    {  498,   "Shimaden Co. Ltd." },
    {  499,   "Teddington Controls Ltd" },
    {  500,   "Reserved" },
-   {  501,   "VIPA GmbH" },
+   {  501,   "YASKAWA Europe (formerly VIPA GmbH)" },
    {  502,   "Warwick Manufacturing Group" },
    {  503,   "Danaher Controls" },
    {  504,   "Reserved" },
@@ -2029,26 +2086,26 @@ static const value_string cip_vendor_vals[] = {
    {  518,   "Michiproducts Co., Ltd." },
    {  519,   "Miura Corporation" },
    {  520,   "TG Information Network Co., Ltd." },
-   {  521,   "Fujikin , Inc." },
+   {  521,   "Fujikin, Inc." },
    {  522,   "Estic Corp." },
    {  523,   "GS Hydraulic Sales" },
-   {  524,   "Reserved" },
+   {  524,   "Leuze Electronic GmbH & Co. KG" },
    {  525,   "MTE Limited" },
    {  526,   "Hyde Park Electronics, Inc." },
    {  527,   "Pfeiffer Vacuum GmbH" },
    {  528,   "Cyberlogic Technologies" },
    {  529,   "OKUMA Corporation FA Systems Division" },
    {  530,   "Reserved" },
-   {  531,   "Hitachi Kokusai Electric Co., Ltd." },
-   {  532,   "SHINKO TECHNOS Co., Ltd." },
-   {  533,   "Itoh Electric Co., Ltd." },
+   {  531,   "Kokusai Electric Corporation" },
+   {  532,   "SHINKO TECHNOS" },
+   {  533,   "Itoh Denki Co., Ltd." },
    {  534,   "Colorado Flow Tech Inc." },
    {  535,   "Love Controls Division/Dwyer Inst." },
    {  536,   "Alstom Drives and Controls" },
    {  537,   "The Foxboro Company" },
    {  538,   "Tescom Corporation" },
    {  539,   "Reserved" },
-   {  540,   "Atlas Copco Controls UK" },
+   {  540,   "Atlas Copco Airpower NV" },
    {  541,   "Reserved" },
    {  542,   "Autojet Technologies" },
    {  543,   "Prima Electronics S.p.A." },
@@ -2056,7 +2113,7 @@ static const value_string cip_vendor_vals[] = {
    {  545,   "Shimafuji Electric Co., Ltd" },
    {  546,   "Oki Electric Industry Co., Ltd" },
    {  547,   "Kyushu Matsushita Electric Co., Ltd" },
-   {  548,   "Nihon Electric Wire & Cable Co., Ltd" },
+   {  548,   "JMACS" },
    {  549,   "Tsuken Electric Ind Co., Ltd" },
    {  550,   "Tamadic Co." },
    {  551,   "MAATEL SA" },
@@ -2068,19 +2125,19 @@ static const value_string cip_vendor_vals[] = {
    {  557,   "Serra Soldadura, S.A." },
    {  558,   "Southwest Research Institute" },
    {  559,   "Cabinplant International" },
-   {  560,   "Sartorius Mechatronics T&H GmbH" },
-   {  561,   "Comau S.p.A. Robotics & Final Assembly Division" },
+   {  560,   "Minebea Intec" },
+   {  561,   "Comau S.p.A." },
    {  562,   "Phoenix Contact" },
    {  563,   "Yokogawa MAT Corporation" },
    {  564,   "asahi sangyo co., ltd." },
-   {  565,   "Reserved" },
+   {  565,   "Valcom" },
    {  566,   "Akita Myotoku Ltd." },
    {  567,   "OBARA Corp." },
    {  568,   "Suetron Electronic GmbH" },
    {  569,   "Reserved" },
    {  570,   "Serck Controls Limited" },
    {  571,   "Fairchild Industrial Products Company" },
-   {  572,   "ARO S.A." },
+   {  572,   "ARO Welding Technologies S.A.S." },
    {  573,   "M2C GmbH" },
    {  574,   "Shin Caterpillar Mitsubishi Ltd." },
    {  575,   "Santest Co., Ltd." },
@@ -2089,19 +2146,19 @@ static const value_string cip_vendor_vals[] = {
    {  578,   "Smartscan Ltd" },
    {  579,   "Woodhead Software & Electronics France" },
    {  580,   "Athena Controls, Inc." },
-   {  581,   "Syron Engineering & Manufacturing, Inc." },
+   {  581,   "Norgren Automation Solutions, LLC (previously Syron Engineering & Manufacturing, Inc.)" },
    {  582,   "Asahi Optical Co., Ltd." },
-   {  583,   "Sansha Electric Mfg. Co., Ltd." },
-   {  584,   "Nikki Denso Co., Ltd." },
+   {  583,   "Sansha Electric Mfg. Co.,Ltd." },
+   {  584,   "CKD Nikki Denso Co,. Ltd." },
    {  585,   "Star Micronics, Co., Ltd." },
    {  586,   "Ecotecnia Socirtat Corp." },
-   {  587,   "AC Technology Corp." },
+   {  587,   "Lenze" },
    {  588,   "West Instruments Limited" },
-   {  589,   "NTI Limited" },
+   {  589,   "LinMot" },
    {  590,   "Delta Computer Systems, Inc." },
-   {  591,   "FANUC Ltd." },
+   {  591,   "FANUC CORPORATION" },
    {  592,   "Hearn-Gu Lee" },
-   {  593,   "ABB Automation Products" },
+   {  593,   "ABB AG" },
    {  594,   "Orion Machinery Co., Ltd." },
    {  595,   "Reserved" },
    {  596,   "Wire-Pro, Inc." },
@@ -2109,9 +2166,9 @@ static const value_string cip_vendor_vals[] = {
    {  598,   "Yokoyama Shokai Co., Ltd." },
    {  599,   "Toyogiken Co., Ltd." },
    {  600,   "Coester Equipamentos Eletronicos Ltda." },
-   {  601,   "Reserved" },
+   {  601,   "Kawasaki Robot" },
    {  602,   "Electroplating Engineers of Japan Ltd." },
-   {  603,   "ROBOX S.p.A." },
+   {  603,   "Robox S.p.a." },
    {  604,   "Spraying Systems Company" },
    {  605,   "Benshaw Inc." },
    {  606,   "ZPA-DP A.S." },
@@ -2133,16 +2190,16 @@ static const value_string cip_vendor_vals[] = {
    {  622,   "Network Supply Co., Ltd." },
    {  623,   "Union Electronics Co., Ltd." },
    {  624,   "Tritronics Services PM Ltd." },
-   {  625,   "Rockwell Automation-Sprecher+Schuh" },
-   {  626,   "Matsushita Electric Industrial Co., Ltd/Motor Co." },
+   {  625,   "Rockwell Automation/Sprecher+Schuh" },
+   {  626,   "Panasonic Corporation/Motor Company" },
    {  627,   "Rolls-Royce Energy Systems, Inc." },
    {  628,   "JEONGIL INTERCOM CO., LTD" },
-   {  629,   "Interroll Corp." },
+   {  629,   "Interroll Software & Electronics GmbH" },
    {  630,   "Hubbell Wiring Device-Kellems (Delaware)" },
    {  631,   "Intelligent Motion Systems" },
    {  632,   "Reserved" },
    {  633,   "INFICON AG" },
-   {  634,   "Hirschmann, Inc." },
+   {  634,   "Hirschmann, a Belden brand" },
    {  635,   "The Siemon Company" },
    {  636,   "YAMAHA Motor Co. Ltd." },
    {  637,   "aska corporation" },
@@ -2153,7 +2210,7 @@ static const value_string cip_vendor_vals[] = {
    {  642,   "TopWorx" },
    {  643,   "Kumho Industrial Co., Ltd." },
    {  644,   "Wind River Systems, Inc." },
-   {  645,   "Bihl & Wiedemann GmbH" },
+   {  645,   "Bihl + Wiedemann GmbH" },
    {  646,   "Harmonic Drive Systems Inc." },
    {  647,   "Rikei Corporation" },
    {  648,   "BL Autotec, Ltd." },
@@ -2161,48 +2218,47 @@ static const value_string cip_vendor_vals[] = {
    {  650,   "Seoil Electric Co., Ltd." },
    {  651,   "Fife Corporation" },
    {  652,   "Shanghai Electrical Apparatus Research Institute" },
-   {  653,   "Reserved" },
+   {  653,   "Detector Electronics" },
    {  654,   "Parasense Development Centre" },
    {  655,   "Reserved" },
    {  656,   "Reserved" },
    {  657,   "Six Tau S.p.A." },
    {  658,   "Aucos GmbH" },
-   {  659,   "Rotork Controls" },
+   {  659,   "Rotork Controls Ltd." },
    {  660,   "Automationdirect.com" },
    {  661,   "Thermo BLH" },
    {  662,   "System Controls, Ltd." },
    {  663,   "Univer S.p.A." },
    {  664,   "MKS-Tenta Technology" },
-   {  665,   "Lika Electronic SNC" },
-   {  666,   "Mettler-Toledo, Inc." },
+   {  665,   "Lika Electronic" },
+   {  666,   "Mettler-Toledo" },
    {  667,   "DXL USA Inc." },
    {  668,   "Rockwell Automation/Entek IRD Intl." },
    {  669,   "Nippon Otis Elevator Company" },
    {  670,   "Sinano Electric, Co., Ltd." },
    {  671,   "Sony Manufacturing Systems" },
    {  672,   "Reserved" },
-   {  673,   "Contec Co., Ltd." },
+   {  673,   "CONTEC CO., LTD." },
    {  674,   "Automated Solutions" },
    {  675,   "Controlweigh" },
-   {  676,   "Reserved" },
    {  677,   "Fincor Electronics" },
    {  678,   "Cognex Corporation" },
    {  679,   "Qualiflow" },
    {  680,   "Weidmuller, Inc." },
    {  681,   "Morinaga Milk Industry Co., Ltd." },
    {  682,   "Takagi Industrial Co., Ltd." },
-   {  683,   "Wittenstein AG" },
+   {  683,   "Wittenstein SE" },
    {  684,   "Sena Technologies, Inc." },
    {  685,   "Reserved" },
-   {  686,   "APV Products Unna" },
+   {  686,   "SPX Flow Technology Germany GmbH" },
    {  687,   "Creator Teknisk Utvedkling AB" },
    {  688,   "Reserved" },
    {  689,   "Mibu Denki Industrial Co., Ltd." },
    {  690,   "Takamastsu Machineer Section" },
-   {  691,   "Startco Engineering Ltd." },
+   {  691,   "Littelfuse" },
    {  692,   "Reserved" },
    {  693,   "Holjeron" },
-   {  694,   "ALCATEL High Vacuum Technology" },
+   {  694,   "Pfeiffer Vacuum SAS" },
    {  695,   "Taesan LCD Co., Ltd." },
    {  696,   "POSCON" },
    {  697,   "VMIC" },
@@ -2225,11 +2281,11 @@ static const value_string cip_vendor_vals[] = {
    {  714,   "Goyo Electronics Co, Ltd." },
    {  715,   "Loreme" },
    {  716,   "SAB Brockskes GmbH & Co. KG" },
-   {  717,   "Trumpf Laser GmbH + Co. KG" },
+   {  717,   "Trumpf Laser GmbH" },
    {  718,   "Niigata Electronic Instruments Co., Ltd." },
    {  719,   "Yokogawa Digital Computer Corporation" },
    {  720,   "O.N. Electronic Co., Ltd." },
-   {  721,   "Industrial Control  Communication, Inc." },
+   {  721,   "Industrial Control Communication, Inc." },
    {  722,   "ABB, Inc." },
    {  723,   "ElectroWave USA, Inc." },
    {  724,   "Industrial Network Controls, LLC" },
@@ -2248,14 +2304,13 @@ static const value_string cip_vendor_vals[] = {
    {  737,   "Adwin Corporation" },
    {  738,   "Osaka Vacuum, Ltd." },
    {  739,   "A-Kyung Motion, Inc." },
-   {  740,   "Camozzi S.P. A." },
+   {  740,   "Camozzi Automation spa" },
    {  741,   "Crevis Co., LTD" },
    {  742,   "Rice Lake Weighing Systems" },
    {  743,   "Linux Network Services" },
-   {  744,   "KEB Antriebstechnik GmbH" },
+   {  744,   "KEB Automation KG" },
    {  745,   "Hagiwara Electric Co., Ltd." },
    {  746,   "Glass Inc. International" },
-   {  747,   "Reserved" },
    {  748,   "DVT Corporation" },
    {  749,   "Woodward Governor" },
    {  750,   "Mosaic Systems, Inc." },
@@ -2286,8 +2341,8 @@ static const value_string cip_vendor_vals[] = {
    {  775,   "Dijitized Communications Inc." },
    {  776,   "Asahi Organic Chemicals Industry Co., Ltd." },
    {  777,   "Hodensha" },
-   {  778,   "Harting, Inc. NA" },
-   {  779,   "Kubler GmbH" },
+   {  778,   "HARTING, Inc. of North America" },
+   {  779,   "Kuebler GmbH" },
    {  780,   "Yamatake Corporation" },
    {  781,   "JEOL" },
    {  782,   "Yamatake Industrial Systems Co., Ltd." },
@@ -2301,13 +2356,13 @@ static const value_string cip_vendor_vals[] = {
    {  790,   "Seishin Engineering Co., Ltd." },
    {  791,   "Japan Support System Ltd." },
    {  792,   "Decsys" },
-   {  793,   "Metronix Messgerate u. Elektronik GmbH" },
-   {  794,   "Reserved" },
+   {  793,   "Metronix Messgeraete und Elektronik GmbH" },
+   {  794,   "ROPEX Industrie - Elektronik GmbH" },
    {  795,   "Vaccon Company, Inc." },
-   {  796,   "Siemens Energy & Automation, Inc." },
+   {  796,   "Siemens Industry, Inc." },
    {  797,   "Ten X Technology, Inc." },
-   {  798,   "Tyco Electronics" },
-   {  799,   "Delta Power Electronics Center" },
+   {  798,   "TE Connectivity" },
+   {  799,   "Delta Electronics, Inc." },
    {  800,   "Denker" },
    {  801,   "Autonics Corporation" },
    {  802,   "JFE Electronic Engineering Pty. Ltd." },
@@ -2332,17 +2387,17 @@ static const value_string cip_vendor_vals[] = {
    {  821,   "Bethlehem Steel Corporation" },
    {  822,   "KK ICP" },
    {  823,   "Takemoto Denki Corporation" },
-   {  824,   "The Montalvo Corporation" },
+   {  824,   "Montalvo Corporation" },
    {  825,   "Reserved" },
    {  826,   "LEONI Special Cables GmbH" },
    {  827,   "Reserved" },
    {  828,   "ONO SOKKI CO.,LTD." },
-   {  829,   "Rockwell Samsung Automation" },
+   {  829,   "RS Automation Co., Ltd." },
    {  830,   "SHINDENGEN ELECTRIC MFG. CO. LTD" },
    {  831,   "Origin Electric Co. Ltd." },
    {  832,   "Quest Technical Solutions, Inc." },
-   {  833,   "LS Cable, Ltd." },
-   {  834,   "Enercon-Nord Electronic GmbH" },
+   {  833,   "LS Cable" },
+   {  834,   "NORD Electronic DRIVESYSTEMS GmbH" },
    {  835,   "Northwire Inc." },
    {  836,   "Engel Elektroantriebe GmbH" },
    {  837,   "The Stanley Works" },
@@ -2355,14 +2410,14 @@ static const value_string cip_vendor_vals[] = {
    {  844,   "Brooks Automation, Inc." },
    {  845,   "ANYWIRE CORPORATION" },
    {  846,   "Honda Electronics Co. Ltd" },
-   {  847,   "REO Elektronik AG" },
-   {  848,   "Fusion UV Systems, Inc." },
+   {  847,   "REO AG" },
+   {  848,   "Heraeus Noblelight Fusion UV Inc." },
    {  849,   "ASI Advanced Semiconductor Instruments GmbH" },
    {  850,   "Datalogic, Inc." },
    {  851,   "SoftPLC Corporation" },
    {  852,   "Dynisco Instruments LLC" },
-   {  853,   "WEG Industrias SA" },
-   {  854,   "Frontline Test Equipment, Inc." },
+   {  853,   "WEG" },
+   {  854,   "Teledyne LeCroy (formerly Frontline Test Equipment)" },
    {  855,   "Tamagawa Seiki Co., Ltd." },
    {  856,   "Multi Computing Co., Ltd." },
    {  857,   "RVSI" },
@@ -2372,18 +2427,18 @@ static const value_string cip_vendor_vals[] = {
    {  861,   "Reflex Integration Inc." },
    {  862,   "Siemens AG, A&D PI Flow Instruments" },
    {  863,   "G. Bachmann Electronic GmbH" },
-   {  864,   "NT International" },
+   {  864,   "Entegris, Inc." },
    {  865,   "Schweitzer Engineering Laboratories" },
    {  866,   "ATR Industrie-Elektronik GmbH Co." },
    {  867,   "PLASMATECH Co., Ltd" },
    {  868,   "Reserved" },
-   {  869,   "GEMU GmbH & Co. KG" },
+   {  869,   "GEMUE GmbH & Co. KG" },
    {  870,   "Alcorn McBride Inc." },
    {  871,   "MORI SEIKI CO., LTD" },
    {  872,   "NodeTech Systems Ltd" },
    {  873,   "Emhart Teknologies" },
    {  874,   "Cervis, Inc." },
-   {  875,   "FieldServer Technologies (Div Sierra Monitor Corp)" },
+   {  875,   "MSA Safety" },
    {  876,   "NEDAP Power Supplies" },
    {  877,   "Nippon Sanso Corporation" },
    {  878,   "Mitomi Giken Co., Ltd." },
@@ -2393,45 +2448,44 @@ static const value_string cip_vendor_vals[] = {
    {  882,   "Embedded Systems Korea (Former Zues Emtek Co Ltd.)" },
    {  883,   "Automa SRL" },
    {  884,   "Harms+Wende GmbH & Co KG" },
-   {  885,   "SAE-STAHL GmbH" },
+   {  885,   "R. STAHL" },
    {  886,   "Microwave Data Systems" },
-   {  887,   "B&R Industrial Automation GmbH" },
+   {  887,   "Bernecker + Rainer Industrie-Elektronik GmbH" },
    {  888,   "Hiprom Technologies" },
    {  889,   "Reserved" },
    {  890,   "Nitta Corporation" },
    {  891,   "Kontron Modular Computers GmbH" },
    {  892,   "Marlin Controls" },
-   {  893,   "ELCIS s.r.l." },
+   {  893,   "Elcis Encoder s.r.l." },
    {  894,   "Acromag, Inc." },
    {  895,   "Avery Weigh-Tronix" },
    {  896,   "Reserved" },
    {  897,   "Reserved" },
-   {  898,   "Reserved" },
-   {  899,   "Practicon Ltd" },
-   {  900,   "Schunk GmbH & Co. KG" },
+   {  899,   "Practicon Ltd." },
+   {  900,   "SCHUNK GmbH & Co. KG" },
    {  901,   "MYNAH Technologies" },
    {  902,   "Defontaine Groupe" },
    {  903,   "Emerson Process Management Power & Water Solutions" },
    {  904,   "F.A. Elec" },
    {  905,   "Hottinger Baldwin Messtechnik GmbH" },
-   {  906,   "Coreco Imaging, Inc." },
+   {  906,   "Teledyne DALSA" },
    {  907,   "London Electronics Ltd." },
    {  908,   "HSD SpA" },
-   {  909,   "Comtrol Corporation" },
+   {  909,   "Pepperl+Fuchs Comtrol" },
    {  910,   "TEAM, S.A. (Tecnica Electronica de Automatismo Y Medida)" },
-   {  911,   "MAN B&W Diesel Ltd. Regulateurs Europa" },
+   {  911,   "Regulateurs Europa Ltd" },
    {  912,   "Reserved" },
    {  913,   "Reserved" },
-   {  914,   "Micro Motion, Inc." },
+   {  914,   "Micro Motion" },
    {  915,   "Eckelmann AG" },
    {  916,   "Hanyoung Nux" },
-   {  917,   "Ransburg Industrial Finishing KK" },
+   {  917,   "CFT Ransburg Japan KK" },
    {  918,   "Kun Hung Electric Co. Ltd." },
    {  919,   "Brimos wegbebakening b.v." },
-   {  920,   "Nitto Seiki Co., Ltd" },
-   {  921,   "PPT Vision, Inc." },
+   {  920,   "NITTO SEIKO CO., LTD." },
+   {  921,   "Datasensing S.r.l." },
    {  922,   "Yamazaki Machinery Works" },
-   {  923,   "SCHMIDT Technology GmbH" },
+   {  923,   "Schmidt Technology" },
    {  924,   "Parker Hannifin SpA (SBC Division)" },
    {  925,   "HIMA Paul Hildebrandt GmbH" },
    {  926,   "RivaTek, Inc." },
@@ -2444,7 +2498,7 @@ static const value_string cip_vendor_vals[] = {
    {  933,   "HK Systems" },
    {  934,   "CDA Systems Ltd." },
    {  935,   "Aerotech Inc." },
-   {  936,   "JVL Industrie Elektronik A/S" },
+   {  936,   "JVL A/S" },
    {  937,   "NovaTech Process Solutions LLC" },
    {  938,   "Reserved" },
    {  939,   "Cisco Systems" },
@@ -2452,46 +2506,46 @@ static const value_string cip_vendor_vals[] = {
    {  941,   "ITW Automotive Finishing" },
    {  942,   "HanYang System" },
    {  943,   "ABB K.K. Technical Center" },
-   {  944,   "Taiyo Electric Wire & Cable Co., Ltd." },
+   {  944,   "Taiyo Cable (Dongguan) Co., Ltd." },
    {  945,   "Reserved" },
    {  946,   "SEREN IPS INC" },
-   {  947,   "Belden CDT Electronics Division" },
+   {  947,   "Belden" },
    {  948,   "ControlNet International" },
    {  949,   "Gefran S.P.A." },
-   {  950,   "Jokab Safety AB" },
+   {  950,   "ABB (Jokab Safety)" },
    {  951,   "SUMITA OPTICAL GLASS, INC." },
    {  952,   "Biffi Italia srl" },
    {  953,   "Beck IPC GmbH" },
-   {  954,   "Copley Controls Corporation" },
+   {  954,   "Copley Controls" },
    {  955,   "Fagor Automation S. Coop." },
    {  956,   "DARCOM" },
    {  957,   "Frick Controls (div. of York International)" },
    {  958,   "SymCom, Inc." },
    {  959,   "Infranor" },
-   {  960,   "Kyosan Cable, Ltd." },
+   {  960,   "Kyosan Electric Mfg" },
    {  961,   "Varian Vacuum Technologies" },
    {  962,   "Messung Systems" },
    {  963,   "Xantrex Technology, Inc." },
    {  964,   "StarThis Inc." },
-   {  965,   "Chiyoda Co., Ltd." },
+   {  965,   "NF Chiyoda Electronics Co., Ltd." },
    {  966,   "Flowserve Corporation" },
    {  967,   "Spyder Controls Corp." },
    {  968,   "IBA AG" },
    {  969,   "SHIMOHIRA ELECTRIC MFG.CO.,LTD" },
    {  970,   "Reserved" },
    {  971,   "Siemens L&A" },
-   {  972,   "Micro Innovations AG" },
+   {  972,   "Eaton Automation GmbH (formerly Micro Innovation)" },
    {  973,   "Switchgear & Instrumentation" },
-   {  974,   "PRE-TECH CO., LTD." },
+   {  974,   "Pre-Tech Co., Ltd." },
    {  975,   "National Semiconductor" },
-   {  976,   "Invensys Process Systems" },
+   {  976,   "Invensys Operations Management" },
    {  977,   "Ametek HDR Power Systems" },
    {  978,   "Reserved" },
    {  979,   "TETRA-K Corporation" },
-   {  980,   "C & M Corporation" },
+   {  980,   "C&M Corporation" },
    {  981,   "Siempelkamp Maschinen" },
    {  982,   "Reserved" },
-   {  983,   "Daifuku America Corporation" },
+   {  983,   "Daifuku Co., Ltd" },
    {  984,   "Electro-Matic Products Inc." },
    {  985,   "BUSSAN MICROELECTRONICS CORP." },
    {  986,   "ELAU AG" },
@@ -2499,7 +2553,7 @@ static const value_string cip_vendor_vals[] = {
    {  988,   "NIIGATA POWER SYSTEMS Co., Ltd." },
    {  989,   "Software Horizons Inc." },
    {  990,   "B3 Systems, Inc." },
-   {  991,   "Moxa Networking Co., Ltd." },
+   {  991,   "Moxa, Inc." },
    {  992,   "Reserved" },
    {  993,   "S4 Integration" },
    {  994,   "Elettro Stemi S.R.L." },
@@ -2514,18 +2568,18 @@ static const value_string cip_vendor_vals[] = {
    { 1003,   "ARCX Inc." },
    { 1004,   "DELTA I/O Co." },
    { 1005,   "Chun IL Electric Ind. Co." },
-   { 1006,   "N-Tron" },
+   { 1006,   "N-Tron Corporation, a Red Lion Company" },
    { 1007,   "Nippon Pneumatics/Fludics System CO.,LTD." },
    { 1008,   "DDK Ltd." },
    { 1009,   "Seiko Epson Corporation" },
-   { 1010,   "Halstrup-Walcher GmbH" },
+   { 1010,   "halstrup-walcher GmbH" },
    { 1011,   "ITT" },
    { 1012,   "Ground Fault Systems bv" },
    { 1013,   "Scolari Engineering S.p.A." },
    { 1014,   "Vialis Traffic bv" },
-   { 1015,   "Weidmueller Interface GmbH & Co. KG" },
+   { 1015,   "Weidmueller Group" },
    { 1016,   "Shanghai Sibotech Automation Co. Ltd" },
-   { 1017,   "AEG Power Supply Systems GmbH" },
+   { 1017,   "AEG Power Solutions GmbH" },
    { 1018,   "Komatsu Electronics Inc." },
    { 1019,   "Souriau" },
    { 1020,   "Baumuller Chicago Corp." },
@@ -2549,7 +2603,7 @@ static const value_string cip_vendor_vals[] = {
    { 1038,   "Hurletron Inc." },
    { 1039,   "Chunichi Denshi Co., Ltd" },
    { 1040,   "Cardinal Scale Mfg. Co." },
-   { 1041,   "BTR NETCOM via RIA Connect, Inc." },
+   { 1041,   "METZ CONNECT USA Inc." },
    { 1042,   "Base2" },
    { 1043,   "ASRC Aerospace" },
    { 1044,   "Beijing Stone Automation" },
@@ -2568,18 +2622,18 @@ static const value_string cip_vendor_vals[] = {
    { 1057,   "Haas Automation, Inc." },
    { 1058,   "Eshed Technology" },
    { 1059,   "Delta Electronic Inc." },
-   { 1060,   "Innovasic Semiconductor" },
+   { 1060,   "Innovasic" },
    { 1061,   "SoftDEL Systems Limited" },
    { 1062,   "FiberFin, Inc." },
    { 1063,   "Nicollet Technologies Corp." },
    { 1064,   "B.F. Systems" },
    { 1065,   "Empire Wire and Supply LLC" },
-   { 1066,   "Reserved" },
+   { 1066,   "ENDO KOGYO CO., LTD" },
    { 1067,   "Elmo Motion Control LTD" },
    { 1068,   "Reserved" },
    { 1069,   "Asahi Keiki Co., Ltd." },
    { 1070,   "Joy Mining Machinery" },
-   { 1071,   "MPM Engineering Ltd" },
+   { 1071,   "MPM Engineering Ltd." },
    { 1072,   "Wolke Inks & Printers GmbH" },
    { 1073,   "Mitsubishi Electric Engineering Co., Ltd." },
    { 1074,   "COMET AG" },
@@ -2594,18 +2648,18 @@ static const value_string cip_vendor_vals[] = {
    { 1083,   "ABB Global Services Limited" },
    { 1084,   "Sciemetric Instruments Inc." },
    { 1085,   "Tata Elxsi Ltd." },
-   { 1086,   "TPC Mechatronics, Co., Ltd." },
+   { 1086,   "Mechatronics Co.,Ltd" },
    { 1087,   "Cooper Bussmann" },
    { 1088,   "Trinite Automatisering B.V." },
    { 1089,   "Peek Traffic B.V." },
-   { 1090,   "Acrison, Inc" },
+   { 1090,   "Acrison, Inc." },
    { 1091,   "Applied Robotics, Inc." },
-   { 1092,   "FireBus Systems, Inc." },
-   { 1093,   "Beijing Sevenstar Huachuang Electronics" },
+   { 1092,   "FireBus LLC" },
+   { 1093,   "Sevenstar" },
    { 1094,   "Magnetek" },
-   { 1095,   "Microscan" },
+   { 1095,   "Omron Microscan Systems, Inc." },
    { 1096,   "Air Water Inc." },
-   { 1097,   "Sensopart Industriesensorik GmbH" },
+   { 1097,   "SensoPart Industriesensorik GmbH" },
    { 1098,   "Tiefenbach Control Systems GmbH" },
    { 1099,   "INOXPA S.A" },
    { 1100,   "Zurich University of Applied Sciences" },
@@ -2613,43 +2667,56 @@ static const value_string cip_vendor_vals[] = {
    { 1102,   "GSI-Micro-E Systems" },
    { 1103,   "S-Net Automation Co., Ltd." },
    { 1104,   "Power Electronics S.L." },
-   { 1105,   "Renesas Technology Corp." },
+   { 1105,   "Renesas Electronics" },
    { 1106,   "NSWCCD-SSES" },
    { 1107,   "Porter Engineering Ltd." },
    { 1108,   "Meggitt Airdynamics, Inc." },
    { 1109,   "Inductive Automation" },
    { 1110,   "Neural ID" },
    { 1111,   "EEPod LLC" },
-   { 1112,   "Hitachi Industrial Equipment Systems Co., Ltd." },
+   { 1112,   "Hitachi Industrial Equipment Systems Co.,Ltd." },
    { 1113,   "Salem Automation" },
    { 1114,   "port GmbH" },
    { 1115,   "B & PLUS" },
    { 1116,   "Graco Inc." },
    { 1117,   "Altera Corporation" },
    { 1118,   "Technology Brewing Corporation" },
+   { 1119,   "Reserved" },
+   { 1120,   "Reserved" },
    { 1121,   "CSE Servelec" },
+   { 1122,   "Reserved" },
+   { 1123,   "Reserved" },
    { 1124,   "Fluke Networks" },
-   { 1125,   "Tetra Pak Packaging Solutions SPA" },
+   { 1125,   "Tetra Pak Packaging Solutions SpA" },
    { 1126,   "Racine Federated, Inc." },
    { 1127,   "Pureron Japan Co., Ltd." },
+   { 1128,   "Reserved" },
+   { 1129,   "Reserved" },
    { 1130,   "Brother Industries, Ltd." },
+   { 1131,   "Reserved" },
    { 1132,   "Leroy Automation" },
-   { 1134,   "THK CO., LTD." },
+   { 1133,   "Reserved" },
+   { 1134,   "THK Co., Ltd." },
+   { 1135,   "Reserved" },
+   { 1136,   "Reserved" },
    { 1137,   "TR-Electronic GmbH" },
    { 1138,   "ASCON S.p.A." },
    { 1139,   "Toledo do Brasil Industria de Balancas Ltda." },
-   { 1140,   "Bucyrus DBT Europe GmbH" },
+   { 1140,   "Caterpillar Global Mining Europe GmbH" },
    { 1141,   "Emerson Process Management Valve Automation" },
    { 1142,   "Alstom Transport" },
+   { 1143,   "Reserved" },
    { 1144,   "Matrox Electronic Systems" },
    { 1145,   "Littelfuse" },
    { 1146,   "PLASMART, Inc." },
    { 1147,   "Miyachi Corporation" },
+   { 1148,   "Reserved" },
+   { 1149,   "Reserved" },
    { 1150,   "Promess Incorporated" },
    { 1151,   "COPA-DATA GmbH" },
    { 1152,   "Precision Engine Controls Corporation" },
    { 1153,   "Alga Automacao e controle LTDA" },
-   { 1154,   "U.I. Lapp GmbH" },
+   { 1154,   "Lapp Group" },
    { 1155,   "ICES" },
    { 1156,   "Philips Lighting bv" },
    { 1157,   "Aseptomag AG" },
@@ -2657,31 +2724,38 @@ static const value_string cip_vendor_vals[] = {
    { 1159,   "Hesmor GmbH" },
    { 1160,   "Kobe Steel, Ltd." },
    { 1161,   "FLIR Systems" },
-   { 1162,   "Simcon A/S" },
-   { 1163,   "COPALP" },
+   { 1162,   "Xcelgo A/S" },
+   { 1163,   "STRATON AUTOMATION" },
    { 1164,   "Zypcom, Inc." },
    { 1165,   "Swagelok" },
    { 1166,   "Elspec" },
    { 1167,   "ITT Water & Wastewater AB" },
    { 1168,   "Kunbus GmbH Industrial Communication" },
+   { 1169,   "Reserved" },
    { 1170,   "Performance Controls, Inc." },
    { 1171,   "ACS Motion Control, Ltd." },
+   { 1172,   "Reserved" },
    { 1173,   "IStar Technology Limited" },
    { 1174,   "Alicat Scientific, Inc." },
+   { 1175,   "Reserved" },
    { 1176,   "ADFweb.com SRL" },
    { 1177,   "Tata Consultancy Services Limited" },
    { 1178,   "CXR Ltd." },
    { 1179,   "Vishay Nobel AB" },
-   { 1181,   "SolaHD" },
+   { 1180,   "Reserved" },
+   { 1181,   "Emerson - SolaHD" },
    { 1182,   "Endress+Hauser" },
    { 1183,   "Bartec GmbH" },
+   { 1184,   "Reserved" },
    { 1185,   "AccuSentry, Inc." },
-   { 1186,   "Exlar Corporation" },
+   { 1186,   "Curtiss Wright - Exlar Actuator Solutions" },
    { 1187,   "ILS Technology" },
-   { 1188,   "Control Concepts Inc." },
-   { 1190,   "Procon Engineering Limited" },
-   { 1191,   "Hermary Opto Electronics Inc." },
+   { 1188,   "Control Concepts, Inc." },
+   { 1189,   "Reserved" },
+   { 1190,   "Procon Engineering A Division of National Oilwell Varco UK Ltd" },
+   { 1191,   "Hermary" },
    { 1192,   "Q-Lambda" },
+   { 1193,   "Reserved" },
    { 1194,   "VAMP Ltd" },
    { 1195,   "FlexLink" },
    { 1196,   "Office FA.com Co., Ltd." },
@@ -2701,7 +2775,7 @@ static const value_string cip_vendor_vals[] = {
    { 1210,   "Monaghan Engineering, Inc." },
    { 1211,   "wenglor sensoric gmbh" },
    { 1212,   "HSA Systems" },
-   { 1213,   "MK Precision Co., Ltd." },
+   { 1213,   "MKP Co., Ltd." },
    { 1214,   "Tappan Wire and Cable" },
    { 1215,   "Heinzmann GmbH & Co. KG" },
    { 1216,   "Process Automation International Ltd." },
@@ -2711,7 +2785,7 @@ static const value_string cip_vendor_vals[] = {
    { 1220,   "ABT Endustri Enerji Sistemleri Sanayi Tic. Ltd. Sti." },
    { 1221,   "MagneMotion Inc." },
    { 1222,   "STS Co., Ltd." },
-   { 1223,   "MERAK SIC, SA" },
+   { 1223,   "Knorr-Bremse Espana, S.A. - Merak Division" },
    { 1224,   "ABOUNDI, Inc." },
    { 1225,   "Rosemount Inc." },
    { 1226,   "GEA FES, Inc." },
@@ -2729,6 +2803,512 @@ static const value_string cip_vendor_vals[] = {
    { 1238,   "Global Engineering Solutions Co., Ltd." },
    { 1239,   "ALTE Transportation, S.L." },
    { 1240,   "Penko Engineering B.V." },
+   { 1241,   "Z-Tec Automation Systems Inc." },
+   { 1242,   "ENTRON Controls LLC" },
+   { 1243,   "Johannes Huebner Fabrik Elektrischer Maschinen GmbH" },
+   { 1244,   "RF IDeas, Inc." },
+   { 1245,   "Pentronic AB" },
+   { 1246,   "Atlas Copco IAS GmbH" },
+   { 1247,   "TDK-Lambda Corporation" },
+   { 1248,   "Reserved" },
+   { 1249,   "Reserved" },
+   { 1250,   "Altronic LLC" },
+   { 1251,   "Siemens AG" },
+   { 1252,   "Liebherr Transportation Systems GmbH & Co KG" },
+   { 1253,   "Reserved" },
+   { 1254,   "Reserved" },
+   { 1255,   "Reserved" },
+   { 1256,   "LMI Technologies" },
+   { 1257,   "Reserved" },
+   { 1258,   "Reserved" },
+   { 1259,   "Reserved" },
+   { 1260,   "Reserved" },
+   { 1261,   "CEPHALOS Automatisierung mbH" },
+   { 1262,   "Reserved" },
+   { 1263,   "Reserved" },
+   { 1264,   "Reserved" },
+   { 1265,   "Quabbin Wire & Cable Co., Inc." },
+   { 1266,   "Reserved" },
+   { 1267,   "Reserved" },
+   { 1268,   "HORIBA Precision Instruments (Beijing) Co.,Ltd." },
+   { 1269,   "Reserved" },
+   { 1270,   "Rovema GmbH" },
+   { 1271,   "Reserved" },
+   { 1272,   "IEP GmbH" },
+   { 1273,   "Reserved" },
+   { 1274,   "Reserved" },
+   { 1275,   "Reserved" },
+   { 1276,   "Reserved" },
+   { 1277,   "Control Chief Corporation" },
+   { 1278,   "Reserved" },
+   { 1279,   "Reserved" },
+   { 1280,   "Reserved" },
+   { 1281,   "Reserved" },
+   { 1282,   "PRIMES GmbH" },
+   { 1283,   "Branson Ultrasonics" },
+   { 1284,   "DEIF A/S" },
+   { 1285,   "CODESYS GmbH" },
+   { 1286,   "Reserved" },
+   { 1287,   "Smarteye Corporation" },
+   { 1288,   "Shibaura Machine" },
+   { 1289,   "HMS/BU Ewon" },
+   { 1290,   "OFS" },
+   { 1291,   "KROHNE" },
+   { 1292,   "Reserved" },
+   { 1293,   "Reserved" },
+   { 1294,   "Reserved" },
+   { 1295,   "Kistler Instrumente AG" },
+   { 1296,   "Reserved" },
+   { 1297,   "Reserved" },
+   { 1298,   "Reserved" },
+   { 1299,   "Reserved" },
+   { 1300,   "Reserved" },
+   { 1301,   "Xylem Analytics Germany GmbH" },
+   { 1302,   "Lenord, Bauer & Co. GmbH" },
+   { 1303,   "Carlo Gavazzi Controls" },
+   { 1304,   "Faiveley Transport" },
+   { 1305,   "Reserved" },
+   { 1306,   "Sensia LLC" },
+   { 1307,   "Kepware Technologies" },
+   { 1308,   "duagon AG" },
+   { 1309,   "Reserved" },
+   { 1310,   "Xylem Water Solutions" },
+   { 1311,   "Automation Professionals, LLC" },
+   { 1312,   "Reserved" },
+   { 1313,   "CEIA SpA" },
+   { 1314,   "Reserved" },
+   { 1315,   "Alphagate Automatisierungstechnik GmbH" },
+   { 1316,   "Mecco Partners, LLC" },
+   { 1317,   "LAP GmbH Laser Applikationen" },
+   { 1318,   "ABB S.p.A. - SACE Division" },
+   { 1319,   "Reserved" },
+   { 1320,   "Reserved" },
+   { 1321,   "C.E. Electronics, Inc." },
+   { 1322,   "Thermo Ramsey Inc., a part of Thermo Fisher Scientific" },
+   { 1323,   "Helmholz GmbH & Co. KG" },
+   { 1324,   "EUCHNER GmbH + Co. KG" },
+   { 1325,   "AMKmotion" },
+   { 1326,   "Badger Meter" },
+   { 1327,   "Reserved" },
+   { 1328,   "Fisher-Rosemount Systems, Inc. doing business as Process Systems & Solutions" },
+   { 1329,   "Conductix-Wampfler Automation GmbH" },
+   { 1330,   "Fairbanks Scales, Inc." },
+   { 1331,   "Imperx, Inc." },
+   { 1332,   "FRONIUS International GmbH" },
+   { 1333,   "Hoffman Enclosures" },
+   { 1334,   "Elecsys Corporation" },
+   { 1335,   "Reserved" },
+   { 1336,   "RACO Manufacturing and Engineering" },
+   { 1337,   "Hein Lanz Industrial Tech." },
+   { 1338,   "Codenomicon" },
+   { 1339,   "SABO Elektronik GmbH" },
+   { 1340,   "Reserved" },
+   { 1341,   "Sensirion AG" },
+   { 1342,   "SIKO GmbH" },
+   { 1343,   "Reserved" },
+   { 1344,   "GRUNDFOS" },
+   { 1345,   "Reserved" },
+   { 1346,   "Beijer Electronics Products AB" },
+   { 1347,   "Reserved" },
+   { 1348,   "AIMCO" },
+   { 1349,   "Reserved" },
+   { 1350,   "Coval" },
+   { 1351,   "Powell Industries" },
+   { 1352,   "Reserved" },
+   { 1353,   "IPDisplays" },
+   { 1354,   "SCAIME SAS" },
+   { 1355,   "Metal Work SpA" },
+   { 1356,   "Telsonic AG" },
+   { 1357,   "Reserved" },
+   { 1358,   "Hauch & Bach ApS" },
+   { 1359,   "Pago AG" },
+   { 1360,   "ULTIMATE Europe Transportation Equipment GmbH" },
+   { 1361,   "Reserved" },
+   { 1362,   "FW Murphy Production Controls, LLC" },
+   { 1363,   "Lake Cable LLC" },
+   { 1364,   "Reserved" },
+   { 1365,   "Reserved" },
+   { 1366,   "Reserved" },
+   { 1367,   "Reserved" },
+   { 1368,   "Nanotec Electronic GmbH & Co. KG" },
+   { 1369,   "SAMWON ACT Co., Ltd." },
+   { 1370,   "Aparian Inc." },
+   { 1371,   "Cosys Inc." },
+   { 1372,   "Insight Automation Inc." },
+   { 1373,   "Reserved" },
+   { 1374,   "FASTECH" },
+   { 1375,   "K.A. Schmersal GmbH & Co. KG" },
+   { 1376,   "Reserved" },
+   { 1377,   "Reserved" },
+   { 1378,   "SEIDENSHA ELECTRONICS CO., LTD" },
+   { 1379,   "Reserved" },
+   { 1380,   "Don Electronics Ltd" },
+   { 1381,   "burster gmbh & co kg" },
+   { 1382,   "Unitronics (1989) (RG) LTD" },
+   { 1383,   "OEM Technology Solutions" },
+   { 1384,   "Allied Motion" },
+   { 1385,   "Reserved" },
+   { 1386,   "DENGENSHA TOA CO., LTD" },
+   { 1387,   "Systec Systemtechnik und Industrieautomation GmbH" },
+   { 1388,   "Reserved" },
+   { 1389,   "Jenny Science AG" },
+   { 1390,   "Baumer Optronic GmbH" },
+   { 1391,   "Invertek Drives Ltd" },
+   { 1392,   "High Grade Controls Corporation" },
+   { 1393,   "Reserved" },
+   { 1394,   "Reserved" },
+   { 1395,   "Reserved" },
+   { 1396,   "Actia Systems" },
+   { 1397,   "Reserved" },
+   { 1398,   "Beijing Tianma Intelligent Control Technology Co., Ltd" },
+   { 1399,   "Universal Robots A/S" },
+   { 1400,   "Reserved" },
+   { 1401,   "Dialight" },
+   { 1402,   "E-T-A Elektrotechnische Apparate GmbH" },
+   { 1403,   "Kemppi Oy" },
+   { 1404,   "Reserved" },
+   { 1405,   "ORing Industrial Networking Corp." },
+   { 1406,   "Reserved" },
+   { 1407,   "Reserved" },
+   { 1408,   "ELAP S.R.L." },
+   { 1409,   "Applied Mining Technologies" },
+   { 1410,   "KITZ SCT Corporation" },
+   { 1411,   "VTEX Corporation" },
+   { 1412,   "ESYSE GmbH Embedded Systems Engineering" },
+   { 1413,   "Automation Controls" },
+   { 1414,   "Reserved" },
+   { 1415,   "Cincinnati Test Systems" },
+   { 1416,   "Reserved" },
+   { 1417,   "Zumbach Electronics Corp." },
+   { 1418,   "Emerson Automation Solutions" },
+   { 1419,   "CCS Inc." },
+   { 1420,   "Videojet, Inc." },
+   { 1421,   "Zebra Technologies" },
+   { 1422,   "ANRITSU CORPORATION" },
+   { 1423,   "Dimetix AG" },
+   { 1424,   "General Measure (China)" },
+   { 1425,   "Fortress Interlocks" },
+   { 1426,   "Reserved" },
+   { 1427,   "Task Force Tips" },
+   { 1428,   "SERVO-ROBOT INC." },
+   { 1429,   "Flow Devices and Systems, Inc." },
+   { 1430,   "nLIGHT, Inc." },
+   { 1431,   "Microchip Technology Inc." },
+   { 1432,   "Reserved" },
+   { 1433,   "Reserved" },
+   { 1434,   "Accutron Instruments Inc." },
+   { 1435,   "Kaeser Kompressoren SE" },
+   { 1436,   "Reserved" },
+   { 1437,   "Coherix, Inc." },
+   { 1438,   "FLSmidth A/S" },
+   { 1439,   "Reserved" },
+   { 1440,   "Cole-Parmer Instrument Company" },
+   { 1441,   "Wachendorff Automation GmbH & Co., KG" },
+   { 1442,   "SMAC Moving Coil Actuators" },
+   { 1444,   "PushCorp, Inc." },
+   { 1445,   "Fluke Process Instruments GmbH" },
+   { 1446,   "Mini Motor S.p.a" },
+   { 1447,   "I-CON Industry Tech." },
+   { 1448,   "Grace Technologies" },
+   { 1449,   "Zaxis Inc." },
+   { 1450,   "Lumasense Technologies" },
+   { 1451,   "Domino Printing" },
+   { 1452,   "Reserved" },
+   { 1453,   "Reserved" },
+   { 1454,   "Altus Sistemas de Automação S.A." },
+   { 1455,   "Reserved" },
+   { 1456,   "InterTech Development Company" },
+   { 1457,   "Reserved" },
+   { 1458,   "Perle Systems Limited" },
+   { 1459,   "Utthunga Technologies Pvt Ltd.," },
+   { 1460,   "Reserved" },
+   { 1461,   "WIPOTEC GmbH" },
+   { 1462,   "Atos spa" },
+   { 1463,   "Solartron Metrology LTD" },
+   { 1464,   "Reserved" },
+   { 1465,   "Analog Devices" },
+   { 1466,   "Power Electronics International, Inc." },
+   { 1468,   "Campbell Wrapper Corporation" },
+   { 1469,   "Herkules-Resotec Elektronik GmbH" },
+   { 1470,   "aignep spa" },
+   { 1471,   "Reserved" },
+   { 1472,   "PMV Automation AB" },
+   { 1473,   "Reserved" },
+   { 1474,   "ProTec Dynatronix LLC dba Dynatronix" },
+   { 1475,   "Reserved" },
+   { 1476,   "Bitronics, LLC." },
+   { 1477,   "Delta Tau Data Systems" },
+   { 1478,   "Reserved" },
+   { 1479,   "AUTOSOL" },
+   { 1480,   "ADB Safegate" },
+   { 1481,   "Reserved" },
+   { 1482,   "Reserved" },
+   { 1483,   "Artis GmbH" },
+   { 1484,   "REJ Co., LTD" },
+   { 1485,   "Vanderlande" },
+   { 1486,   "Packet Power" },
+   { 1487,   "ima-tec gmbh" },
+   { 1488,   "Vision Automation A/S" },
+   { 1489,   "PROCENTEC BV" },
+   { 1490,   "HETRONIK GmbH" },
+   { 1491,   "Lanmark Controls Inc." },
+   { 1492,   "Reserved" },
+   { 1493,   "flexlog GmbH" },
+   { 1494,   "YUCHANGTECH" },
+   { 1495,   "Dynapower Company" },
+   { 1496,   "TAKIKAWA ENGINEERING" },
+   { 1497,   "Ingersoll Rand" },
+   { 1498,   "ASA-RT s.r.l" },
+   { 1499,   "TRUMPF Schweiz AG" },
+   { 1500,   "Reserved" },
+   { 1501,   "Rinstrum" },
+   { 1502,   "Reserved" },
+   { 1503,   "Reserved" },
+   { 1504,   "BlueBotics SA" },
+   { 1505,   "Dynapar Corporation" },
+   { 1506,   "Blum-Novotest" },
+   { 1507,   "CIMON" },
+   { 1508,   "Dalian SeaSky Automation Co., ltd" },
+   { 1509,   "Rethink Robotics GmbH" },
+   { 1510,   "Ingeteam Power Technology S. A." },
+   { 1511,   "TOSEI ENGINEERING CORP." },
+   { 1512,   "SAMSON AG" },
+   { 1513,   "TGW Mechanics GmbH" },
+   { 1514,   "Diatrend Corporation" },
+   { 1515,   "Reserved" },
+   { 1516,   "VAHLE Automation GmbH" },
+   { 1517,   "JSL Technology Co.,Ltd." },
+   { 1518,   "NetTechnix E&P GmbH" },
+   { 1519,   "Reserved" },
+   { 1520,   "Tecweigh" },
+   { 1521,   "IVEK Corporation" },
+   { 1522,   "Reserved" },
+   { 1523,   "AQ M-TECH AB" },
+   { 1524,   "Rexnord Industries LLC" },
+   { 1525,   "Reserved" },
+   { 1526,   "OPTEX FA Co., Ltd" },
+   { 1527,   "Volktek Corporation" },
+   { 1528,   "INGENIA" },
+   { 1529,   "Reserved" },
+   { 1530,   "Analytical Technology, Inc." },
+   { 1531,   "Columbus McKinnon Corporation" },
+   { 1532,   "HBC-radiomatic GmbH" },
+   { 1533,   "Leonton Technologies" },
+   { 1534,   "Mitsubishi Electric India Pvt. Ltd." },
+   { 1535,   "FOBA Laser, ALLTEC GmbH" },
+   { 1536,   "Leakmaster Inc" },
+   { 1537,   "Buhler AG" },
+   { 1538,   "LINAK Denmark A/S" },
+   { 1539,   "Reserved" },
+   { 1540,   "SIEB & MEYER AG" },
+   { 1541,   "Reserved" },
+   { 1542,   "Watson-Marlow Ltd" },
+   { 1543,   "ABB Switzerland Ltd - Low Voltage Products" },
+   { 1544,   "Reserved" },
+   { 1545,   "adphos" },
+   { 1546,   "Hangzhou Hikrobot Technology Co., Ltd." },
+   { 1547,   "TOSS GmbH & Co. KG" },
+   { 1548,   "Solar Turbines Incorporated" },
+   { 1549,   "Reserved" },
+   { 1550,   "Reserved" },
+   { 1551,   "Carlo Gavazzi Industri" },
+   { 1552,   "Nippon Gear" },
+   { 1553,   "OSIsoft, LLC" },
+   { 1554,   "Rinco Ultrasonics AG" },
+   { 1555,   "Reserved" },
+   { 1556,   "Reserved" },
+   { 1557,   "Mitutoyo" },
+   { 1558,   "swisca" },
+   { 1559,   "Micro-Epsilon Messtechnik GmbH & Co. KG" },
+   { 1560,   "AMADA MIYACHI AMERICA" },
+   { 1561,   "Taihan Electric Wire Co., Ltd." },
+   { 1562,   "JANOME Corporation" },
+   { 1563,   "ISHIDA" },
+   { 1564,   "NAKANISHI INC." },
+   { 1565,   "Mecademic Inc." },
+   { 1566,   "Reserved" },
+   { 1567,   "Sigma (NSW) PTY LTD" },
+   { 1568,   "Hammond Power Solutions Inc.-Mesta" },
+   { 1569,   "Reserved" },
+   { 1570,   "Reserved" },
+   { 1571,   "TRIDIMEO" },
+   { 1572,   "Motortronics UK Ltd." },
+   { 1573,   "Doosan Robotics" },
+   { 1574,   "ADVANCED Motion Controls" },
+   { 1575,   "OnRobot A/S" },
+   { 1576,   "Reserved" },
+   { 1577,   "Oetiker" },
+   { 1578,   "SICK OPTEX" },
+   { 1579,   "Reserved" },
+   { 1580,   "Reserved" },
+   { 1581,   "Kahler Automation Corporation" },
+   { 1582,   "Accuenergy (Canada) Inc." },
+   { 1583,   "TCI, LLC - An Allied Motion Company" },
+   { 1584,   "Sun Automation" },
+   { 1585,   "READY Robotics Corporation" },
+   { 1586,   "PEM, Power Eng & Mfg., Inc" },
+   { 1587,   "Dürr Somac GmbH" },
+   { 1588,   "Reserved" },
+   { 1589,   "Reserved" },
+   { 1590,   "Reserved" },
+   { 1591,   "RICOH Industrial Solutions Inc." },
+   { 1592,   "Shanghai Junqian Sensing Technology Co. Ltd." },
+   { 1593,   "Knick Elektronische Messgeräte GmbH & Co. KG" },
+   { 1594,   "Magnescale. Co., Ltd." },
+   { 1595,   "Reserved" },
+   { 1596,   "Weintek Labs., Inc" },
+   { 1597,   "Sherpa, Inc." },
+   { 1598,   "Inspekto A.M.V LTD" },
+   { 1599,   "Hydronix Ltd" },
+   { 1600,   "AIOI- SYSTEMS CO. LTD." },
+   { 1601,   "Ingenieurbüro Mewes & Partner GmbH" },
+   { 1602,   "HIGHYAG Lasertechnologie GmbH" },
+   { 1603,   "Ningbo Jetron Technology Co. Ltd." },
+   { 1604,   "Myostat Motion Control" },
+   { 1605,   "A-T Controls, Inc" },
+   { 1606,   "M2M craft Co., Ltd." },
+   { 1607,   "FUTEK Advanced Sensor Technology, Inc." },
+   { 1608,   "Cetek" },
+   { 1609,   "Norgren Manufacturing Co., Ltd." },
+   { 1610,   "Bernstein AG" },
+   { 1611,   "Hitachi Industrial Products, Ltd." },
+   { 1612,   "Reserved" },
+   { 1613,   "Duplomatic MS spa" },
+   { 1614,   "Ambrit Ltd" },
+   { 1615,   "Highlight Tech Corp." },
+   { 1616,   "New Power Plasma Co. Ltd." },
+   { 1617,   "AGCO Corporation" },
+   { 1618,   "Techman Robot" },
+   { 1619,   "Nabeya Bi-tech Kaisha" },
+   { 1620,   "Reserved" },
+   { 1621,   "Panasonic Corporation / Electric Works Company" },
+   { 1622,   "Cytiva" },
+   { 1623,   "Janasi Industries Ltd." },
+   { 1624,   "Haffmans BV" },
+   { 1625,   "Reserved" },
+   { 1626,   "Omniview Pty Ltd" },
+   { 1627,   "Reserved" },
+   { 1628,   "Dover Flexo Electronics" },
+   { 1629,   "Reserved" },
+   { 1630,   "IDEM Safety Switches" },
+   { 1631,   "Sonotroagel GmbH" },
+   { 1632,   "Thermo Gamma-Metrics LLC, a part of Thermo Fisher Scientific" },
+   { 1633,   "BBH Products" },
+   { 1634,   "RSI Elektrotechnik" },
+   { 1635,   "Carlo Gavazzi Ltd" },
+   { 1636,   "KOFLOC Corp." },
+   { 1637,   "VTScada by Trihedral" },
+   { 1638,   "Hach" },
+   { 1639,   "Cogniac" },
+   { 1640,   "Toshiba Infrastructure Systems & Solutions Corporation" },
+   { 1641,   "Cannon-Automata" },
+   { 1642,   "Rosenberger" },
+   { 1643,   "Blue-White Industries" },
+   { 1644,   "Cellumation GmbH" },
+   { 1645,   "TEAC Corp." },
+   { 1646,   "AEG Identifikationssysteme GmbH" },
+   { 1647,   "MARS TOHKEN SOLUTION CO.LTD." },
+   { 1648,   "Midas Technology Corp." },
+   { 1649,   "Dinkle Enterprise Co., Ltd." },
+   { 1650,   "THALES" },
+   { 1651,   "Dunkermotoren" },
+   { 1652,   "SONOTEC GmbH" },
+   { 1653,   "Brinkmann Pumpen" },
+   { 1654,   "Rheonics" },
+   { 1655,   "Precimeter" },
+   { 1656,   "Reserved" },
+   { 1657,   "ALGO SYSTEM CO., LTD." },
+   { 1658,   "Christ Electronic Systems GmbH" },
+   { 1659,   "JFcontrol Co., Ltd." },
+   { 1660,   "Shenzhen Inovance Technology Co., Ltd" },
+   { 1661,   "Rheonik Coriolis Mass Flow Sensors" },
+   { 1662,   "Ichor Systems, Inc." },
+   { 1663,   "di-soric GmbH & Co. KG" },
+   { 1664,   "Amphenol ICC" },
+   { 1665,   "Ningbo AirTAC Automation Industrial Co., Ltd." },
+   { 1666,   "RSI" },
+   { 1667,   "Soft Robotics Inc." },
+   { 1668,   "MUSCLE CORPORATION" },
+   { 1669,   "Spotlight Systems LLC" },
+   { 1670,   "Afag Holding AG" },
+   { 1671,   "TELESIS TECHNOLOGIES INC" },
+   { 1672,   "SSI Schaefer Automation GmbH" },
+   { 1673,   "Super Systems, Inc." },
+   { 1674,   "CoreTigo LTD" },
+   { 1675,   "Inxpect SPA" },
+   { 1676,   "Kostal Industrie Elektrik GmbH" },
+   { 1677,   "JingQi（Tianjin）technology Co.,Ltd" },
+   { 1678,   "AGI Suretrack" },
+   { 1679,   "JAKA Robotics Co., Ltd." },
+   { 1680,   "Polarteknik Oy" },
+   { 1681,   "RoboteQ, Inc" },
+   { 1682,   "Uson" },
+   { 1683,   "Opt Machine Vision Tech Co., Ltd" },
+   { 1684,   "Asyril SA" },
+   { 1685,   "Georg Fischer Piping Systems" },
+   { 1686,   "Aber Instruments Ltd" },
+   { 1687,   "CodeWrights GmbH" },
+   { 1688,   "Neurala, Inc." },
+   { 1689,   "Panasonic Software Development Center Dalian Co.,Ltd." },
+   { 1690,   "Perinet GmbH" },
+   { 1691,   "MS Ultraschall Technologie GmbH" },
+   { 1692,   "PLASUS GmbH" },
+   { 1693,   "Nikon Corporation" },
+   { 1694,   "Shenzhen Hengzhiyuan Technology Corporation Ltd." },
+   { 1695,   "Kowa Optronics Co., Ltd." },
+   { 1696,   "Specialist Mechanical Engineers" },
+   { 1697,   "CMD Corporation" },
+   { 1698,   "Sanwa Engineering Corp." },
+   { 1699,   "Intellore Systems Pvt. Ltd" },
+   { 1700,   "Toledo e Souza" },
+   { 1701,   "PBS Biotech, Inc" },
+   { 1702,   "PLANET Technology Corporation" },
+   { 1703,   "Robatech AG" },
+   { 1704,   "MARKEM-IMAJE" },
+   { 1705,   "Novanta IMS" },
+   { 1706,   "Bamboo-Dynamics" },
+   { 1707,   "FACTS Engineering, LLC" },
+   { 1708,   "Digital Dynamics" },
+   { 1709,   "Fatek Automation Corporation" },
+   { 1710,   "Hanwha" },
+   { 1711,   "Fukuda" },
+   { 1712,   "Zhejiang Eternal Automation Sci-Tec Co.,Ltd" },
+   { 1713,   "KYOWA ELECTRONIC INSTRUMENTS CO.,LTD." },
+   { 1714,   "Vaisala Oyj" },
+   { 1715,   "Hennecke GmbH" },
+   { 1716,   "Encoder Products Company" },
+   { 1717,   "Converting Equipment International (dba CEI)" },
+   { 1718,   "Reserved" },
+   { 1719,   "Kinova" },
+   { 1720,   "The Poling Group, Inc." },
+   { 1721,   "plating electronic GmbH" },
+   { 1722,   "HIWIN MIKROSYSTEM CORP." },
+   { 1723,   "Wuxi Xinje Electric Co.,Ltd." },
+   { 1724,   "ViSCO Technologies Corporation" },
+   { 1725,   "MinebeaMitsumi Inc." },
+   { 1726,   "FIAtec GmbH" },
+   { 1727,   "eSOL Co.,Ltd" },
+   { 1728,   "NTN TECHNICAL SERVICE" },
+   { 1729,   "Shanghai Flexem" },
+   { 1730,   "Magswitch" },
+   { 1731,   "VEGA Grieshaber KG" },
+   { 1732,   "H.D.T. S.R.L." },
+   { 1733,   "Tool-Temp AG" },
+   { 1734,   "Hollysys Technology Group Co., Ltd" },
+   { 1735,   "Basler Electric Company" },
+   { 1736,   "Shinwa Controls Co.,Ltd" },
+   { 1737,   "Nanjing Decowell Automation Co.,Ltd." },
+   { 1738,   "Reverity Inc" },
+   { 1739,   "TOSHIBA MITSUBISHI-ELECTRIC INDUSTRIAL SYSTEMS CORPORATION" },
+   { 1740,   "BizLink Special Cables Germany GmbH" },
+   { 1741,   "Electronics Inc." },
+   { 1742,   "Inexbot" },
+   { 1743,   "Mujin, Inc." },
+   { 1744,   "Shanghai AYAN Industry System Co., Ltd" },
+   { 1745,   "EKE-Electronics Ltd." },
+   { 1746,   "Bizerba SE & Co. KG" },
+   { 1747,   "Astrodyne TDI" },
+   { 9876,   "ODVA" },
 
    { 0, NULL }
 };
@@ -2870,6 +3450,9 @@ const value_string cip_class_names_vals[] = {
    { 0x5D,     "CIP Security"                   },
    { 0x5E,     "EtherNet/IP Security"           },
    { 0x5F,     "Certificate Management"         },
+   { 0x60,     "Authority"                      },
+   { 0x61,     "Password Authenticator"         },
+   { 0x62,     "Certificate Authenticator"      },
    { 0x67,     "PCCC Class"                     },
    { 0xF0,     "ControlNet"                     },
    { 0xF1,     "ControlNet Keeper"              },
@@ -2896,6 +3479,10 @@ const value_string cip_class_names_vals[] = {
    { 0x10B,    "IO-Link Service Parameter"      },
    { 0x10C,    "IO-Link Master PHY"             },
    { 0x10D,    "IO-Link Device PHY"             },
+   { 0x10E,    "Pilot Light Supervisor"         },
+   { 0x10F,    "Select Line Link"               },
+   { 0x110,    "In-Cabinet Actual Topology"     },
+   { 0x111,    "In-Cabinet Commissioning"       },
 
    { 0,        NULL                             }
 };
@@ -2911,7 +3498,7 @@ const value_string cip_id_state_vals[] = {
    { 0, NULL }
 };
 
-const range_string cip_port_type_vals[] = {
+static const range_string cip_port_type_vals[] = {
    { 0, 0, "Any - no routing" },
    { 1, 1, "Reserved for legacy use" },
    { 2, 2, "ControlNet" },
@@ -2949,7 +3536,7 @@ static const value_string cip_run_idle_vals[] = {
 
 void cip_rpi_api_fmt(gchar *s, guint32 value)
 {
-   g_snprintf(s, ITEM_LABEL_LENGTH, "%.3fms", value / 1000.0);
+   snprintf(s, ITEM_LABEL_LENGTH, "%.3fms", value / 1000.0);
 }
 
 static void add_cip_class_to_info_column(packet_info *pinfo, guint32 class_id, int display_type)
@@ -3349,7 +3936,7 @@ static int dissect_time_sync_prod_desc(packet_info *pinfo, proto_tree *tree, pro
       return total_len;
    }
 
-   proto_tree_add_item( tree, hf_time_sync_prod_desc_str, tvb, offset+4, size, ENC_ASCII|ENC_NA);
+   proto_tree_add_item( tree, hf_time_sync_prod_desc_str, tvb, offset+4, size, ENC_ASCII);
    return size+4;
 }
 
@@ -3378,7 +3965,7 @@ static int dissect_time_sync_revision_data(packet_info *pinfo, proto_tree *tree,
       return total_len;
    }
 
-   proto_tree_add_item( tree, hf_time_sync_revision_data_str, tvb, offset+4, size, ENC_ASCII|ENC_NA);
+   proto_tree_add_item( tree, hf_time_sync_revision_data_str, tvb, offset+4, size, ENC_ASCII);
    return size+4;
 }
 
@@ -3407,7 +3994,7 @@ static int dissect_time_sync_user_desc(packet_info *pinfo, proto_tree *tree, pro
       return total_len;
    }
 
-   proto_tree_add_item( tree, hf_time_sync_user_desc_str, tvb, offset+4, size, ENC_ASCII|ENC_NA);
+   proto_tree_add_item( tree, hf_time_sync_user_desc_str, tvb, offset+4, size, ENC_ASCII);
    return size+4;
 }
 
@@ -3467,7 +4054,7 @@ static int dissect_time_sync_port_phys_addr_info(packet_info *pinfo, proto_tree 
    {
        port_tree = proto_tree_add_subtree_format(tree, tvb, offset+2+i*36, 36, ett_time_sync_port_phys_addr_info, NULL, "Port #%d", i+1);
        proto_tree_add_item(port_tree, hf_time_sync_port_phys_addr_info_port_num, tvb, offset+2+i*36, 2, ENC_LITTLE_ENDIAN);
-       proto_tree_add_item(port_tree, hf_time_sync_port_phys_addr_info_phys_proto, tvb, offset+4+i*36, 16, ENC_ASCII|ENC_NA);
+       proto_tree_add_item(port_tree, hf_time_sync_port_phys_addr_info_phys_proto, tvb, offset+4+i*36, 16, ENC_ASCII);
 
        guint32 addr_size;
        proto_tree_add_item_ret_uint(port_tree, hf_time_sync_port_phys_addr_info_addr_size, tvb, offset+20+i*36, 2, ENC_LITTLE_ENDIAN, &addr_size);
@@ -3521,8 +4108,9 @@ static int dissect_time_sync_sys_time_and_offset(packet_info *pinfo, proto_tree 
       return total_len;
    }
 
-   proto_tree_add_item( tree, hf_time_sync_sys_time_and_offset_time, tvb, offset, 8, ENC_LITTLE_ENDIAN);
+   dissect_cip_utime(tree, tvb, offset, hf_time_sync_sys_time_and_offset_time);
    proto_tree_add_item( tree, hf_time_sync_sys_time_and_offset_offset, tvb, offset+8, 8, ENC_LITTLE_ENDIAN);
+
    return 16;
 }
 
@@ -3704,6 +4292,28 @@ static int dissect_port_node_range(packet_info *pinfo _U_, proto_tree *tree, pro
    return 4;
 }
 
+
+/// Identity - Services
+static int dissect_identity_reset(packet_info *pinfo _U_, proto_tree *tree, proto_item *item _U_, tvbuff_t *tvb, int offset, gboolean request)
+{
+   int parsed_len = 0;
+
+   if (request)
+   {
+      if (tvb_reported_length_remaining(tvb, offset) > 0)
+      {
+         proto_tree_add_item(tree, hf_cip_sc_reset_param, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+         parsed_len = 1;
+      }
+   }
+   else
+   {
+      parsed_len = 0;
+   }
+
+   return parsed_len;
+}
+
 static attribute_info_t cip_attribute_vals[] = {
     /* Identity Object (class attributes) */
    {0x01, TRUE, 1, 0, CLASS_ATTRIBUTE_1_NAME, cip_uint, &hf_attr_class_revision, NULL },
@@ -3779,11 +4389,11 @@ static attribute_info_t cip_attribute_vals[] = {
     /* Time Sync Object (instance attributes) */
    {0x43, FALSE, 1, -1, "PTP Enable", cip_bool, &hf_time_sync_ptp_enable, NULL},
    {0x43, FALSE, 2, -1, "Is Synchronized", cip_bool, &hf_time_sync_is_synchronized, NULL},
-   {0x43, FALSE, 3, -1, "System Time (Microseconds)", cip_ulint, &hf_time_sync_sys_time_micro, NULL},
-   {0x43, FALSE, 4, -1, "System Time (Nanoseconds)", cip_ulint, &hf_time_sync_sys_time_nano, NULL},
-   {0x43, FALSE, 5, -1, "Offset from Master", cip_lint, &hf_time_sync_offset_from_master, NULL},
+   {0x43, FALSE, 3, -1, "System Time (Microseconds)", cip_utime, &hf_time_sync_sys_time_micro, NULL},
+   {0x43, FALSE, 4, -1, "System Time (Nanoseconds)", cip_stime, &hf_time_sync_sys_time_nano, NULL},
+   {0x43, FALSE, 5, -1, "Offset from Master", cip_ntime, &hf_time_sync_offset_from_master, NULL},
    {0x43, FALSE, 6, -1, "Max Offset from Master", cip_ulint, &hf_time_sync_max_offset_from_master, NULL},
-   {0x43, FALSE, 7, -1, "Mean Path Delay To Master", cip_lint, &hf_time_sync_mean_path_delay_to_master, NULL},
+   {0x43, FALSE, 7, -1, "Mean Path Delay To Master", cip_ntime, &hf_time_sync_mean_path_delay_to_master, NULL},
    {0x43, FALSE, 8, -1, "Grand Master Clock Info", cip_dissector_func, NULL, dissect_time_sync_grandmaster_clock},
    {0x43, FALSE, 9, -1, "Parent Clock Info", cip_dissector_func, NULL, dissect_time_sync_parent_clock},
    {0x43, FALSE, 10, -1, "Local Clock Info", cip_dissector_func, NULL, dissect_time_sync_local_clock},
@@ -3806,8 +4416,6 @@ static attribute_info_t cip_attribute_vals[] = {
    {0x43, FALSE, 27, -1, "Steps Removed", cip_uint, &hf_time_sync_steps_removed, NULL},
    {0x43, FALSE, 28, -1, "System Time and Offset", cip_dissector_func, NULL, dissect_time_sync_sys_time_and_offset},
 
-    /* CIP Security Object (instance attributes) */
-   {0x5D, FALSE, 1, 0, "State", cip_usint, &hf_cip_security_state, NULL},
 
    /* Connection Configuration Object (class attributes) */
    /* Data sizes are different than common class attributes for some items. */
@@ -3842,6 +4450,20 @@ static attribute_info_t cip_attribute_vals[] = {
    { 0xF4, FALSE, 9, -1, "Chassis Identity", cip_dissector_func, NULL, dissect_single_segment_packed_attr },
    { 0xF4, FALSE, 11, -1, "Associated Communication Objects", cip_dissector_func, NULL, dissect_port_associated_comm_objects },
 };
+
+// Table of CIP services defined by this dissector.
+static cip_service_info_t cip_obj_spec_service_table[] = {
+    { 0x1, SC_RESET, "Reset", dissect_identity_reset },
+};
+
+// Look up a given CIP service from this dissector.
+static cip_service_info_t* cip_get_service_cip(guint32 class_id, guint8 service_id)
+{
+   return cip_get_service_one_table(&cip_obj_spec_service_table[0],
+      sizeof(cip_obj_spec_service_table) / sizeof(cip_service_info_t),
+      class_id,
+      service_id);
+}
 
 typedef struct attribute_val_array {
    size_t size;
@@ -3910,6 +4532,45 @@ attribute_info_t* cip_get_attribute(guint class_id, guint instance, guint attrib
    return NULL;
 }
 
+// Look up a given CIP service from a table of cip_service_info_t.
+cip_service_info_t* cip_get_service_one_table(cip_service_info_t* services, size_t size, guint32 class_id, guint8 service_id)
+{
+   for (guint32 i = 0; i < size; i++)
+   {
+      cip_service_info_t* entry = &services[i];
+      if (entry->class_id == class_id && entry->service_id == (service_id & CIP_SC_MASK))
+      {
+         return entry;
+      }
+   }
+
+   return NULL;
+}
+
+// Look through all CIP Service tables from different dissectors, to find a definition for a given CIP service.
+static cip_service_info_t* cip_get_service(packet_info *pinfo, guint8 service_id)
+{
+   cip_req_info_t *cip_req_info = (cip_req_info_t*)p_get_proto_data(wmem_file_scope(), pinfo, proto_cip, 0);
+   if (!cip_req_info || !cip_req_info->ciaData)
+   {
+      return NULL;
+   }
+
+   cip_service_info_t* pService = cip_get_service_cip(cip_req_info->ciaData->iClass, service_id);
+   if (pService)
+   {
+      return pService;
+   }
+
+   pService = cip_get_service_enip(cip_req_info->ciaData->iClass, service_id);
+   if (pService)
+   {
+      return pService;
+   }
+
+   return NULL;
+}
+
 static const char *
 segment_name_format(const char *segment_name, const char *fmt)
     G_GNUC_FORMAT(2);
@@ -3937,10 +4598,11 @@ dissect_cia(tvbuff_t *tvb, int offset, unsigned char segment_type,
    int value_offset;
    wmem_strbuf_t *strbuf;
    gboolean extended_logical = FALSE;
+   guint8 logical_seg_type = segment_type & CI_LOGICAL_SEG_TYPE_MASK;
 
    /* Extended Logical Format is slightly different than other logical formats. An extra byte is
       inserted after the segment type. */
-   if ((segment_type & CI_LOGICAL_SEG_TYPE_MASK) == CI_LOGICAL_SEG_EXT_LOGICAL)
+   if (logical_seg_type == CI_LOGICAL_SEG_EXT_LOGICAL)
    {
       extended_logical = TRUE;
 
@@ -3981,7 +4643,14 @@ dissect_cia(tvbuff_t *tvb, int offset, unsigned char segment_type,
 
       if (vals == NULL)
       {
-         proto_item_append_text( epath_item, "%s: 0x%02X", segment_name,  temp_data);
+         if (logical_seg_type == CI_LOGICAL_SEG_ATTR_ID)
+         {
+            proto_item_append_text(epath_item, "%s: %d", segment_name, temp_data);
+         }
+         else
+         {
+            proto_item_append_text(epath_item, "%s: 0x%02X", segment_name, temp_data);
+         }
       }
       else
       {
@@ -4030,7 +4699,14 @@ dissect_cia(tvbuff_t *tvb, int offset, unsigned char segment_type,
 
       if (vals == NULL)
       {
-         proto_item_append_text( epath_item, "%s: 0x%04X", segment_name,  temp_data);
+         if (logical_seg_type == CI_LOGICAL_SEG_ATTR_ID)
+         {
+            proto_item_append_text(epath_item, "%s: %d", segment_name, temp_data);
+         }
+         else
+         {
+            proto_item_append_text(epath_item, "%s: 0x%04X", segment_name, temp_data);
+         }
       }
       else
       {
@@ -4069,7 +4745,14 @@ dissect_cia(tvbuff_t *tvb, int offset, unsigned char segment_type,
 
       if (vals == NULL)
       {
-         proto_item_append_text( epath_item, "%s: 0x%08X", segment_name,  temp_data);
+         if (logical_seg_type == CI_LOGICAL_SEG_ATTR_ID)
+         {
+            proto_item_append_text(epath_item, "%s: %d", segment_name, temp_data);
+         }
+         else
+         {
+            proto_item_append_text(epath_item, "%s: 0x%08X", segment_name, temp_data);
+         }
       }
       else
       {
@@ -4101,11 +4784,11 @@ void
 dissect_deviceid(tvbuff_t *tvb, int offset, proto_tree *tree,
                  int hf_vendor, int hf_devtype, int hf_prodcode,
                  int hf_compatibility, int hf_comp_bit, int hf_majrev, int hf_minrev,
-                 gboolean generate)
+                 gboolean generate, guint encoding)
 {
-   proto_item* vendor_id_item = proto_tree_add_item(tree, hf_vendor, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-   proto_item* device_type_item = proto_tree_add_item(tree, hf_devtype, tvb, offset + 2, 2, ENC_LITTLE_ENDIAN);
-   proto_item* product_code_item = proto_tree_add_item(tree, hf_prodcode, tvb, offset + 4, 2, ENC_LITTLE_ENDIAN);
+   proto_item* vendor_id_item = proto_tree_add_item(tree, hf_vendor, tvb, offset, 2, encoding);
+   proto_item* device_type_item = proto_tree_add_item(tree, hf_devtype, tvb, offset + 2, 2, encoding);
+   proto_item* product_code_item = proto_tree_add_item(tree, hf_prodcode, tvb, offset + 4, 2, encoding);
 
    /* Major revision/Compatibility */
    guint8 compatibility = tvb_get_guint8(tvb, offset + 6);
@@ -4117,9 +4800,9 @@ dissect_deviceid(tvbuff_t *tvb, int offset, proto_tree *tree,
       compatibility & 0x7F);
    proto_tree* compatibility_tree = proto_item_add_subtree(compatibility_item, ett_mcsc);
 
-   proto_item* comp_bit_item = proto_tree_add_item(compatibility_tree, hf_comp_bit, tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
-   proto_item* major_rev_item = proto_tree_add_item(compatibility_tree, hf_majrev, tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
-   proto_item* minor_rev_item = proto_tree_add_item(tree, hf_minrev, tvb, offset + 7, 1, ENC_LITTLE_ENDIAN);
+   proto_item* comp_bit_item = proto_tree_add_item(compatibility_tree, hf_comp_bit, tvb, offset + 6, 1, encoding);
+   proto_item* major_rev_item = proto_tree_add_item(compatibility_tree, hf_majrev, tvb, offset + 6, 1, encoding);
+   proto_item* minor_rev_item = proto_tree_add_item(tree, hf_minrev, tvb, offset + 7, 1, encoding);
 
    if (generate)
    {
@@ -4230,9 +4913,27 @@ static int dissect_segment_network_extended(packet_info *pinfo, proto_item *epat
           return 0;
       }
 
-      if (net_seg_data_len > 0)
+      guint16 net_seg_subtype = tvb_get_letohs(tvb, offset + 2);
+
+      int data_len_parsed = 0;
+      switch (net_seg_subtype)
       {
-          proto_tree_add_item(net_tree, hf_cip_data, tvb, net_seg_data_offset, net_seg_data_len, ENC_NA);
+      case CI_CONCURRENT_EXTENDED_NETWORK_SEG:
+      {
+         data_len_parsed = 4;
+         data_len_parsed += dissect_concurrent_connection_network_segment(pinfo, tvb, offset + data_len_parsed, net_tree);
+         break;
+      }
+
+      default:
+      {
+         break;
+      }
+      }
+
+      if (net_seg_data_len - data_len_parsed > 0)
+      {
+         proto_tree_add_item(net_tree, hf_cip_data, tvb, net_seg_data_offset + data_len_parsed, net_seg_data_len - data_len_parsed, ENC_NA);
       }
    }
 
@@ -4288,7 +4989,7 @@ static int dissect_segment_symbolic(tvbuff_t *tvb, proto_tree *path_seg_tree,
    if (symbol_size != 0)
    {
       gchar *symbol_name;
-      symbol_name = tvb_format_text(tvb, offset + 1, symbol_size);
+      symbol_name = tvb_format_text(wmem_packet_scope(), tvb, offset + 1, symbol_size);
 
       proto_item_append_text(path_seg_item, " (Symbolic Segment)");
 
@@ -4502,19 +5203,19 @@ static int dissect_segment_port(tvbuff_t* tvb, int offset, gboolean generate,
       if (generate)
       {
          /* Add size of extended link address */
-         proto_item* it = proto_tree_add_uint(path_seg_item, hf_cip_link_address_size, tvb, 0, 0, opt_link_size);
+         proto_item* it = proto_tree_add_uint(path_seg_tree, hf_cip_link_address_size, tvb, 0, 0, opt_link_size);
          proto_item_set_generated(it);
          /* Add extended link address */
-         it = proto_tree_add_string(path_seg_item, hf_cip_link_address_string, tvb, 0, 0, tvb_format_text(tvb, offset + offset_link_address, opt_link_size));
+         it = proto_tree_add_string(path_seg_tree, hf_cip_link_address_string, tvb, 0, 0, tvb_format_text(wmem_packet_scope(), tvb, offset + offset_link_address, opt_link_size));
          proto_item_set_generated(it);
       }
       else
       {
-         proto_tree_add_item(path_seg_item, hf_cip_link_address_size, tvb, offset + 1, 1, ENC_LITTLE_ENDIAN);
-         proto_tree_add_item(path_seg_item, hf_cip_link_address_string, tvb, offset + offset_link_address, opt_link_size, ENC_ASCII | ENC_NA);
+         proto_tree_add_item(path_seg_tree, hf_cip_link_address_size, tvb, offset + 1, 1, ENC_LITTLE_ENDIAN);
+         proto_tree_add_item(path_seg_tree, hf_cip_link_address_string, tvb, offset + offset_link_address, opt_link_size, ENC_ASCII | ENC_NA);
       }
 
-      proto_item_append_text(epath_item, ", Address: %s", tvb_format_text(tvb, offset + offset_link_address, opt_link_size));
+      proto_item_append_text(epath_item, ", Address: %s", tvb_format_text(wmem_packet_scope(), tvb, offset + offset_link_address, opt_link_size));
 
       /* Pad byte */
       if (opt_link_size % 2)
@@ -4543,12 +5244,12 @@ static int dissect_segment_port(tvbuff_t* tvb, int offset, gboolean generate,
       if (generate)
       {
          guint8 link_address_byte = tvb_get_guint8(tvb, offset + offset_link_address);
-         proto_item* it = proto_tree_add_uint(path_seg_item, hf_cip_link_address_byte, tvb, 0, 0, link_address_byte);
+         proto_item* it = proto_tree_add_uint(path_seg_tree, hf_cip_link_address_byte, tvb, 0, 0, link_address_byte);
          proto_item_set_generated(it);
       }
       else
       {
-         proto_tree_add_item(path_seg_item, hf_cip_link_address_byte, tvb, offset + offset_link_address, 1, ENC_LITTLE_ENDIAN);
+         proto_tree_add_item(path_seg_tree, hf_cip_link_address_byte, tvb, offset + offset_link_address, 1, ENC_LITTLE_ENDIAN);
       }
 
       proto_item_append_text(epath_item, ", Address: %d", tvb_get_guint8(tvb, offset + offset_link_address));
@@ -4559,12 +5260,12 @@ static int dissect_segment_port(tvbuff_t* tvb, int offset, gboolean generate,
       if (generate)
       {
          guint16 port_extended = tvb_get_letohs(tvb, extended_port_offset);
-         proto_item* it = proto_tree_add_uint(path_seg_item, hf_cip_port_extended, tvb, 0, 0, port_extended);
+         proto_item* it = proto_tree_add_uint(path_seg_tree, hf_cip_port_extended, tvb, 0, 0, port_extended);
          proto_item_set_generated(it);
       }
       else
       {
-         proto_tree_add_item(path_seg_item, hf_cip_port_extended, tvb, extended_port_offset, 2, ENC_LITTLE_ENDIAN);
+         proto_tree_add_item(path_seg_tree, hf_cip_port_extended, tvb, extended_port_offset, 2, ENC_LITTLE_ENDIAN);
       }
    }
 
@@ -4577,23 +5278,30 @@ static int dissect_segment_port(tvbuff_t* tvb, int offset, gboolean generate,
 }
 
 static int dissect_segment_safety(packet_info* pinfo, tvbuff_t* tvb, int offset, gboolean generate,
-   proto_tree* net_tree, cip_safety_epath_info_t* safety)
+   proto_tree* net_tree, cip_safety_epath_info_t* safety, cip_simple_request_info_t* req_data)
 {
    guint16 seg_size = tvb_get_guint8(tvb, offset + 1) * 2;
    int segment_len = seg_size + 2;
 
+   guint32 safety_format;
    if (generate)
    {
-      /* TODO: Skip printing information in response packets for now. Think of a better way to handle
-         generated data that doesn't require a lot of copy-paste. */
+      safety_format = tvb_get_guint8(tvb, offset + 2);
+
+      proto_item* it = proto_tree_add_uint(net_tree, hf_cip_seg_network_size, tvb, 0, 0, seg_size / 2);
+      proto_item_set_generated(it);
+
+      it = proto_tree_add_uint(net_tree, hf_cip_seg_safety_format, tvb, 0, 0, safety_format);
+      proto_item_set_generated(it);
+
+      /* Skip printing further information in response packets. */
       return segment_len;
    }
-
-   /* Segment size */
-   proto_tree_add_item(net_tree, hf_cip_seg_network_size, tvb, offset + 1, 1, ENC_LITTLE_ENDIAN);
-
-   guint32 safety_format;
-   proto_tree_add_item_ret_uint(net_tree, hf_cip_seg_safety_format, tvb, offset + 2, 1, ENC_LITTLE_ENDIAN, &safety_format);
+   else
+   {
+      proto_tree_add_item(net_tree, hf_cip_seg_network_size, tvb, offset + 1, 1, ENC_LITTLE_ENDIAN);
+      proto_tree_add_item_ret_uint(net_tree, hf_cip_seg_safety_format, tvb, offset + 2, 1, ENC_LITTLE_ENDIAN, &safety_format);
+   }
 
    /* Safety Network Segment Format */
    if (safety_format < 3)
@@ -4601,11 +5309,16 @@ static int dissect_segment_safety(packet_info* pinfo, tvbuff_t* tvb, int offset,
       cip_connID_info_t ignore;
       proto_tree* safety_tree = proto_tree_add_subtree(net_tree, tvb, offset + 3, seg_size - 1,
          ett_network_seg_safety, NULL, val_to_str_const(safety_format, cip_safety_segment_format_type_vals, "Reserved"));
+
+      gboolean has_scid = FALSE;
+      guint32 ntem_value = 0;
       switch (safety_format)
       {
       case 0:
       {
-         /* Target Format */
+         has_scid = TRUE;
+
+         /* Target Format - Deprecated*/
          if (safety != NULL)
             safety->format = CIP_SAFETY_BASE_FORMAT;
 
@@ -4627,9 +5340,9 @@ static int dissect_segment_safety(packet_info* pinfo, tvbuff_t* tvb, int offset,
          dissect_unid(tvb, pinfo, offset + 30, it, "Originator UNID SNN", hf_cip_seg_safety_ounid_snn_timestamp,
             hf_cip_seg_safety_ounid_snn_date, hf_cip_seg_safety_ounid_snn_time, hf_cip_seg_safety_ounid_nodeid,
             ett_cip_seg_safety_ounid, ett_cip_seg_safety_ounid_snn);
-         proto_tree_add_item(safety_tree, hf_cip_seg_safety_ping_eri_multiplier, tvb, offset + 40, 2, ENC_LITTLE_ENDIAN);
+         proto_tree_add_item(safety_tree, hf_cip_seg_safety_ping_epi_multiplier, tvb, offset + 40, 2, ENC_LITTLE_ENDIAN);
          proto_tree_add_item(safety_tree, hf_cip_seg_safety_time_coord_msg_min_multiplier, tvb, offset + 42, 2, ENC_LITTLE_ENDIAN);
-         proto_tree_add_item(safety_tree, hf_cip_seg_safety_network_time_expected_multiplier, tvb, offset + 44, 2, ENC_LITTLE_ENDIAN);
+         proto_tree_add_item_ret_uint(safety_tree, hf_cip_seg_safety_network_time_expected_multiplier, tvb, offset + 44, 2, ENC_LITTLE_ENDIAN, &ntem_value);
          proto_tree_add_item(safety_tree, hf_cip_seg_safety_timeout_multiplier, tvb, offset + 46, 1, ENC_LITTLE_ENDIAN);
          proto_tree_add_item(safety_tree, hf_cip_seg_safety_max_consumer_number, tvb, offset + 47, 1, ENC_LITTLE_ENDIAN);
          proto_tree_add_item(safety_tree, hf_cip_seg_safety_conn_param_crc, tvb, offset + 48, 4, ENC_LITTLE_ENDIAN);
@@ -4652,6 +5365,8 @@ static int dissect_segment_safety(packet_info* pinfo, tvbuff_t* tvb, int offset,
          break;
       case 2:
       {
+         has_scid = TRUE;
+
          /* Extended Format */
          if (safety != NULL)
             safety->format = CIP_SAFETY_EXTENDED_FORMAT;
@@ -4674,9 +5389,9 @@ static int dissect_segment_safety(packet_info* pinfo, tvbuff_t* tvb, int offset,
          dissect_unid(tvb, pinfo, offset + 30, it, "Originator UNID SNN", hf_cip_seg_safety_ounid_snn_timestamp,
             hf_cip_seg_safety_ounid_snn_date, hf_cip_seg_safety_ounid_snn_time, hf_cip_seg_safety_ounid_nodeid,
             ett_cip_seg_safety_ounid, ett_cip_seg_safety_ounid_snn);
-         proto_tree_add_item(safety_tree, hf_cip_seg_safety_ping_eri_multiplier, tvb, offset + 40, 2, ENC_LITTLE_ENDIAN);
+         proto_tree_add_item(safety_tree, hf_cip_seg_safety_ping_epi_multiplier, tvb, offset + 40, 2, ENC_LITTLE_ENDIAN);
          proto_tree_add_item(safety_tree, hf_cip_seg_safety_time_coord_msg_min_multiplier, tvb, offset + 42, 2, ENC_LITTLE_ENDIAN);
-         proto_tree_add_item(safety_tree, hf_cip_seg_safety_network_time_expected_multiplier, tvb, offset + 44, 2, ENC_LITTLE_ENDIAN);
+         proto_tree_add_item_ret_uint(safety_tree, hf_cip_seg_safety_network_time_expected_multiplier, tvb, offset + 44, 2, ENC_LITTLE_ENDIAN, &ntem_value);
          proto_tree_add_item(safety_tree, hf_cip_seg_safety_timeout_multiplier, tvb, offset + 46, 1, ENC_LITTLE_ENDIAN);
          proto_tree_add_item(safety_tree, hf_cip_seg_safety_max_consumer_number, tvb, offset + 47, 1, ENC_LITTLE_ENDIAN);
          proto_tree_add_item(safety_tree, hf_cip_seg_safety_max_fault_number, tvb, offset + 48, 2, ENC_LITTLE_ENDIAN);
@@ -4687,6 +5402,32 @@ static int dissect_segment_safety(packet_info* pinfo, tvbuff_t* tvb, int offset,
          break;
       }
       }  // END switch
+
+      if (safety && req_data && has_scid)
+      {
+         // Check if the SCID (SCCRC + SCTS) is all zeros.
+         guint32 sccrc_value = tvb_get_letohl(tvb, offset + 4);
+         guint64 scts_value = tvb_get_letoh48(tvb, offset + 8);
+         gboolean scid_zero = (sccrc_value == 0) && (scts_value == 0);
+
+         if (req_data->hasSimpleData)
+         {
+            safety->safety_open_type = CIP_SAFETY_OPEN_TYPE1;
+         }
+         else if (scid_zero)
+         {
+            safety->safety_open_type = CIP_SAFETY_OPEN_TYPE2B;
+         }
+         else
+         {
+            safety->safety_open_type = CIP_SAFETY_OPEN_TYPE2A;
+         }
+      }
+
+      if (safety)
+      {
+         safety->nte_value_ms = ntem_value * 0.128f;
+      }
    }
    else
    {
@@ -4704,6 +5445,11 @@ static int dissect_segment_safety(packet_info* pinfo, tvbuff_t* tvb, int offset,
 static int dissect_segment_data_simple(packet_info* pinfo, tvbuff_t* tvb, int offset, gboolean generate,
    proto_tree* path_seg_tree, proto_item* path_seg_item, cip_simple_request_info_t* req_data)
 {
+   if (req_data)
+   {
+      req_data->hasSimpleData = TRUE;
+   }
+
    guint16 seg_size = tvb_get_guint8(tvb, offset + 1) * 2;
    int segment_len = seg_size + 2;
 
@@ -4763,7 +5509,7 @@ static int dissect_segment_ansi_extended_symbol(packet_info* pinfo, tvbuff_t* tv
    /* Segment data  */
    if (seg_size != 0)
    {
-      gchar* symbol_name = tvb_format_text(tvb, offset + 2, seg_size);
+      gchar* symbol_name = tvb_format_text(pinfo->pool, tvb, offset + 2, seg_size);
 
       if (generate)
       {
@@ -4798,6 +5544,40 @@ static int dissect_segment_ansi_extended_symbol(packet_info* pinfo, tvbuff_t* tv
    return 2 + seg_size;
 }
 
+// offset - Starts with the 'Key Data' section of the Electronic Key Segment Format.
+int dissect_electronic_key_format(tvbuff_t* tvb, int offset, proto_tree* tree, gboolean generate, guint8 key_format, guint encoding)
+{
+   int key_len;
+   if (key_format == CI_E_KEY_FORMAT_VAL)
+   {
+      key_len = 8;
+   }
+   else  // CI_E_SERIAL_NUMBER_KEY_FORMAT_VAL
+   {
+      key_len = 12;
+   }
+
+   if (generate)
+   {
+      dissect_deviceid(tvb, offset, tree,
+         hf_cip_ekey_vendor, hf_cip_ekey_devtype, hf_cip_ekey_prodcode,
+         hf_cip_ekey_compatibility, hf_cip_ekey_comp_bit, hf_cip_ekey_majorrev, hf_cip_ekey_minorrev, TRUE, encoding);
+   }
+   else
+   {
+      dissect_deviceid(tvb, offset, tree,
+         hf_cip_ekey_vendor, hf_cip_ekey_devtype, hf_cip_ekey_prodcode,
+         hf_cip_ekey_compatibility, hf_cip_ekey_comp_bit, hf_cip_ekey_majorrev, hf_cip_ekey_minorrev, FALSE, encoding);
+
+      if (key_format == CI_E_SERIAL_NUMBER_KEY_FORMAT_VAL)
+      {
+         proto_tree_add_item(tree, hf_cip_ekey_serial_number, tvb, offset + 8, 4, encoding);
+      }
+   }
+
+   return key_len;
+}
+
 static int dissect_segment_logical_special(packet_info* pinfo, tvbuff_t* tvb, int offset,
    gboolean generate, proto_tree* path_seg_tree,
    proto_item* path_seg_item, proto_item* epath_item)
@@ -4812,40 +5592,20 @@ static int dissect_segment_logical_special(packet_info* pinfo, tvbuff_t* tvb, in
       guint8 key_format = tvb_get_guint8(tvb, offset + 1);
       if (key_format == CI_E_KEY_FORMAT_VAL || key_format == CI_E_SERIAL_NUMBER_KEY_FORMAT_VAL)
       {
-         if (key_format == CI_E_KEY_FORMAT_VAL)
-         {
-            segment_len = 10;
-         }
-         else  // CI_E_SERIAL_NUMBER_KEY_FORMAT_VAL
-         {
-            segment_len = 14;
-         }
-
          if (generate)
          {
             proto_item* it = proto_tree_add_uint(path_seg_tree, hf_cip_ekey_format, tvb, 0, 0, key_format);
             proto_item_set_generated(it);
-
-            dissect_deviceid(tvb, offset + 2, path_seg_tree,
-               hf_cip_ekey_vendor, hf_cip_ekey_devtype, hf_cip_ekey_prodcode,
-               hf_cip_ekey_compatibility, hf_cip_ekey_comp_bit, hf_cip_ekey_majorrev, hf_cip_ekey_minorrev, TRUE);
          }
          else
          {
             proto_tree_add_item(path_seg_tree, hf_cip_ekey_format, tvb, offset + 1, 1, ENC_LITTLE_ENDIAN);
-
-            /* dissect the device ID */
-            dissect_deviceid(tvb, offset + 2, path_seg_tree,
-               hf_cip_ekey_vendor, hf_cip_ekey_devtype, hf_cip_ekey_prodcode,
-               hf_cip_ekey_compatibility, hf_cip_ekey_comp_bit, hf_cip_ekey_majorrev, hf_cip_ekey_minorrev, FALSE);
-
-            if (key_format == CI_E_SERIAL_NUMBER_KEY_FORMAT_VAL)
-            {
-               proto_tree_add_item(path_seg_tree, hf_cip_ekey_serial_number, tvb, offset + 12, 4, ENC_LITTLE_ENDIAN);
-            }
-
-            proto_item_set_len(path_seg_item, segment_len);
          }
+         segment_len = 2;
+
+         segment_len += dissect_electronic_key_format(tvb, offset + 2, path_seg_tree, generate, key_format, ENC_LITTLE_ENDIAN);
+
+         proto_item_set_len(path_seg_item, segment_len);
 
          /* Add "summary" information to parent item */
          guint16 vendor_id = tvb_get_letohs(tvb, offset + 2);
@@ -4875,7 +5635,8 @@ static int dissect_segment_logical_special(packet_info* pinfo, tvbuff_t* tvb, in
 
 static int dissect_segment_network(packet_info* pinfo, tvbuff_t* tvb, int offset,
    gboolean generate, proto_tree* path_seg_tree, proto_item* path_seg_item,
-   proto_item* epath_item, int display_type, cip_safety_epath_info_t* safety)
+   proto_item* epath_item, int display_type, cip_safety_epath_info_t* safety,
+   cip_simple_request_info_t* req_data)
 {
    int segment_len = 0;
 
@@ -4958,7 +5719,7 @@ static int dissect_segment_network(packet_info* pinfo, tvbuff_t* tvb, int offset
          col_append_str(pinfo->cinfo, COL_INFO, " [Safety]");
       }
 
-      segment_len = dissect_segment_safety(pinfo, tvb, offset, generate, path_seg_tree, safety);
+      segment_len = dissect_segment_safety(pinfo, tvb, offset, generate, path_seg_tree, safety, req_data);
       break;
 
    default:
@@ -5266,7 +6027,7 @@ int dissect_cip_segment_single(packet_info *pinfo, tvbuff_t *tvb, int offset, pr
          }
 
          case CI_NETWORK_SEGMENT:
-            segment_len = dissect_segment_network(pinfo, tvb, offset, generate, path_seg_tree, path_seg_item, epath_item, display_type, safety);
+            segment_len = dissect_segment_network(pinfo, tvb, offset, generate, path_seg_tree, path_seg_item, epath_item, display_type, safety, req_data);
             break;
 
          case CI_SYMBOLIC_SEGMENT:
@@ -5312,6 +6073,8 @@ void reset_cip_request_info(cip_simple_request_info_t* req_data)
 
    req_data->iConnPoint = SEGMENT_VALUE_NOT_SET;
    req_data->iConnPointA = SEGMENT_VALUE_NOT_SET;
+
+   req_data->hasSimpleData = FALSE;
 }
 
 void dissect_epath(tvbuff_t *tvb, packet_info *pinfo, proto_tree *path_tree, proto_item *epath_item, int offset, int path_length,
@@ -5356,8 +6119,10 @@ void dissect_epath(tvbuff_t *tvb, packet_info *pinfo, proto_tree *path_tree, pro
 
 } /* end of dissect_epath() */
 
+#define NUM_SECONDS_PER_DAY ((guint64)(60 * 60 * 24))
+
 /* Number of seconds between Jan 1, 1970 00:00:00 epoch and CIP's epoch time of Jan 1, 1972 00:00:00 */
-#define CIP_TIMEBASE 63003600
+#define CIP_TIMEBASE ((guint64)(NUM_SECONDS_PER_DAY * 365 * 2))
 
 void dissect_cip_date_and_time(proto_tree *tree, tvbuff_t *tvb, int offset, int hf_datetime)
 {
@@ -5370,7 +6135,7 @@ void dissect_cip_date_and_time(proto_tree *tree, tvbuff_t *tvb, int offset, int 
 
    if ((num_days_since_1972 != 0) || (num_ms_today != 0))
    {
-      computed_time.secs = CIP_TIMEBASE+(num_days_since_1972*60*60*24);
+      computed_time.secs = CIP_TIMEBASE + (guint64)num_days_since_1972 * NUM_SECONDS_PER_DAY;
       computed_time.secs += num_ms_today/1000;
       computed_time.nsecs = (num_ms_today%1000)*1000000;
    }
@@ -5381,6 +6146,50 @@ void dissect_cip_date_and_time(proto_tree *tree, tvbuff_t *tvb, int offset, int 
    }
 
    proto_tree_add_time(tree, hf_datetime, tvb, offset, 6, &computed_time);
+}
+
+static int dissect_cip_date(proto_tree *tree, tvbuff_t *tvb, int offset, int hf_date)
+{
+   char date_str[20];
+
+   guint16 num_days_since_1972 = tvb_get_letohs(tvb, offset);
+   /* Convert to nstime epoch */
+   time_t computed_time = CIP_TIMEBASE + (guint64)num_days_since_1972 * NUM_SECONDS_PER_DAY;
+   struct tm* date = gmtime(&computed_time);
+
+   if (date != NULL)
+      strftime(date_str, 20, "%Y-%m-%d", date);
+   else
+      (void) g_strlcpy(date_str, "Not representable", sizeof date_str);
+   proto_tree_add_uint_format_value(tree, hf_date, tvb, offset, 2, num_days_since_1972, "%s", date_str);
+
+   return 2;
+}
+
+// CIP Type - STIME (nanoseconds)
+static int dissect_cip_stime(proto_tree* tree, tvbuff_t* tvb, int offset, int hf_datetime)
+{
+   nstime_t ts_nstime = { 0 };
+   guint64 timestamp = tvb_get_letoh64(tvb, offset);
+   ts_nstime.secs = timestamp / 1000000000;
+   ts_nstime.nsecs = timestamp % 1000000000;
+
+   proto_tree_add_time(tree, hf_datetime, tvb, offset, 8, &ts_nstime);
+
+   return 8;
+}
+
+// CIP Type - UTIME (microseconds)
+int dissect_cip_utime(proto_tree* tree, tvbuff_t* tvb, int offset, int hf_datetime)
+{
+   nstime_t ts_nstime = { 0 };
+   guint64 timestamp = tvb_get_letoh64(tvb, offset);
+   ts_nstime.secs = timestamp / 1000000;
+   ts_nstime.nsecs = (timestamp % 1000000) * 1000;
+
+   proto_tree_add_time(tree, hf_datetime, tvb, offset, 8, &ts_nstime);
+
+   return 8;
 }
 
 int dissect_cip_string_type(packet_info *pinfo, proto_tree *tree, proto_item *item,
@@ -5468,9 +6277,6 @@ int dissect_cip_attribute(packet_info *pinfo, proto_tree *tree, proto_item *item
 {
    int i, temp_data, temp_time, hour, min, sec, ms,
       consumed = 0;
-   time_t computed_time;
-   struct tm* date;
-   char date_str[20];
 
    /* sanity check */
    if (((attr->datatype == cip_dissector_func) && (attr->pdissect == NULL)) ||
@@ -5520,6 +6326,7 @@ int dissect_cip_attribute(packet_info *pinfo, proto_tree *tree, proto_item *item
    case cip_lword:
    case cip_lreal:
    case cip_ltime:
+   case cip_ntime:
       proto_tree_add_item(tree, *(attr->phf), tvb, offset, 8, ENC_LITTLE_ENDIAN);
       consumed = 8;
       break;
@@ -5541,17 +6348,14 @@ int dissect_cip_attribute(packet_info *pinfo, proto_tree *tree, proto_item *item
       dissect_cip_date_and_time(tree, tvb, offset, *(attr->phf));
       consumed = 6;
       break;
+   case cip_stime:
+      consumed = dissect_cip_stime(tree, tvb, offset, *(attr->phf));
+      break;
+   case cip_utime:
+      consumed = dissect_cip_utime(tree, tvb, offset, *(attr->phf));
+      break;
    case cip_date:
-      temp_data = tvb_get_letohs( tvb, offset);
-      /* Convert to nstime epoch */
-      computed_time = CIP_TIMEBASE+(temp_data*60*60*24);
-      date = gmtime(&computed_time);
-      if (date != NULL)
-          strftime(date_str, 20, "%b %d, %Y", date);
-      else
-          g_strlcpy(date_str, "Not representable", sizeof date_str);
-      proto_tree_add_uint_format_value(tree, *(attr->phf), tvb, offset, 2, temp_data, "%s", date_str);
-      consumed = 2;
+      consumed = dissect_cip_date(tree, tvb, offset, *(attr->phf));
       break;
    case cip_time_of_day:
       temp_time = temp_data = tvb_get_letohl( tvb, offset);
@@ -5578,6 +6382,86 @@ int dissect_cip_attribute(packet_info *pinfo, proto_tree *tree, proto_item *item
    }
 
    return consumed;
+}
+
+static int dissect_cip_service(packet_info *pinfo, tvbuff_t *tvb, int offset,
+   proto_item *ti, proto_tree *item_tree, cip_service_info_t *service_entry, guint8 service)
+{
+   int parsed_len = 0;
+
+   if (service_entry != NULL && service_entry->pdissect)
+   {
+      gboolean request = !(service & CIP_SC_RESPONSE_MASK);
+      parsed_len = service_entry->pdissect(pinfo, item_tree, ti, tvb, offset, request);
+   }
+
+   return parsed_len;
+}
+
+static int dissect_cip_object_specific_service(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, proto_item* msp_item, cip_service_info_t *service_entry)
+{
+   DISSECTOR_ASSERT(service_entry != NULL);
+
+   int offset = 0;
+   guint8 service = tvb_get_guint8(tvb, offset);
+   guint8 gen_status = 0;
+
+   // Skip over the Request/Response header to get to the actual data.
+   if (service & CIP_SC_RESPONSE_MASK)
+   {
+      gen_status = tvb_get_guint8(tvb, offset + 2);
+
+      guint16 add_stat_size = tvb_get_guint8(tvb, offset + 3) * 2;
+      offset = 4 + add_stat_size;
+   }
+   else
+   {
+      guint16 req_path_size = tvb_get_guint8(tvb, offset + 1) * 2;
+      offset = 2 + req_path_size;
+   }
+
+   // Display the service name, even if there is no payload data.
+   if (service_entry->service_name)
+   {
+      col_append_str(pinfo->cinfo, COL_INFO, service_entry->service_name);
+      col_set_fence(pinfo->cinfo, COL_INFO);
+
+      proto_item_append_text(msp_item, "%s", service_entry->service_name);
+   }
+
+   // Only dissect responses with specific response statuses.
+   if ((service & CIP_SC_RESPONSE_MASK)
+      && (should_dissect_cip_response(tvb, offset, gen_status) == FALSE))
+   {
+      return 0;
+   }
+
+   proto_item *payload_item;
+   proto_tree *payload_tree = proto_tree_add_subtree(tree, tvb, offset, tvb_reported_length_remaining(tvb, offset), ett_cmd_data, &payload_item, "");
+
+   // Add the service info to the tree item.
+   proto_item_append_text(payload_item, "%s", service_entry->service_name);
+
+   if (service & CIP_SC_RESPONSE_MASK)
+   {
+      proto_item_append_text(payload_item, " (Response)");
+   }
+   else
+   {
+      proto_item_append_text(payload_item, " (Request)");
+   }
+
+   // Process any known command-specific data.
+   offset += dissect_cip_service(pinfo, tvb, offset, payload_item, payload_tree, service_entry, service);
+
+   // Add any remaining data.
+   int len_remain = tvb_reported_length_remaining(tvb, offset);
+   if (len_remain > 0)
+   {
+      proto_tree_add_item(payload_tree, hf_cip_data, tvb, offset, len_remain, ENC_NA);
+   }
+
+   return tvb_reported_length(tvb);
 }
 
 /************************************************
@@ -5917,14 +6801,6 @@ dissect_cip_generic_service_req(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
    case SC_SET_ATT_LIST:
       parsed_len = dissect_cip_set_attribute_list_req(tvb, pinfo, cmd_data_tree, cmd_data_item, offset, req_data);
       break;
-   case SC_RESET:
-      // Parameter to reset is optional.
-      if (tvb_reported_length_remaining(tvb, offset) > 0)
-      {
-         proto_tree_add_item(cmd_data_tree, hf_cip_sc_reset_param, tvb, offset, 1, ENC_LITTLE_ENDIAN);
-         parsed_len = 1;
-      }
-      break;
    case SC_MULT_SERV_PACK:
       parsed_len = dissect_cip_multiple_service_packet(tvb, pinfo, cmd_data_tree, cmd_data_item, offset, TRUE);
       break;
@@ -6227,8 +7103,8 @@ dissect_cip_find_next_object_rsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
 
    for (i = 0; i < num_instances; i++)
    {
-      proto_tree_add_item(tree, hf_cip_find_next_object_instance_item, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-      offset += 2;
+      proto_tree_add_item(tree, hf_cip_find_next_object_instance_item, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+      offset += 1;
 
       if ((tvb_reported_length_remaining(tvb, offset) < 2) && (i < num_instances-1))
       {
@@ -6272,7 +7148,7 @@ gboolean should_dissect_cip_response(tvbuff_t *tvb, int offset, guint8 gen_statu
     return TRUE;
 }
 
-static int
+int
 dissect_cip_generic_service_rsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
    proto_item *cmd_data_item;
@@ -6419,8 +7295,362 @@ static void save_route_connection_path(packet_info* pinfo, tvbuff_t* tvb, int of
    }
 }
 
+static int get_connection_timeout_multiplier(guint32 timeout_value)
+{
+   guint32 timeout_multiplier;
+   switch (timeout_value)
+   {
+   case 0:
+      timeout_multiplier = 4;
+      break;
+   case 1:
+      timeout_multiplier = 8;
+      break;
+   case 2:
+      timeout_multiplier = 16;
+      break;
+   case 3:
+      timeout_multiplier = 32;
+      break;
+   case 4:
+      timeout_multiplier = 64;
+      break;
+   case 5:
+      timeout_multiplier = 128;
+      break;
+   case 6:
+      timeout_multiplier = 256;
+      break;
+   case 7:
+      timeout_multiplier = 512;
+      break;
+   default:
+      // Invalid
+      timeout_multiplier = 0;
+      break;
+   }
+
+   return timeout_multiplier;
+}
+
+static void fwd_open_analysis_safety_open(packet_info* pinfo, proto_item* cmd_item, cip_safety_epath_info_t* safety_fwdopen)
+{
+   if (safety_fwdopen->safety_seg == FALSE)
+   {
+      return;
+   }
+
+   if (safety_fwdopen->safety_open_type == CIP_SAFETY_OPEN_TYPE1)
+   {
+      expert_add_info(pinfo, cmd_item, &ei_cip_safety_open_type1);
+   }
+   else if (safety_fwdopen->safety_open_type == CIP_SAFETY_OPEN_TYPE2A)
+   {
+      expert_add_info(pinfo, cmd_item, &ei_cip_safety_open_type2a);
+   }
+   else if (safety_fwdopen->safety_open_type == CIP_SAFETY_OPEN_TYPE2B)
+   {
+      expert_add_info(pinfo, cmd_item, &ei_cip_safety_open_type2b);
+   }
+}
+
+static void display_previous_route_connection_path(cip_req_info_t* preq_info, proto_tree* item_tree, tvbuff_t* tvb, packet_info* pinfo, int hf_path, int display_type);
+
+// Display all Connection Information and Analysis.
+static void display_connection_information_fwd_open_req(packet_info* pinfo, tvbuff_t* tvb, proto_tree* tree)
+{
+   cip_conn_info_t* conn_info = (cip_conn_info_t*)p_get_proto_data(wmem_file_scope(), pinfo, proto_enip, ENIP_CONNECTION_INFO);
+   if (!conn_info)
+   {
+      return;
+   }
+
+   proto_item* conn_info_item = NULL;
+   proto_tree* conn_info_tree = proto_tree_add_subtree(tree, tvb, 0, 0, ett_connection_info, &conn_info_item, "Connection Information");
+   proto_item_set_generated(conn_info_item);
+
+   mark_cip_connection(pinfo, tvb, conn_info_tree);
+
+   proto_item* pi = proto_tree_add_float(conn_info_tree, hf_cip_cm_ot_timeout, tvb, 0, 0, (conn_info->O2T.rpi / 1000.0f) * conn_info->timeout_multiplier);
+   proto_item_set_generated(pi);
+
+   pi = proto_tree_add_float(conn_info_tree, hf_cip_cm_to_timeout, tvb, 0, 0, (conn_info->T2O.rpi / 1000.0f) * conn_info->timeout_multiplier);
+   proto_item_set_generated(pi);
+
+   if (conn_info->safety.safety_seg)
+   {
+      pi = proto_tree_add_float(conn_info_tree, hf_cip_safety_nte_ms, tvb, 0, 0, conn_info->safety.nte_value_ms);
+      proto_item_set_generated(pi);
+   }
+
+   if (conn_info->close_frame != 0)
+   {
+      pi = proto_tree_add_uint(conn_info_tree, hf_cip_fwd_close_in, tvb, 0, 0, conn_info->close_frame);
+      proto_item_set_generated(pi);
+   }
+   else
+   {
+      expert_add_info(pinfo, conn_info_item, &ei_cip_no_fwd_close);
+   }
+
+   fwd_open_analysis_safety_open(pinfo, conn_info_item, &conn_info->safety);
+}
+
+static void display_connection_information_fwd_open_rsp(packet_info* pinfo, tvbuff_t* tvb, proto_tree* tree, cip_req_info_t* preq_info)
+{
+   proto_item* conn_info_item = NULL;
+   proto_tree* conn_info_tree = proto_tree_add_subtree(tree, tvb, 0, 0, ett_connection_info, &conn_info_item, "Connection Information");
+   proto_item_set_generated(conn_info_item);
+
+   mark_cip_connection(pinfo, tvb, conn_info_tree);
+
+   display_previous_route_connection_path(preq_info, conn_info_tree, tvb, pinfo, hf_cip_cm_conn_path_size, DISPLAY_CONNECTION_PATH);
+}
+
+static void display_connection_information_fwd_close_req(packet_info* pinfo, tvbuff_t* tvb, proto_tree* tree)
+{
+   cip_conn_info_t* conn_info = (cip_conn_info_t*)p_get_proto_data(wmem_file_scope(), pinfo, proto_enip, ENIP_CONNECTION_INFO);
+   if (!conn_info)
+   {
+      return;
+   }
+
+   proto_item* conn_info_item = NULL;
+   proto_tree* conn_info_tree = proto_tree_add_subtree(tree, tvb, 0, 0, ett_connection_info, &conn_info_item, "Connection Information");
+   proto_item_set_generated(conn_info_item);
+
+   mark_cip_connection(pinfo, tvb, conn_info_tree);
+
+   display_fwd_open_connection_path(conn_info, conn_info_tree, tvb, pinfo);
+
+   proto_item *pi = proto_tree_add_uint(conn_info_tree, hf_cip_fwd_open_in, tvb, 0, 0, conn_info->open_req_frame);
+   proto_item_set_generated(pi);
+
+   // Show the API values
+   pi = proto_tree_add_uint(conn_info_tree, hf_cip_cm_ot_api, tvb, 0, 0, conn_info->O2T.api);
+   proto_item_set_generated(pi);
+
+   pi = proto_tree_add_uint(conn_info_tree, hf_cip_cm_to_api, tvb, 0, 0, conn_info->T2O.api);
+   proto_item_set_generated(pi);
+
+   // Connection timeout values
+   float ot_timeout_ms = (conn_info->O2T.rpi / 1000.0f) * conn_info->timeout_multiplier;
+   float to_timeout_ms = (conn_info->T2O.rpi / 1000.0f) * conn_info->timeout_multiplier;
+   proto_item* ot_timeout_item = proto_tree_add_float(conn_info_tree, hf_cip_cm_ot_timeout, tvb, 0, 0, ot_timeout_ms);
+   proto_item_set_generated(ot_timeout_item);
+
+   proto_item* to_timeout_item = proto_tree_add_float(conn_info_tree, hf_cip_cm_to_timeout, tvb, 0, 0, to_timeout_ms);
+   proto_item_set_generated(to_timeout_item);
+
+   if (conn_info->safety.safety_seg)
+   {
+      pi = proto_tree_add_float(conn_info_tree, hf_cip_safety_nte_ms, tvb, 0, 0, conn_info->safety.nte_value_ms);
+      proto_item_set_generated(pi);
+   }
+
+   if (conn_info->safety.safety_seg)
+   {
+      // Make it obvious that the FwdClose is Safety, to match how the FwdOpen looks.
+      col_append_str(pinfo->cinfo, COL_INFO, " [Safety]");
+   }
+
+}
+
+static void display_connection_information_fwd_close_rsp(packet_info* pinfo, tvbuff_t* tvb, proto_tree* tree)
+{
+   cip_conn_info_t* conn_val = (cip_conn_info_t*)p_get_proto_data(wmem_file_scope(), pinfo, proto_enip, ENIP_CONNECTION_INFO);
+   if (!conn_val)
+   {
+      return;
+   }
+
+   proto_item* conn_info_item = NULL;
+   proto_tree* conn_info_tree = proto_tree_add_subtree(tree, tvb, 0, 0, ett_connection_info, &conn_info_item, "Connection Information");
+   proto_item_set_generated(conn_info_item);
+
+   mark_cip_connection(pinfo, tvb, conn_info_tree);
+
+   cip_req_info_t* preq_info = (cip_req_info_t*)p_get_proto_data(wmem_file_scope(), pinfo, proto_cip, 0);
+   display_previous_route_connection_path(preq_info, conn_info_tree, tvb, pinfo, hf_cip_cm_conn_path_size, DISPLAY_CONNECTION_PATH);
+
+   if (conn_val->safety.safety_seg)
+   {
+      // Make it obvious that the FwdClose is Safety, to match how the FwdOpen looks.
+      col_append_str(pinfo->cinfo, COL_INFO, " [Safety]");
+   }
+}
+
+//// Concurrent Connections
+static int dissect_cip_cc_hop(packet_info* pinfo, tvbuff_t* tvb, int offset, proto_tree* hops_tree, guint8 hop_number)
+{
+    int parsed = 0;
+
+    proto_item* item_hop = proto_tree_add_uint(hops_tree, hf_ext_net_seg_hop, tvb, offset, 0, hop_number);
+
+    proto_tree* hop_tree = proto_item_add_subtree(item_hop, ett_cc_hop);
+    proto_tree_add_item(hop_tree, hf_ext_net_seg_hop_egress_cip_port, tvb, offset + parsed, 1, ENC_LITTLE_ENDIAN);
+    parsed++;
+
+    proto_tree_add_item(hop_tree, hf_ext_net_seg_hop_link_adr_type, tvb, offset + parsed, 1, ENC_LITTLE_ENDIAN);
+    proto_tree_add_item(hop_tree, hf_ext_net_seg_hop_number_of_linkadr, tvb, offset + parsed, 1, ENC_LITTLE_ENDIAN);
+    parsed++;
+
+    guint8 link_type = tvb_get_guint8(tvb, offset + 1) >> 4;
+    guint8 number_of_links = tvb_get_guint8(tvb, offset + 1) & 0x0F;
+
+    for (guint8 i = 0; i < number_of_links; i++)
+    {
+        switch (link_type)
+        {
+        case 0: // Link addresses
+        {
+            proto_tree_add_item(hop_tree, hf_ext_net_seg_link_address, tvb, offset + parsed, 1, ENC_LITTLE_ENDIAN);
+            parsed++;
+            break;
+        }
+
+        case 1: // IPv4 addresses encoding
+            proto_tree_add_item(hop_tree, hf_ext_net_seg_link_ipv4, tvb, offset + parsed, 4, ENC_LITTLE_ENDIAN);
+            parsed += 4;
+            break;
+
+        case 2: // Host Name addresses encoding
+            parsed += dissect_cip_string_type(pinfo, hop_tree, item_hop, tvb, offset + parsed, hf_ext_net_seg_link_hostname, CIP_STRING_TYPE);
+
+            // Add pad byte when string length is odd
+            if (parsed % 2)
+            {
+                parsed++;
+            }
+
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    proto_item_set_len(item_hop, parsed);
+
+    return parsed;
+}
+
+#define CC_PACKET_TYPE_MASK (0x001F)
+int dissect_concurrent_connection_packet(packet_info* pinfo, tvbuff_t* tvb, int offset, proto_tree* tree)
+{
+    proto_item* type_item = proto_tree_add_item(tree, proto_cc, tvb, offset, -1, ENC_NA);
+    proto_tree* CC_tree = proto_item_add_subtree(type_item, ett_cc_header);
+
+    guint16 header_type = tvb_get_letohs(tvb, offset) & CC_PACKET_TYPE_MASK;
+
+    int parsed_len = 0;
+    if (header_type == 1)
+    {
+        static int* const options[] = {
+           &hf_cip_cc_packet_type,
+           &hf_cip_cc_packet_keepalive,
+           &hf_cip_cc_packet_keepalive_hop_count,
+           &hf_cip_cc_packet_reserved,
+           NULL
+        };
+
+        proto_tree_add_bitmask(CC_tree, tvb, offset + parsed_len, hf_cip_cc_packet_options, ett_cc_header, options, ENC_LITTLE_ENDIAN);
+        parsed_len += 2;
+
+        guint32 CC_frame_length;
+        proto_tree_add_item_ret_uint(CC_tree, hf_cip_cc_packet_length, tvb, offset + parsed_len, 2, ENC_LITTLE_ENDIAN, &CC_frame_length);
+        parsed_len += 2;
+
+        guint32 ccSeq;
+        proto_tree_add_item_ret_uint(CC_tree, hf_cip_cc_packet_seq_number, tvb, offset + parsed_len, 4, ENC_LITTLE_ENDIAN, &ccSeq);
+        col_append_fstr(pinfo->cinfo, COL_INFO, ", CC_SEQ=%010u", ccSeq);
+        parsed_len += 4;
+
+        proto_tree_add_item(CC_tree, hf_cip_cc_crc, tvb, offset + CC_frame_length, CC_CRC_LENGTH, ENC_LITTLE_ENDIAN);
+        proto_tree_set_appendix(CC_tree, tvb, offset + CC_frame_length, CC_CRC_LENGTH);
+    }
+    else
+    {
+        expert_add_info(pinfo, type_item, &ei_cc_invalid_header_type);
+    }
+
+    proto_item_set_len(type_item, parsed_len);
+
+    return parsed_len;
+}
+
+void proto_register_cc(void)
+{
+    static hf_register_info hf_cc[] =
+    {
+        /// Concurrent Connections
+        { &hf_cip_cm_cc_version, { "Concurrent Connections Protocol Version", "cip.cm.cc_version", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL }},
+
+        // Concurrent Connection Packet
+        { &hf_cip_cc_packet_length,{ "Packet Length", "cip.cc.packet.length", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_cip_cc_packet_type,{ "Packet Type", "cip.cc.packet_type", FT_UINT16, BASE_DEC, VALS(cc_packet_type_vals), CC_PACKET_TYPE_MASK, NULL, HFILL } },
+        { &hf_cip_cc_packet_options, { "Packet Type and Keep-alive", "cip.cc.packet.type_and_keepalive", FT_UINT16, BASE_HEX, NULL, 0, NULL, HFILL } },
+        { &hf_cip_cc_packet_keepalive,{ "Keep-alive Flag", "cip.cc.packet.keep_alive_flag", FT_UINT16, BASE_HEX, NULL, 0x0020, NULL, HFILL } },
+        { &hf_cip_cc_packet_keepalive_hop_count,{ "Keep-alive Hop Count", "cip.cc.packet.keep_alive_count", FT_UINT16, BASE_DEC, NULL, 0x01C0, NULL, HFILL } },
+        { &hf_cip_cc_packet_reserved,{ "Reserved", "cip.cc.packet.reserved", FT_UINT16, BASE_HEX, NULL, 0xFE00, NULL, HFILL } },
+        { &hf_cip_cc_packet_seq_number,{ "Concurrent Connection Sequence Count", "cip.cc.packet.sequence_count", FT_UINT32, BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_cip_cc_crc,{ "CRC", "cip.cc.crc", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL } },
+
+        // Concurrent Connection Path
+        { &hf_ext_net_seg_hops_count,{ "Hops Count", "cip.cc.netsegment.hopsCount", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_ext_net_seg_length,{ "Length of Concurrent Connection Path", "cip.cc.netsegment.length", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL } },
+
+        // Concurrent Connection Hops
+        { &hf_ext_net_seg_hop,{ "CC Hop", "cip.cc.netsegment.hop", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_ext_net_seg_hop_egress_cip_port,{ "Egress Port", "cip.cc.netsegment.HopEgreeCipPort", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_ext_net_seg_hop_link_adr_type,{ "Link Address Type", "cip.cc.netsegment.HopLnkAdrType", FT_UINT8, BASE_DEC, VALS(cc_link_adr_type), 0xF0, NULL, HFILL } },
+        { &hf_ext_net_seg_hop_number_of_linkadr,{ "Number of link addresses", "cip.cc.netsegment.HopNumberOfLnkAdr", FT_UINT8, BASE_DEC, NULL, 0x0F, NULL, HFILL } },
+        { &hf_ext_net_seg_link_address,{ "Link address", "cip.cc.netsegment.link", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_ext_net_seg_link_ipv4,{ "IPv4 address", "cip.cc.netsegment.ip", FT_IPv4, BASE_NONE, NULL, 0, NULL, HFILL } },
+        { &hf_ext_net_seg_link_hostname, { "Hostname", "cip.cc.netsegment.hostname", FT_STRING, BASE_NONE, NULL, 0, NULL, HFILL } },
+    };
+
+    static ei_register_info ei_cc[] = {
+        { &ei_cc_invalid_header_type, { "cip.cc.invalid_packet_type", PI_MALFORMED, PI_ERROR, "Invalid Concurrent Connections Packet Type", EXPFILL }},
+    };
+
+    proto_cc = proto_register_protocol("Concurrent Connection Packet",
+        "CIPCC",
+        "cipcc");
+
+    proto_register_field_array(proto_cc, hf_cc, array_length(hf_cc));
+    proto_register_subtree_array(ett_cc, array_length(ett_cc));
+
+    expert_module_t* expert_cc = expert_register_protocol(proto_cc);
+    expert_register_field_array(expert_cc, ei_cc, array_length(ei_cc));
+}
+
+// Offset - Starts after the Extended Network Segment Subtype
+int dissect_concurrent_connection_network_segment(packet_info* pinfo, tvbuff_t* tvb, int offset, proto_tree* tree)
+{
+    guint32 hops_count;
+    proto_tree_add_item_ret_uint(tree, hf_ext_net_seg_hops_count, tvb, offset, 1, ENC_LITTLE_ENDIAN, &hops_count);
+
+    proto_tree_add_item(tree, hf_ext_net_seg_length, tvb, offset + 1, 1, ENC_LITTLE_ENDIAN);
+    int parsed_len = 2;
+
+    for (guint32 i = 0; i < hops_count; i++)
+    {
+        parsed_len += dissect_cip_cc_hop(pinfo, tvb, offset + parsed_len, tree, i + 1);
+    }
+
+    // Add padding when the Network segment length is odd.
+    if (parsed_len & 0x0001)
+    {
+        parsed_len++;
+    }
+
+    return parsed_len;
+}
+
 static void
-dissect_cip_cm_fwd_open_req(cip_req_info_t *preq_info, proto_tree *cmd_tree, tvbuff_t *tvb, int offset, gboolean large_fwd_open, packet_info *pinfo)
+dissect_cip_cm_fwd_open_req(cip_req_info_t *preq_info, proto_tree *cmd_tree, tvbuff_t *tvb, int offset,
+   gboolean large_fwd_open, packet_info *pinfo, gboolean concurrent_connection)
 {
    proto_item *pi;
    proto_tree *epath_tree;
@@ -6436,16 +7666,32 @@ dissect_cip_cm_fwd_open_req(cip_req_info_t *preq_info, proto_tree *cmd_tree, tvb
    proto_tree_add_item_ret_uint( cmd_tree, hf_cip_cm_ot_connid, tvb, offset+2, 4, ENC_LITTLE_ENDIAN, &O2T_info.connID);
    proto_tree_add_item_ret_uint( cmd_tree, hf_cip_cm_to_connid, tvb, offset+6, 4, ENC_LITTLE_ENDIAN, &T2O_info.connID);
 
+   // Add Connection IDs as hidden items so that it's easy to find all Connection IDs in different fields.
+   pi = proto_tree_add_item(cmd_tree, hf_cip_connid, tvb, offset + 2, 4, ENC_LITTLE_ENDIAN);
+   proto_item_set_hidden(pi);
+   pi = proto_tree_add_item(cmd_tree, hf_cip_connid, tvb, offset + 6, 4, ENC_LITTLE_ENDIAN);
+   proto_item_set_hidden(pi);
+
    cip_connection_triad_t conn_triad;
    dissect_connection_triad(tvb, offset + 10, cmd_tree,
       hf_cip_cm_conn_serial_num, hf_cip_cm_vendor, hf_cip_cm_orig_serial_num,
       &conn_triad);
 
-   proto_tree_add_item(cmd_tree, hf_cip_cm_timeout_multiplier, tvb, offset+18, 1, ENC_LITTLE_ENDIAN);
+   if (concurrent_connection)
+   {
+      // For CC there is additional 1 byte containing CC Version and one reserved byte after.
+      proto_tree_add_item(cmd_tree, hf_cip_cm_cc_version, tvb, offset + 18, 1, ENC_LITTLE_ENDIAN);
+      offset += 2;
+   }
+
+   guint32 timeout_value;
+   proto_tree_add_item_ret_uint(cmd_tree, hf_cip_cm_timeout_multiplier, tvb, offset+18, 1, ENC_LITTLE_ENDIAN, &timeout_value);
+   guint32 timeout_multiplier = get_connection_timeout_multiplier(timeout_value);
+
    proto_tree_add_item(cmd_tree, hf_cip_reserved24, tvb, offset+19, 3, ENC_LITTLE_ENDIAN);
 
    // O->T parameters
-   proto_tree_add_item(cmd_tree, hf_cip_cm_ot_rpi, tvb, offset + 22, 4, ENC_LITTLE_ENDIAN);
+   proto_tree_add_item_ret_uint(cmd_tree, hf_cip_cm_ot_rpi, tvb, offset + 22, 4, ENC_LITTLE_ENDIAN, &O2T_info.rpi);
    if (large_fwd_open)
    {
       dissect_net_param32(tvb, offset+26, cmd_tree,
@@ -6462,7 +7708,7 @@ dissect_cip_cm_fwd_open_req(cip_req_info_t *preq_info, proto_tree *cmd_tree, tvb
    }
 
    // T->O parameters
-   proto_tree_add_item(cmd_tree, hf_cip_cm_to_rpi, tvb, offset + 26 + net_param_offset, 4, ENC_LITTLE_ENDIAN);
+   proto_tree_add_item_ret_uint(cmd_tree, hf_cip_cm_to_rpi, tvb, offset + 26 + net_param_offset, 4, ENC_LITTLE_ENDIAN, &T2O_info.rpi);
    if (large_fwd_open)
    {
       dissect_net_param32(tvb, offset+26+net_param_offset+4, cmd_tree,
@@ -6511,9 +7757,9 @@ dissect_cip_cm_fwd_open_req(cip_req_info_t *preq_info, proto_tree *cmd_tree, tvb
          preq_info->connInfo->T2O = T2O_info;
 
          preq_info->connInfo->TransportClass_trigger = TransportClass_trigger;
+         preq_info->connInfo->timeout_multiplier = timeout_multiplier;
          preq_info->connInfo->safety = safety_fwdopen;
-         preq_info->connInfo->ClassID = connection_path.iClass;
-         preq_info->connInfo->ConnPoint = connection_path.iConnPoint;
+         preq_info->connInfo->connection_path = connection_path;
 
          preq_info->connInfo->FwdOpenPathLenBytes = conn_path_size;
          preq_info->connInfo->pFwdOpenPathData = wmem_alloc(wmem_file_scope(), conn_path_size);
@@ -6521,7 +7767,7 @@ dissect_cip_cm_fwd_open_req(cip_req_info_t *preq_info, proto_tree *cmd_tree, tvb
       }
    }
 
-   mark_cip_connection(pinfo, tvb, cmd_tree);
+   display_connection_information_fwd_open_req(pinfo, tvb, cmd_tree);
 }
 
 static void display_previous_route_connection_path(cip_req_info_t *preq_info, proto_tree *item_tree, tvbuff_t *tvb, packet_info *pinfo, int hf_path, int display_type)
@@ -6546,24 +7792,35 @@ static void display_previous_route_connection_path(cip_req_info_t *preq_info, pr
    }
 }
 
+gboolean cip_connection_triad_match(const cip_connection_triad_t* left, const cip_connection_triad_t* right)
+{
+   return (left->ConnSerialNumber == right->ConnSerialNumber) &&
+      (left->VendorID == right->VendorID) &&
+      (left->DeviceSerialNumber == right->DeviceSerialNumber);
+}
+
 static int
 dissect_cip_cm_fwd_open_rsp_success(cip_req_info_t *preq_info, proto_tree *tree, tvbuff_t *tvb, int offset, packet_info *pinfo)
 {
    int parsed_len = 26;
 
-   unsigned char app_rep_size;
-   guint32 O2TConnID, T2OConnID;
    guint16 init_rollover_value = 0, init_timestamp_value = 0;
    proto_tree *pid_tree, *safety_tree;
    cip_connection_triad_t target_triad = {0};
 
    /* Display originator to target connection ID */
-   O2TConnID = tvb_get_letohl( tvb, offset );
-   proto_tree_add_item( tree, hf_cip_cm_ot_connid, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+   guint32 O2TConnID;
+   proto_tree_add_item_ret_uint(tree, hf_cip_cm_ot_connid, tvb, offset, 4, ENC_LITTLE_ENDIAN, &O2TConnID);
 
    /* Display target to originator connection ID */
-   T2OConnID = tvb_get_letohl( tvb, offset+4 );
-   proto_tree_add_item( tree, hf_cip_cm_to_connid, tvb, offset+4, 4, ENC_LITTLE_ENDIAN);
+   guint32 T2OConnID;
+   proto_tree_add_item_ret_uint(tree, hf_cip_cm_to_connid, tvb, offset+4, 4, ENC_LITTLE_ENDIAN, &T2OConnID);
+
+   // Add Connection IDs as hidden items so that it's easy to find all Connection IDs in different fields.
+   proto_item* pi = proto_tree_add_item(tree, hf_cip_connid, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+   proto_item_set_hidden(pi);
+   pi = proto_tree_add_item(tree, hf_cip_connid, tvb, offset + 4, 4, ENC_LITTLE_ENDIAN);
+   proto_item_set_hidden(pi);
 
    cip_connection_triad_t conn_triad;
    dissect_connection_triad(tvb, offset + 8, tree,
@@ -6571,19 +7828,21 @@ dissect_cip_cm_fwd_open_rsp_success(cip_req_info_t *preq_info, proto_tree *tree,
       &conn_triad);
 
    /* Display originator to target actual packet interval */
-   guint32 O2TAPI = tvb_get_letohl( tvb, offset+16 );
-   proto_tree_add_item(tree, hf_cip_cm_ot_api, tvb, offset + 16, 4, ENC_LITTLE_ENDIAN);
+   guint32 O2TAPI;
+   proto_tree_add_item_ret_uint(tree, hf_cip_cm_ot_api, tvb, offset + 16, 4, ENC_LITTLE_ENDIAN, &O2TAPI);
 
    /* Display originator to target actual packet interval */
-   guint32 T2OAPI = tvb_get_letohl( tvb, offset+20 );
-   proto_tree_add_item(tree, hf_cip_cm_to_api, tvb, offset + 20, 4, ENC_LITTLE_ENDIAN);
+   guint32 T2OAPI;
+   proto_tree_add_item_ret_uint(tree, hf_cip_cm_to_api, tvb, offset + 20, 4, ENC_LITTLE_ENDIAN, &T2OAPI);
 
    /* Display the application reply size */
-   app_rep_size = tvb_get_guint8( tvb, offset+24 ) * 2;
+   guint16 app_rep_size = tvb_get_guint8( tvb, offset+24 ) * 2;
    proto_tree_add_item(tree, hf_cip_cm_app_reply_size, tvb, offset+24, 1, ENC_LITTLE_ENDIAN);
 
    /* Display the Reserved byte */
    proto_tree_add_item(tree, hf_cip_reserved8, tvb, offset+25, 1, ENC_LITTLE_ENDIAN );
+
+   // Handle the Application Reply Data.
    if (app_rep_size > 0)
    {
       if ((preq_info == NULL) || (preq_info->connInfo == NULL) ||
@@ -6630,12 +7889,7 @@ dissect_cip_cm_fwd_open_rsp_success(cip_req_info_t *preq_info, proto_tree *tree,
       }
    }
 
-   proto_item* conn_info_item = NULL;
-   proto_tree* conn_info_tree = proto_tree_add_subtree(tree, tvb, 0, 0, ett_connection_info, &conn_info_item, "Connection Information");
-   proto_item_set_generated(conn_info_item);
-
-   mark_cip_connection(pinfo, tvb, conn_info_tree);
-   display_previous_route_connection_path(preq_info, conn_info_tree, tvb, pinfo, hf_cip_cm_conn_path_size, DISPLAY_CONNECTION_PATH);
+   display_connection_information_fwd_open_rsp(pinfo, tvb, tree, preq_info);
 
    /* See if we've captured the ForwardOpen request.  If so some of the conversation data has already been
       populated and we just need to update it. */
@@ -6645,9 +7899,7 @@ dissect_cip_cm_fwd_open_rsp_success(cip_req_info_t *preq_info, proto_tree *tree,
    if ((preq_info != NULL) && (preq_info->connInfo != NULL))
    {
       /* Ensure the connection triad matches before updating the connection IDs */
-      if ((preq_info->connInfo->triad.ConnSerialNumber == conn_triad.ConnSerialNumber) &&
-          (preq_info->connInfo->triad.VendorID == conn_triad.VendorID) &&
-          (preq_info->connInfo->triad.DeviceSerialNumber == conn_triad.DeviceSerialNumber))
+      if (cip_connection_triad_match(&(preq_info->connInfo->triad), &conn_triad))
       {
          /* Update the connection IDs as ForwardOpen reply is allowed to update them from
             the ForwardOpen request */
@@ -6661,6 +7913,7 @@ dissect_cip_cm_fwd_open_rsp_success(cip_req_info_t *preq_info, proto_tree *tree,
              preq_info->connInfo->safety.running_rollover_value = init_rollover_value;
              preq_info->connInfo->safety.running_timestamp_value = init_timestamp_value;
              preq_info->connInfo->safety.target_triad = target_triad;
+             preq_info->connInfo->safety.seen_non_zero_timestamp = FALSE;
          }
       }
    }
@@ -6737,9 +7990,6 @@ static void dissect_cip_cm_fwd_close_req(proto_tree* cmd_data_tree, tvbuff_t* tv
       hf_cip_cm_conn_serial_num, hf_cip_cm_vendor, hf_cip_cm_orig_serial_num,
       &conn_triad);
 
-   if (!pinfo->fd->visited)
-      enip_mark_connection_triad(pinfo, &conn_triad);
-
    /* Add the path size */
    guint16 conn_path_size = tvb_get_guint8(tvb, offset + 10) * 2;
    proto_tree_add_item(cmd_data_tree, hf_cip_cm_conn_path_size, tvb, offset + 10, 1, ENC_LITTLE_ENDIAN);
@@ -6753,7 +8003,8 @@ static void dissect_cip_cm_fwd_close_req(proto_tree* cmd_data_tree, tvbuff_t* tv
    dissect_epath(tvb, pinfo, epath_tree, pi, offset + 12, conn_path_size, FALSE, FALSE, &conn_path, NULL, DISPLAY_CONNECTION_PATH, NULL, FALSE);
    save_route_connection_path(pinfo, tvb, offset + 12, conn_path_size);
 
-   mark_cip_connection(pinfo, tvb, cmd_data_tree);
+   enip_close_cip_connection(pinfo, &conn_triad);
+   display_connection_information_fwd_close_req(pinfo, tvb, cmd_data_tree);
 }
 
 static int dissect_cip_cm_fwd_close_rsp_success(proto_tree* cmd_data_tree, tvbuff_t* tvb, int offset, packet_info* pinfo, proto_item* cmd_item)
@@ -6779,16 +8030,10 @@ static int dissect_cip_cm_fwd_close_rsp_success(proto_tree* cmd_data_tree, tvbuf
       proto_tree_add_item(cmd_data_tree, hf_cip_cm_app_reply_data, tvb, offset + 10, app_rep_size, ENC_NA);
    }
 
-   enip_close_cip_connection(pinfo, &conn_triad);
+   if (!pinfo->fd->visited)
+      enip_mark_connection_triad(pinfo, &conn_triad);
 
-   proto_item* conn_info_item = NULL;
-   proto_tree* conn_info_tree = proto_tree_add_subtree(cmd_data_tree, tvb, 0, 0, ett_connection_info, &conn_info_item, "Connection Information");
-   proto_item_set_generated(conn_info_item);
-
-   mark_cip_connection(pinfo, tvb, conn_info_tree);
-
-   cip_req_info_t* preq_info = (cip_req_info_t*)p_get_proto_data(wmem_file_scope(), pinfo, proto_cip, 0);
-   display_previous_route_connection_path(preq_info, conn_info_tree, tvb, pinfo, hf_cip_cm_conn_path_size, DISPLAY_CONNECTION_PATH);
+   display_connection_information_fwd_close_rsp(pinfo, tvb, cmd_data_tree);
 
    return 10 + app_rep_size;
 }
@@ -6874,7 +8119,7 @@ dissect_cip_cm_data( proto_tree *item_tree, tvbuff_t *tvb, int offset, int item_
             p_remove_proto_data(wmem_file_scope(), pinfo, proto_cip, 0);
             p_add_proto_data(wmem_file_scope(), pinfo, proto_cip, 0, pembedded_req_info );
 
-            proto_tree_add_uint_format( item_tree, hf_cip_cm_sc, tvb, 0, 0, SC_CM_UNCON_SEND|CIP_SC_RESPONSE_MASK, "(Service: Unconnected Send (Response))" );
+            proto_item_set_generated(proto_tree_add_uint_format( item_tree, hf_cip_cm_sc, tvb, 0, 0, SC_CM_UNCON_SEND|CIP_SC_RESPONSE_MASK, "Service: Unconnected Send (Response)" ));
             next_tvb = tvb_new_subset_length(tvb, offset, item_length);
 
             display_previous_request_path(pembedded_req_info, item_tree, tvb, pinfo, NULL, FALSE);
@@ -6883,17 +8128,22 @@ dissect_cip_cm_data( proto_tree *item_tree, tvbuff_t *tvb, int offset, int item_
             /* Check to see if service is 'generic' */
             try_val_to_str_idx((service & CIP_SC_MASK), cip_sc_vals, &service_index);
 
+            cip_service_info_t* service_entry = cip_get_service(pinfo, service);
             if ( pembedded_req_info && pembedded_req_info->dissector )
             {
                call_dissector(pembedded_req_info->dissector, next_tvb, pinfo, item_tree );
             }
-            else if (service_index >= 0)
+            else if (service_index >= 0 && !service_entry)
             {
                /* See if object dissector wants to override generic service handling */
                if (!dissector_try_heuristic(heur_subdissector_service, tvb, pinfo, item_tree, &hdtbl_entry, NULL))
                {
                    dissect_cip_generic_service_rsp(tvb, pinfo, item_tree);
                }
+            }
+            else if (service_entry)
+            {
+               dissect_cip_object_specific_service(tvb, pinfo, item_tree, NULL, service_entry);
             }
             else
             {
@@ -7008,9 +8258,11 @@ dissect_cip_cm_data( proto_tree *item_tree, tvbuff_t *tvb, int offset, int item_
            {
            case SC_CM_FWD_OPEN:
            case SC_CM_LARGE_FWD_OPEN:
+           case SC_CM_CONCURRENT_FWD_OPEN:
               parsed_len = dissect_cip_cm_fwd_open_rsp_success(preq_info, cmd_data_tree, tvb, offset, pinfo);
               break;
            case SC_CM_FWD_CLOSE:
+           case SC_CM_CONCURRENT_FWD_CLOSE:
               parsed_len = dissect_cip_cm_fwd_close_rsp_success(cmd_data_tree, tvb, offset, pinfo, cmd_item);
               break;
             case SC_CM_GET_CONN_OWNER:
@@ -7042,6 +8294,8 @@ dissect_cip_cm_data( proto_tree *item_tree, tvbuff_t *tvb, int offset, int item_
             case SC_CM_FWD_OPEN:
             case SC_CM_LARGE_FWD_OPEN:
             case SC_CM_FWD_CLOSE:
+            case SC_CM_CONCURRENT_FWD_OPEN:
+            case SC_CM_CONCURRENT_FWD_CLOSE:
             {
                /* Forward open and forward close error response look the same */
                cip_connection_triad_t conn_triad;
@@ -7106,13 +8360,17 @@ dissect_cip_cm_data( proto_tree *item_tree, tvbuff_t *tvb, int offset, int item_
          {
          case SC_CM_FWD_OPEN:
             /* Forward open Request*/
-            dissect_cip_cm_fwd_open_req(preq_info, cmd_data_tree, tvb, offset+2+req_path_size, FALSE, pinfo);
+            dissect_cip_cm_fwd_open_req(preq_info, cmd_data_tree, tvb, offset+2+req_path_size, FALSE, pinfo, FALSE);
+            break;
+         case SC_CM_CONCURRENT_FWD_OPEN:
+            dissect_cip_cm_fwd_open_req(preq_info, cmd_data_tree, tvb, offset+2+req_path_size, FALSE, pinfo, TRUE);
             break;
          case SC_CM_LARGE_FWD_OPEN:
             /* Large Forward open Request*/
-            dissect_cip_cm_fwd_open_req(preq_info, cmd_data_tree, tvb, offset+2+req_path_size, TRUE, pinfo);
+            dissect_cip_cm_fwd_open_req(preq_info, cmd_data_tree, tvb, offset+2+req_path_size, TRUE, pinfo, FALSE);
             break;
          case SC_CM_FWD_CLOSE:
+         case SC_CM_CONCURRENT_FWD_CLOSE:
             dissect_cip_cm_fwd_close_req(cmd_data_tree, tvb, offset + 2 + req_path_size, pinfo);
             break;
          case SC_CM_UNCON_SEND:
@@ -7615,7 +8873,7 @@ dissect_cip_cco_all_attribute_common( proto_tree *cmd_tree, proto_item *ti,
 
    dissect_deviceid(tvb, offset+2, tdi_tree,
       hf_cip_cco_tdi_vendor, hf_cip_cco_tdi_devtype, hf_cip_cco_tdi_prodcode,
-      hf_cip_cco_tdi_compatibility, hf_cip_cco_tdi_comp_bit, hf_cip_cco_tdi_majorrev, hf_cip_cco_tdi_minorrev, FALSE);
+      hf_cip_cco_tdi_compatibility, hf_cip_cco_tdi_comp_bit, hf_cip_cco_tdi_majorrev, hf_cip_cco_tdi_minorrev, FALSE, ENC_LITTLE_ENDIAN);
 
    /* CS Data Index Number */
    proto_tree_add_item(cmd_tree, hf_cip_cco_cs_data_index, tvb, offset+10, 4, ENC_LITTLE_ENDIAN );
@@ -7695,7 +8953,7 @@ dissect_cip_cco_all_attribute_common( proto_tree *cmd_tree, proto_item *ti,
 
    dissect_deviceid(tvb, offset+variable_data_size, tdi_tree,
       hf_cip_cco_pdi_vendor, hf_cip_cco_pdi_devtype, hf_cip_cco_pdi_prodcode,
-      hf_cip_cco_pdi_compatibility, hf_cip_cco_pdi_comp_bit, hf_cip_cco_pdi_majorrev, hf_cip_cco_pdi_minorrev, FALSE);
+      hf_cip_cco_pdi_compatibility, hf_cip_cco_pdi_comp_bit, hf_cip_cco_pdi_majorrev, hf_cip_cco_pdi_minorrev, FALSE, ENC_LITTLE_ENDIAN);
 
    /* Add in proxy device id size */
    variable_data_size += 8;
@@ -8060,6 +9318,8 @@ void dissect_cip_data( proto_tree *item_tree, tvbuff_t *tvb, int offset, packet_
       /* Check to see if service is 'generic' */
       try_val_to_str_idx((service & CIP_SC_MASK), cip_sc_vals, &service_index);
 
+      cip_service_info_t* service_entry = cip_get_service(pinfo, service);
+
       /* If the request set a dissector, then check that first. This ensures
          that Unconnected Send responses are properly parsed based on the
          embedded request. */
@@ -8067,13 +9327,17 @@ void dissect_cip_data( proto_tree *item_tree, tvbuff_t *tvb, int offset, packet_
       {
          call_dissector(preq_info->dissector, tvb, pinfo, item_tree);
       }
-      else if (service_index >= 0)
+      else if (service_index >= 0 && !service_entry)
       {
          /* See if object dissector wants to override generic service handling */
          if(!dissector_try_heuristic(heur_subdissector_service, tvb, pinfo, item_tree, &hdtbl_entry, NULL))
          {
            dissect_cip_generic_service_rsp(tvb, pinfo, cip_tree);
          }
+      }
+      else if (service_entry)
+      {
+         dissect_cip_object_specific_service(tvb, pinfo, cip_tree, msp_item, service_entry);
       }
       else
       {
@@ -8138,7 +9402,9 @@ void dissect_cip_data( proto_tree *item_tree, tvbuff_t *tvb, int offset, packet_
 
       /* Check to see if service is 'generic' */
       try_val_to_str_idx(service, cip_sc_vals, &service_index);
-      if (service_index >= 0)
+
+      cip_service_info_t* service_entry = cip_get_service(pinfo, service);
+      if (service_index >= 0 && !service_entry)
       {
           /* See if object dissector wants to override generic service handling */
           if(!dissector_try_heuristic(heur_subdissector_service, tvb, pinfo, item_tree, &hdtbl_entry, NULL))
@@ -8155,6 +9421,10 @@ void dissect_cip_data( proto_tree *item_tree, tvbuff_t *tvb, int offset, packet_
       else if ( dissector )
       {
          call_dissector( dissector, tvb, pinfo, item_tree );
+      }
+      else if (service_entry)
+      {
+         dissect_cip_object_specific_service(tvb, pinfo, cip_tree, msp_item, service_entry);
       }
       else
       {
@@ -8331,29 +9601,29 @@ proto_register_cip(void)
       { &hf_cip_seg_safety_configuration_timestamp, { "Configuration Timestamp (SCTS)", "cip.safety_segment.configuration_timestamp", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL, 0, NULL, HFILL }},
       { &hf_cip_seg_safety_configuration_date, { "Configuration (Manual) Date", "cip.safety_segment.configuration_date", FT_UINT16, BASE_HEX, VALS(cipsafety_snn_date_vals), 0, NULL, HFILL }},
       { &hf_cip_seg_safety_configuration_time, { "Configuration (Manual) Time", "cip.safety_segment.configuration_time", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_time_correction_epi, { "Time Correction EPI", "cip.safety_segment.time_correction_eri", FT_UINT32, BASE_DEC, NULL, 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_time_correction_epi, { "Time Correction EPI", "cip.safety_segment.time_correction_epi", FT_UINT32, BASE_CUSTOM, CF_FUNC(cip_rpi_api_fmt), 0, NULL, HFILL }},
       { &hf_cip_seg_safety_time_correction_net_params, { "Time Correction Network Connection Parameters", "cip.safety_segment.time_correction.net_params", FT_UINT16, BASE_HEX, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_time_correction_own, { "Owner", "cip.safety_segment.time_correction.owner", FT_UINT16, BASE_DEC, VALS(cip_con_owner_vals), 0x8000, "Time Correction: Redundant owner bit", HFILL }},
+      { &hf_cip_seg_safety_time_correction_own, { "Redundant Owner", "cip.safety_segment.time_correction.owner", FT_UINT16, BASE_DEC, VALS(cip_con_owner_vals), 0x8000, "Time Correction: Redundant owner bit", HFILL }},
       { &hf_cip_seg_safety_time_correction_typ, { "Connection Type", "cip.safety_segment.time_correction.type", FT_UINT16, BASE_DEC, VALS(cip_con_type_vals), 0x6000, "Time Correction: Connection type", HFILL }},
       { &hf_cip_seg_safety_time_correction_prio, { "Priority", "cip.safety_segment.time_correction.prio", FT_UINT16, BASE_DEC, VALS(cip_con_prio_vals), 0x0C00, "Time Correction: Connection priority", HFILL }},
       { &hf_cip_seg_safety_time_correction_fixed_var, { "Connection Size Type", "cip.safety_segment.time_correction.f_v", FT_UINT16, BASE_DEC, VALS(cip_con_fw_vals), 0x0200, "Time Correction: Fixed or variable connection size", HFILL }},
       { &hf_cip_seg_safety_time_correction_con_size, { "Connection Size", "cip.safety_segment.time_correction.consize", FT_UINT16, BASE_DEC, NULL, 0x01FF, "Time Correction: Connection size", HFILL }},
-      { &hf_cip_seg_safety_tunid, { "Target UNID", "cip.safety_segment.tunid", FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_tunid, { "Target UNID (TUNID)", "cip.safety_segment.tunid", FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
       { &hf_cip_seg_safety_tunid_snn_timestamp, { "SNN Timestamp", "cip.safety_segment.tunid.snn.timestamp", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL, 0, NULL, HFILL }},
       { &hf_cip_seg_safety_tunid_snn_date, { "SNN (Manual) Date", "cip.safety_segment.tunid.snn.date", FT_UINT16, BASE_HEX, VALS(cipsafety_snn_date_vals), 0, NULL, HFILL }},
       { &hf_cip_seg_safety_tunid_snn_time, { "SNN (Manual) Time", "cip.safety_segment.tunid.snn.time", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_seg_safety_tunid_nodeid, { "Node ID", "cip.safety_segment.tunid.nodeid", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_ounid, { "Originator UNID", "cip.safety_segment.ounid", FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_ounid_snn_timestamp, { "SNN Timestamp", "cip.safety_segment.tunid.snn.timestamp", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_ounid_snn_date, { "SNN (Manual) Date", "cip.safety_segment.tunid.snn.date", FT_UINT16, BASE_HEX, VALS(cipsafety_snn_date_vals), 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_ounid_snn_time, { "SNN (Manual) Time", "cip.safety_segment.tunid.snn.time", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_ounid, { "Originator UNID (OUNID)", "cip.safety_segment.ounid", FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_ounid_snn_timestamp, { "SNN Timestamp", "cip.safety_segment.ounid.snn.timestamp", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC, NULL, 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_ounid_snn_date, { "SNN (Manual) Date", "cip.safety_segment.ounid.snn.date", FT_UINT16, BASE_HEX, VALS(cipsafety_snn_date_vals), 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_ounid_snn_time, { "SNN (Manual) Time", "cip.safety_segment.ounid.snn.time", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_seg_safety_ounid_nodeid, { "Node ID", "cip.safety_segment.ounid.nodeid", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_ping_eri_multiplier, { "Ping Interval EPI Multiplier", "cip.safety_segment.ping_eri_multiplier", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_time_coord_msg_min_multiplier, { "Time Coord Msg Min Multiplier", "cip.safety_segment.time_coord_msg_min_multiplier", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_network_time_expected_multiplier, { "Network Time Expectation Multiplier", "cip.safety_segment.network_time_expected_multiplier", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_ping_epi_multiplier, { "Ping Interval EPI Multiplier", "cip.safety_segment.ping_epi_multiplier", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_time_coord_msg_min_multiplier, { "Time Coord Msg Min Multiplier", "cip.safety_segment.time_coord_msg_min_multiplier", FT_UINT16, BASE_CUSTOM, CF_FUNC(cip_safety_128us_fmt), 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_network_time_expected_multiplier, { "Network Time Expectation Multiplier", "cip.safety_segment.network_time_expected_multiplier", FT_UINT16, BASE_CUSTOM, CF_FUNC(cip_safety_128us_fmt), 0, NULL, HFILL }},
       { &hf_cip_seg_safety_timeout_multiplier, { "Timeout Multiplier", "cip.safety_segment.timeout_multiplier", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_max_consumer_number, { "Max Consumer Number", "cip.safety_segment.max_consumer_number", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_cip_seg_safety_conn_param_crc, { "Connection Param CRC (CPCRC)", "cip.safety_segment.conn_param_crc", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_max_consumer_number, { "Max Consumer Number", "cip.safety_segment.max_consumer_number", FT_UINT8, BASE_DEC|BASE_RANGE_STRING, RVALS(safety_max_consumer_numbers), 0, NULL, HFILL }},
+      { &hf_cip_seg_safety_conn_param_crc, { "Connection Parameters CRC (CPCRC)", "cip.safety_segment.conn_param_crc", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_seg_safety_time_correction_conn_id, { "Time Correction Connection ID", "cip.safety_segment.time_correction_conn_id", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_seg_safety_max_fault_number, { "Max Fault Number", "cip.safety_segment.max_fault_number", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_cip_seg_safety_init_timestamp, { "Initial Timestamp", "cip.safety_segment.init_timestamp", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
@@ -8374,7 +9644,7 @@ proto_register_cip(void)
       { &hf_cip_sc_mult_serv_pack_num_services, { "Number of Services", "cip.msp.num_services", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_cip_sc_mult_serv_pack_offset, { "Offset", "cip.msp.offset", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_cip_find_next_object_max_instance, { "Maximum ID", "cip.find_next_object.max_instance", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_cip_find_next_object_num_instances, { "Number of Instances:", "cip.find_next_object.num_instances", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL }},
+      { &hf_cip_find_next_object_num_instances, { "Number of Instances", "cip.find_next_object.num_instances", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_cip_find_next_object_instance_item, { "Instance", "cip.find_next_object.instance", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_cip_sc_group_sync_is_sync, { "IsSynchronized", "cip.group_sync.is_sync", FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_cip_data, { "Data", "cip.data", FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
@@ -8430,8 +9700,8 @@ proto_register_cip(void)
 
       { &hf_time_sync_ptp_enable, { "PTP Enable", "cip.time_sync.ptp_enable", FT_BOOLEAN, 8, TFS(&tfs_enabled_disabled), 0, NULL, HFILL }},
       { &hf_time_sync_is_synchronized, { "Is Synchronized", "cip.time_sync.is_synchronized", FT_BOOLEAN, 8, TFS(&tfs_true_false), 0, NULL, HFILL }},
-      { &hf_time_sync_sys_time_micro, { "System Time (Microseconds)", "cip.time_sync.sys_time_micro", FT_UINT64, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_time_sync_sys_time_nano, { "System Time (Nanoseconds)", "cip.time_sync.sys_time_nano", FT_UINT64, BASE_DEC, NULL, 0, NULL, HFILL }},
+      { &hf_time_sync_sys_time_micro, { "System Time (Microseconds)", "cip.time_sync.sys_time_micro", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_LOCAL, NULL, 0, NULL, HFILL }},
+      { &hf_time_sync_sys_time_nano, { "System Time (Nanoseconds)", "cip.time_sync.sys_time_nano", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_LOCAL, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_offset_from_master, { "Offset from Master", "cip.time_sync.offset_from_master", FT_INT64, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_max_offset_from_master, { "Max Offset from Master", "cip.time_sync.max_offset_from_master", FT_UINT64, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_mean_path_delay_to_master, { "Mean Path Delay To Master", "cip.time_sync.mean_path_delay_to_master", FT_UINT64, BASE_DEC, NULL, 0, NULL, HFILL }},
@@ -8441,31 +9711,31 @@ proto_register_cip(void)
       { &hf_time_sync_gm_clock_offset_scaled_log_variance, { "Offset Scaled Log Variance", "cip.time_sync.gm_clock.offset_scaled_log_variance", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_gm_clock_current_utc_offset, { "Current UTC Offset", "cip.time_sync.gm_clock.current_utc_offset", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_gm_clock_time_property_flags, { "Time Property Flags", "cip.time_sync.gm_clock.time_property_flags", FT_UINT16, BASE_HEX, NULL, 0, NULL, HFILL }},
-      { &hf_time_sync_gm_clock_time_property_flags_leap61, { "Leap indicator 61", "cip.time_sync.gm_clock.time_property_flags.leap61", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x01, NULL, HFILL }},
-      { &hf_time_sync_gm_clock_time_property_flags_leap59, { "Leap indicator 59", "cip.time_sync.gm_clock.time_property_flags.leap59", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x02, NULL, HFILL }},
-      { &hf_time_sync_gm_clock_time_property_flags_current_utc_valid, { "Current UTC Offset Valid", "cip.time_sync.gm_clock.time_property_flags.current_utc_valid", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x04, NULL, HFILL }},
-      { &hf_time_sync_gm_clock_time_property_flags_ptp_timescale, { "PTP Timescale", "cip.time_sync.gm_clock.time_property_flags.ptp_timescale", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x08, NULL, HFILL }},
-      { &hf_time_sync_gm_clock_time_property_flags_time_traceable, { "Time traceable", "cip.time_sync.gm_clock.time_property_flags.time_traceable", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x10, NULL, HFILL }},
-      { &hf_time_sync_gm_clock_time_property_flags_freq_traceable, { "Frequency traceable", "cip.time_sync.gm_clock.time_property_flags.freq_traceable", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x20, NULL, HFILL }},
+      { &hf_time_sync_gm_clock_time_property_flags_leap61, { "Leap indicator 61", "cip.time_sync.gm_clock.time_property_flags.leap61", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0001, NULL, HFILL }},
+      { &hf_time_sync_gm_clock_time_property_flags_leap59, { "Leap indicator 59", "cip.time_sync.gm_clock.time_property_flags.leap59", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0002, NULL, HFILL }},
+      { &hf_time_sync_gm_clock_time_property_flags_current_utc_valid, { "Current UTC Offset Valid", "cip.time_sync.gm_clock.time_property_flags.current_utc_valid", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0004, NULL, HFILL }},
+      { &hf_time_sync_gm_clock_time_property_flags_ptp_timescale, { "PTP Timescale", "cip.time_sync.gm_clock.time_property_flags.ptp_timescale", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0008, NULL, HFILL }},
+      { &hf_time_sync_gm_clock_time_property_flags_time_traceable, { "Time traceable", "cip.time_sync.gm_clock.time_property_flags.time_traceable", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0010, NULL, HFILL }},
+      { &hf_time_sync_gm_clock_time_property_flags_freq_traceable, { "Frequency traceable", "cip.time_sync.gm_clock.time_property_flags.freq_traceable", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0020, NULL, HFILL }},
       { &hf_time_sync_gm_clock_time_source, { "Time Source", "cip.time_sync.gm_clock.time_source", FT_UINT16, BASE_DEC, VALS(cip_time_sync_time_source_vals), 0, NULL, HFILL }},
       { &hf_time_sync_gm_clock_priority1, { "Priority1", "cip.time_sync.gm_clock.priority1", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_gm_clock_priority2, { "Priority2", "cip.time_sync.gm_clock.priority2", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_parent_clock_clock_id, { "Clock Identity", "cip.time_sync.parent_clock.clock_id", FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_parent_clock_port_number, { "Port Number", "cip.time_sync.parent_clock.port_number", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_parent_clock_observed_offset_scaled_log_variance, { "Observed Offset Scaled Log Variance", "cip.time_sync.parent_clock.observed_offset_scaled_log_variance", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_time_sync_parent_clock_observed_phase_change_rate, { "Observed Phase Change Rate", "cip.time_sync.parent_clock.observed_phase_change_rate", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
+      { &hf_time_sync_parent_clock_observed_phase_change_rate, { "Observed Phase Change Rate", "cip.time_sync.parent_clock.observed_phase_change_rate", FT_UINT32, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_local_clock_clock_id, { "Clock Identity", "cip.time_sync.local_clock.clock_id", FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_local_clock_clock_class, { "Clock Class", "cip.time_sync.local_clock.clock_class", FT_UINT16, BASE_DEC, VALS(cip_time_sync_clock_class_vals), 0, NULL, HFILL }},
       { &hf_time_sync_local_clock_time_accuracy, { "Time Accuracy", "cip.time_sync.local_clock.time_accuracy", FT_UINT16, BASE_DEC, VALS(cip_time_sync_time_accuracy_vals), 0, NULL, HFILL }},
       { &hf_time_sync_local_clock_offset_scaled_log_variance, { "Offset Scaled Log Variance", "cip.time_sync.local_clock.offset_scaled_log_variance", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_local_clock_current_utc_offset, { "Current UTC Offset", "cip.time_sync.local_clock.current_utc_offset", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_local_clock_time_property_flags, { "Time Property Flags", "cip.time_sync.local_clock.time_property_flags", FT_UINT16, BASE_HEX, NULL, 0, NULL, HFILL }},
-      { &hf_time_sync_local_clock_time_property_flags_leap61, { "Leap indicator 61", "cip.time_sync.local_clock.time_property_flags.leap61", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x01, NULL, HFILL }},
-      { &hf_time_sync_local_clock_time_property_flags_leap59, { "Leap indicator 59", "cip.time_sync.local_clock.time_property_flags.leap59", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x02, NULL, HFILL }},
-      { &hf_time_sync_local_clock_time_property_flags_current_utc_valid, { "Current UTC Offset Valid", "cip.time_sync.local_clock.time_property_flags.current_utc_valid", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x04, NULL, HFILL }},
-      { &hf_time_sync_local_clock_time_property_flags_ptp_timescale, { "PTP Timescale", "cip.time_sync.local_clock.time_property_flags.ptp_timescale", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x08, NULL, HFILL }},
-      { &hf_time_sync_local_clock_time_property_flags_time_traceable, { "Time traceable", "cip.time_sync.local_clock.time_property_flags.time_traceable", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x10, NULL, HFILL }},
-      { &hf_time_sync_local_clock_time_property_flags_freq_traceable, { "Frequency traceable", "cip.time_sync.local_clock.time_property_flags.freq_traceable", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x20, NULL, HFILL }},
+      { &hf_time_sync_local_clock_time_property_flags_leap61, { "Leap indicator 61", "cip.time_sync.local_clock.time_property_flags.leap61", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0001, NULL, HFILL }},
+      { &hf_time_sync_local_clock_time_property_flags_leap59, { "Leap indicator 59", "cip.time_sync.local_clock.time_property_flags.leap59", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0002, NULL, HFILL }},
+      { &hf_time_sync_local_clock_time_property_flags_current_utc_valid, { "Current UTC Offset Valid", "cip.time_sync.local_clock.time_property_flags.current_utc_valid", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0004, NULL, HFILL }},
+      { &hf_time_sync_local_clock_time_property_flags_ptp_timescale, { "PTP Timescale", "cip.time_sync.local_clock.time_property_flags.ptp_timescale", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0008, NULL, HFILL }},
+      { &hf_time_sync_local_clock_time_property_flags_time_traceable, { "Time traceable", "cip.time_sync.local_clock.time_property_flags.time_traceable", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0010, NULL, HFILL }},
+      { &hf_time_sync_local_clock_time_property_flags_freq_traceable, { "Frequency traceable", "cip.time_sync.local_clock.time_property_flags.freq_traceable", FT_BOOLEAN, 16, TFS(&tfs_set_notset), 0x0020, NULL, HFILL }},
       { &hf_time_sync_local_clock_time_source, { "Time Source", "cip.time_sync.local_clock.time_source", FT_UINT16, BASE_DEC, VALS(cip_time_sync_time_source_vals), 0, NULL, HFILL }},
       { &hf_time_sync_num_ports, { "Port Number", "cip.time_sync.port_number", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_port_state_info_num_ports, { "Number of Ports", "cip.time_sync.port_state_info.num_ports", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
@@ -8511,9 +9781,8 @@ proto_register_cip(void)
       { &hf_time_sync_port_proto_addr_info_addr_size, { "Size of Address", "cip.time_sync.port_proto_addr_info.addr_size", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_port_proto_addr_info_port_proto_addr, { "Port Protocol Address", "cip.time_sync.port_profile_id_info.port_proto_addr", FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_steps_removed, { "Steps Removed", "cip.time_sync.steps_removed", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_time_sync_sys_time_and_offset_time, { "System Time (Microseconds)", "cip.time_sync.sys_time_and_offset.time", FT_UINT64, BASE_DEC, NULL, 0, NULL, HFILL }},
+      { &hf_time_sync_sys_time_and_offset_time, { "System Time (Microseconds)", "cip.time_sync.sys_time_and_offset.time", FT_ABSOLUTE_TIME, ABSOLUTE_TIME_LOCAL, NULL, 0, NULL, HFILL }},
       { &hf_time_sync_sys_time_and_offset_offset, { "System Offset (Microseconds)", "cip.time_sync.sys_time_and_offset.offset", FT_UINT64, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_cip_security_state, { "State", "cip.security.state", FT_UINT8, BASE_DEC, VALS(cip_security_state_vals), 0, NULL, HFILL }},
       { &hf_port_entry_port, { "Entry Port", "cip.port.entry_port", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL } },
       { &hf_port_type, { "Port Type", "cip.port.type", FT_UINT16, BASE_DEC | BASE_RANGE_STRING, RVALS(cip_port_type_vals), 0, NULL, HFILL } },
       { &hf_port_number, { "Port Number", "cip.port.number", FT_UINT16, BASE_DEC, VALS(cip_port_number_vals), 0, NULL, HFILL } },
@@ -8530,6 +9799,8 @@ proto_register_cip(void)
       { &hf_32bitheader_run_idle, { "Run/Idle", "cip.32bitheader.run_idle", FT_UINT32, BASE_HEX, VALS(cip_run_idle_vals), 0x1, NULL, HFILL } },
 
       { &hf_cip_connection, { "CIP Connection Index", "cip.connection", FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL } },
+      { &hf_cip_fwd_open_in, { "Forward Open Request In", "cip.fwd_open_in", FT_FRAMENUM, BASE_NONE, NULL, 0, NULL, HFILL } },
+      { &hf_cip_fwd_close_in, { "Forward Close Request In", "cip.fwd_close_in", FT_FRAMENUM, BASE_NONE, NULL, 0, NULL, HFILL } },
    };
 
    static hf_register_info hf_cm[] = {
@@ -8544,13 +9815,19 @@ proto_register_cip(void)
       { &hf_cip_cm_timeout, { "Actual Time Out", "cip.cm.timeout", FT_UINT16, BASE_DEC|BASE_UNIT_STRING, &units_milliseconds, 0, NULL, HFILL }},
       { &hf_cip_cm_ot_connid, { "O->T Network Connection ID", "cip.cm.ot_connid", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_cm_to_connid, { "T->O Network Connection ID", "cip.cm.to_connid", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
+      { &hf_cip_connid, { "Connection ID", "cip.connid", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_cm_conn_serial_num, { "Connection Serial Number", "cip.cm.conn_serial_num", FT_UINT16, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_cm_vendor, { "Originator Vendor ID", "cip.cm.vendor", FT_UINT16, BASE_HEX|BASE_EXT_STRING, &cip_vendor_vals_ext, 0, NULL, HFILL }},
       { &hf_cip_cm_timeout_multiplier, { "Connection Timeout Multiplier", "cip.cm.timeout_multiplier", FT_UINT8, BASE_DEC, VALS(cip_con_time_mult_vals), 0, NULL, HFILL }},
       { &hf_cip_cm_ot_rpi, { "O->T RPI", "cip.cm.otrpi", FT_UINT32, BASE_CUSTOM, CF_FUNC(cip_rpi_api_fmt), 0, NULL, HFILL }},
+      { &hf_cip_cm_ot_timeout, { "O->T Timeout Threshold", "cip.cm.ot_timeout", FT_FLOAT, BASE_NONE|BASE_UNIT_STRING, &units_milliseconds, 0, NULL, HFILL }},
       { &hf_cip_cm_ot_net_params32, { "O->T Network Connection Parameters", "cip.cm.ot_net_params", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_cm_ot_net_params16, { "O->T Network Connection Parameters", "cip.cm.ot_net_params", FT_UINT16, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_cm_to_rpi, { "T->O RPI", "cip.cm.torpi", FT_UINT32, BASE_CUSTOM, CF_FUNC(cip_rpi_api_fmt), 0, NULL, HFILL }},
+      { &hf_cip_cm_to_timeout, { "T->O Timeout Threshold", "cip.cm.to_timeout", FT_FLOAT, BASE_NONE|BASE_UNIT_STRING, &units_milliseconds, 0, NULL, HFILL }},
+
+      { &hf_cip_safety_nte_ms, { "Network Time Expectation (Produce Timeout)", "cip.safety.nte", FT_FLOAT, BASE_NONE|BASE_UNIT_STRING, &units_milliseconds, 0, NULL, HFILL }},
+
       { &hf_cip_cm_to_net_params32, { "T->O Network Connection Parameters", "cip.cm.to_net_params", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_cm_to_net_params16, { "T->O Network Connection Parameters", "cip.cm.to_net_params", FT_UINT16, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_cm_transport_type_trigger, { "Transport Type/Trigger", "cip.cm.transport_type_trigger", FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL }},
@@ -8577,9 +9854,9 @@ proto_register_cip(void)
       { &hf_cip_cm_lfwo_prio, { "Priority", "cip.cm.fwo.prio", FT_UINT32, BASE_DEC, VALS(cip_con_prio_vals), 0x0C000000, "Large Fwd Open: Connection priority", HFILL }},
       { &hf_cip_cm_fwo_typ, { "Connection Type", "cip.cm.fwo.type", FT_UINT16, BASE_DEC, VALS(cip_con_type_vals), 0x6000, "Fwd Open: Connection type", HFILL }},
       { &hf_cip_cm_lfwo_typ, { "Connection Type", "cip.cm.fwo.type", FT_UINT32, BASE_DEC, VALS(cip_con_type_vals), 0x60000000, "Large Fwd Open: Connection type", HFILL }},
-      { &hf_cip_cm_fwo_own, { "Owner", "cip.cm.fwo.owner", FT_UINT16, BASE_DEC, VALS(cip_con_owner_vals), 0x8000, "Fwd Open: Redundant owner bit", HFILL }},
-      { &hf_cip_cm_lfwo_own, { "Owner", "cip.cm.fwo.owner", FT_UINT32, BASE_DEC, VALS(cip_con_owner_vals), 0x80000000, "Large Fwd Open: Redundant owner bit", HFILL }},
-      { &hf_cip_cm_fwo_dir, { "Direction", "cip.cm.fwo.dir", FT_UINT8, BASE_DEC, VALS(cip_con_dir_vals), CI_PRODUCTION_DIR_MASK, "Fwd Open: Direction", HFILL }},
+      { &hf_cip_cm_fwo_own, { "Redundant Owner", "cip.cm.fwo.owner", FT_UINT16, BASE_DEC, VALS(cip_con_owner_vals), 0x8000, "Fwd Open: Redundant owner bit", HFILL }},
+      { &hf_cip_cm_lfwo_own, { "Redundant Owner", "cip.cm.fwo.owner", FT_UINT32, BASE_DEC, VALS(cip_con_owner_vals), 0x80000000, "Large Fwd Open: Redundant owner bit", HFILL }},
+      { &hf_cip_cm_fwo_dir, { "Direction", "cip.cm.fwo.dir", FT_BOOLEAN, 8, TFS(&tfs_server_client), CI_PRODUCTION_DIR_MASK, "Fwd Open: Direction", HFILL }},
       { &hf_cip_cm_fwo_trigg, { "Trigger", "cip.cm.fwo.trigger", FT_UINT8, BASE_DEC, VALS(cip_con_trigg_vals), CI_PRODUCTION_TRIGGER_MASK, "Fwd Open: Production trigger", HFILL }},
       { &hf_cip_cm_fwo_class, { "Class", "cip.cm.fwo.transport", FT_UINT8, BASE_DEC, VALS(cip_con_class_vals), CI_TRANSPORT_CLASS_MASK, "Fwd Open: Transport Class", HFILL }},
       { &hf_cip_cm_gco_conn, { "Number of Connections", "cip.cm.gco.conn", FT_UINT8, BASE_DEC, NULL, 0, "GetConnOwner: Number of Connections", HFILL }},
@@ -8618,7 +9895,7 @@ proto_register_cip(void)
       { &hf_cip_pccc_cpu_mode_80, { "CPU Mode", "cip.pccc.cpu.mode_80", FT_UINT8, BASE_HEX|BASE_EXT_STRING, &cip_pccc_cpu_mode_80_vals_ext, 0, NULL, HFILL }},
       { &hf_cip_pccc_resp_code, { "Response Code", "cip.pccc.resp.code", FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_pccc_execute_multi_count, { "Execute Multiple Command - Number of Commands", "cip.pccc.execute.multi.count", FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL }},
-      { &hf_cip_pccc_execute_multi_len, { "Execute Multiple Command - Command Length", "cip.pccc.execute.multi.count", FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL }},
+      { &hf_cip_pccc_execute_multi_len, { "Execute Multiple Command - Command Length", "cip.pccc.execute.multi.len", FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_pccc_execute_multi_fnc, { "Execute Multiple Command - Function Code", "cip.pccc.execute.multi.code", FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL }},
 
       { &hf_cip_pccc_data, { "Data", "cip.pccc.data", FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }}
@@ -8654,7 +9931,7 @@ proto_register_cip(void)
       { &hf_cip_cco_format_number, { "Format Number", "cip.cco.format_number", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_cip_cco_edit_signature, { "Edit Signature", "cip.cco.edit_signature", FT_UINT32, BASE_HEX, NULL, 0, NULL, HFILL }},
       { &hf_cip_cco_con_flags, { "Connection Flags", "cip.cco.connflags", FT_UINT16, BASE_HEX, NULL, 0, NULL, HFILL }},
-      { &hf_cip_cco_con_type, { "Connection O_T", "cip.cco.con", FT_UINT16, BASE_DEC, VALS(cip_con_vals), 0x001, NULL, HFILL }},
+      { &hf_cip_cco_con_type, { "Connection O_T", "cip.cco.con", FT_UINT16, BASE_DEC, VALS(cip_con_vals), 0x0001, NULL, HFILL }},
       { &hf_cip_cco_ot_rtf, { "O->T real time transfer format", "cip.cco.otrtf", FT_UINT16, BASE_DEC, VALS(cip_con_rtf_vals), 0x000E, NULL, HFILL }},
       { &hf_cip_cco_to_rtf, { "T->O real time transfer format", "cip.cco.tortf", FT_UINT16, BASE_DEC, VALS(cip_con_rtf_vals), 0x0070, NULL, HFILL }},
       { &hf_cip_cco_tdi_vendor, { "Vendor ID", "cip.cco.tdi.vendor", FT_UINT16, BASE_HEX|BASE_EXT_STRING, &cip_vendor_vals_ext, 0, NULL, HFILL }},
@@ -8688,14 +9965,14 @@ proto_register_cip(void)
       { &hf_cip_cco_lfwo_prio, { "Priority", "cip.cco.prio", FT_UINT32, BASE_DEC, VALS(cip_con_prio_vals), 0x0C000000, NULL, HFILL }},
       { &hf_cip_cco_fwo_typ, { "Connection Type", "cip.cco.type", FT_UINT16, BASE_DEC, VALS(cip_con_type_vals), 0x6000, NULL, HFILL }},
       { &hf_cip_cco_lfwo_typ, { "Connection Type", "cip.cco.type", FT_UINT32, BASE_DEC, VALS(cip_con_type_vals), 0x60000000, NULL, HFILL }},
-      { &hf_cip_cco_fwo_own, { "Owner", "cip.cco.owner", FT_UINT16, BASE_DEC, VALS(cip_con_owner_vals), 0x8000, NULL, HFILL }},
-      { &hf_cip_cco_lfwo_own, { "Owner", "cip.cco.owner", FT_UINT32, BASE_DEC, VALS(cip_con_owner_vals), 0x80000000, NULL, HFILL }},
-      { &hf_cip_cco_fwo_dir, { "Direction", "cip.cco.dir", FT_UINT8, BASE_DEC, VALS(cip_con_dir_vals), CI_PRODUCTION_DIR_MASK, NULL, HFILL }},
+      { &hf_cip_cco_fwo_own, { "Redundant Owner", "cip.cco.owner", FT_UINT16, BASE_DEC, VALS(cip_con_owner_vals), 0x8000, NULL, HFILL }},
+      { &hf_cip_cco_lfwo_own, { "Redundant Owner", "cip.cco.owner", FT_UINT32, BASE_DEC, VALS(cip_con_owner_vals), 0x80000000, NULL, HFILL }},
+      { &hf_cip_cco_fwo_dir, { "Direction", "cip.cco.dir", FT_BOOLEAN, 8, TFS(&tfs_server_client), CI_PRODUCTION_DIR_MASK, NULL, HFILL }},
       { &hf_cip_cco_fwo_trigger, { "Trigger", "cip.cco.trigger", FT_UINT8, BASE_DEC, VALS(cip_con_trigg_vals), CI_PRODUCTION_TRIGGER_MASK, NULL, HFILL }},
       { &hf_cip_cco_fwo_class, { "Class", "cip.cco.transport", FT_UINT8, BASE_DEC, VALS(cip_con_class_vals), CI_TRANSPORT_CLASS_MASK, NULL, HFILL }},
       { &hf_cip_cco_conn_path_size, { "Connection Path Size", "cip.cco.connpath_size", FT_UINT8, BASE_DEC|BASE_UNIT_STRING, &units_word_words, 0, NULL, HFILL }},
       { &hf_cip_cco_proxy_config_size, { "Proxy Config Data Size", "cip.cco.proxy_config_size", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
-      { &hf_cip_cco_target_config_size, { "Target Config Data Size", "cip.cco.proxy_config_size", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
+      { &hf_cip_cco_target_config_size, { "Target Config Data Size", "cip.cco.target_config_size", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_cip_cco_iomap_format_number, { "Format number", "cip.cco.iomap_format_number", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
       { &hf_cip_cco_iomap_size, { "Mapping data size", "cip.cco.iomap_size", FT_UINT16, BASE_DEC|BASE_UNIT_STRING, &units_byte_bytes, 0, NULL, HFILL }},
       { &hf_cip_cco_connection_disable, { "Connection Disable", "cip.cco.connection_disable", FT_UINT8, BASE_DEC, NULL, 0x01, NULL, HFILL }},
@@ -8848,6 +10125,11 @@ proto_register_cip(void)
       { &ei_mal_opt_service_list, { "cip.malformed.opt_service_list", PI_MALFORMED, PI_ERROR, "Optional service list missing data", EXPFILL }},
       { &ei_mal_padded_epath_size, { "cip.malformed.epath.size", PI_MALFORMED, PI_ERROR, "Malformed EPATH vs Size", EXPFILL } },
       { &ei_mal_missing_string_data, { "cip.malformed.missing_str_data", PI_MALFORMED, PI_ERROR, "Missing string data", EXPFILL } },
+
+      { &ei_cip_safety_open_type1, { "cip.analysis.safety_open_type1", PI_PROTOCOL, PI_NOTE, "Type 1 - Safety Open with Data", EXPFILL } },
+      { &ei_cip_safety_open_type2a, { "cip.analysis.safety_open_type2a", PI_PROTOCOL, PI_NOTE, "Type 2a - Safety Open with SCID check", EXPFILL } },
+      { &ei_cip_safety_open_type2b, { "cip.analysis.safety_open_type2b", PI_PROTOCOL, PI_NOTE, "Type 2b - Safety Open without SCID check", EXPFILL } },
+      { &ei_cip_no_fwd_close, { "cip.analysis.no_fwd_close", PI_PROTOCOL, PI_NOTE, "No Forward Close seen for this CIP Connection", EXPFILL } },
    };
 
    module_t *cip_module;
@@ -8881,25 +10163,35 @@ proto_register_cip(void)
    /* Register the protocol name and description */
    proto_cip_class_generic = proto_register_protocol("CIP Class Generic",
        "CIPCLS", "cipcls");
+   cip_class_generic_handle = register_dissector("cipcls",
+       dissect_cip_class_generic, proto_cip_class_generic);
 
    /* Register the protocol name and description */
    proto_cip_class_cm = proto_register_protocol("CIP Connection Manager",
        "CIPCM", "cipcm");
+   cip_class_cm_handle = register_dissector("cipcm",
+       dissect_cip_class_cm, proto_cip_class_cm);
    proto_register_field_array(proto_cip_class_cm, hf_cm, array_length(hf_cm));
    proto_register_subtree_array(ett_cm, array_length(ett_cm));
 
    proto_cip_class_pccc = proto_register_protocol("CIP PCCC Object",
        "CIPPCCC", "cippccc");
+   cip_class_pccc_handle = register_dissector("cippccc",
+       dissect_cip_class_pccc, proto_cip_class_pccc);
    proto_register_field_array(proto_cip_class_pccc, hf_pccc, array_length(hf_pccc));
    proto_register_subtree_array(ett_pccc, array_length(ett_pccc));
 
    proto_cip_class_mb = proto_register_protocol("CIP Modbus Object",
        "CIPMB", "cipmb");
+   cip_class_mb_handle = register_dissector("cipmb",
+       dissect_cip_class_mb, proto_cip_class_mb);
    proto_register_field_array(proto_cip_class_mb, hf_mb, array_length(hf_mb));
    proto_register_subtree_array(ett_mb, array_length(ett_mb));
 
    proto_cip_class_cco = proto_register_protocol("CIP Connection Configuration Object",
        "CIPCCO", "cipcco");
+   cip_class_cco_handle = register_dissector("cipcco",
+       dissect_cip_class_cco, proto_cip_class_cco);
    proto_register_field_array(proto_cip_class_cco, hf_cco, array_length(hf_cco));
    proto_register_subtree_array(ett_cco, array_length(ett_cco));
 
@@ -8913,33 +10205,25 @@ proto_register_cip(void)
 void
 proto_reg_handoff_cip(void)
 {
-   dissector_handle_t cip_class_mb_handle;
-
-   /* Create dissector handles */
    /* Register for UCMM CIP data, using EtherNet/IP SendRRData service*/
    dissector_add_uint( "enip.srrd.iface", ENIP_CIP_INTERFACE, cip_handle );
 
    dissector_add_uint("cip.connection.class", CI_CLS_MR, cip_handle);
 
-   /* Create and register dissector handle for generic class */
-   cip_class_generic_handle = create_dissector_handle( dissect_cip_class_generic, proto_cip_class_generic );
+   /* Register dissector handle for generic class */
    dissector_add_uint( "cip.class.iface", 0, cip_class_generic_handle );
 
-   /* Create and register dissector handle for Connection Manager */
-   cip_class_cm_handle = create_dissector_handle( dissect_cip_class_cm, proto_cip_class_cm );
+   /* Register dissector handle for Connection Manager */
    dissector_add_uint( "cip.class.iface", CI_CLS_CM, cip_class_cm_handle );
 
-   /* Create and register dissector handle for the PCCC class */
-   cip_class_pccc_handle = create_dissector_handle( dissect_cip_class_pccc, proto_cip_class_pccc );
+   /* Register dissector handle for the PCCC class */
    dissector_add_uint( "cip.class.iface", CI_CLS_PCCC, cip_class_pccc_handle );
 
-   /* Create and register dissector handle for Modbus Object */
-   cip_class_mb_handle = create_dissector_handle( dissect_cip_class_mb, proto_cip_class_mb );
+   /* Register dissector handle for Modbus Object */
    dissector_add_uint( "cip.class.iface", CI_CLS_MB, cip_class_mb_handle );
    modbus_handle = find_dissector_add_dependency("modbus", proto_cip_class_mb);
 
-   /* Create and register dissector handle for Connection Configuration Object */
-   cip_class_cco_handle = create_dissector_handle( dissect_cip_class_cco, proto_cip_class_cco );
+   /* Register dissector handle for Connection Configuration Object */
    dissector_add_uint( "cip.class.iface", CI_CLS_CCO, cip_class_cco_handle );
    heur_dissector_add("cip.sc", dissect_class_cco_heur, "CIP Connection Configuration Object", "cco_cip", proto_cip_class_cco, HEURISTIC_ENABLE);
 

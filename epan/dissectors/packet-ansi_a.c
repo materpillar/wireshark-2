@@ -1362,6 +1362,9 @@ static expert_field ei_ansi_a_unknown_bsmap_msg = EI_INIT;
 static expert_field ei_ansi_a_undecoded = EI_INIT;
 
 static dissector_handle_t dtap_handle;
+static dissector_handle_t bsmap_handle;
+static dissector_handle_t sip_dtap_bsmap_handle;
+
 static dissector_table_t is637_dissector_table; /* IS-637-A Transport Layer (SMS) */
 static dissector_table_t is683_dissector_table; /* IS-683-A (OTA) */
 static dissector_table_t is801_dissector_table; /* IS-801 (PLD) */
@@ -2387,7 +2390,7 @@ elem_mid(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 offset, gu
         if (curr_offset - offset >= len) /* Sanity check */
             return (curr_offset - offset);
 
-        str = tvb_bcd_dig_to_wmem_packet_str(tvb, curr_offset, len - (curr_offset - offset), &Dgt_meid, TRUE);
+        str = tvb_bcd_dig_to_str(pinfo->pool, tvb, curr_offset, len - (curr_offset - offset), &Dgt_meid, TRUE);
         proto_tree_add_string(tree, hf_ansi_a_meid, tvb, curr_offset, len - (curr_offset - offset), str);
 
         proto_item_append_text(data_p->elem_item, " - MEID (%s)", str);
@@ -2468,7 +2471,7 @@ elem_mid(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 offset, gu
         if (curr_offset - offset >= len) /* Sanity check */
             return (curr_offset - offset);
 
-        str = tvb_bcd_dig_to_wmem_packet_str(tvb, curr_offset, len - (curr_offset - offset), &Dgt_msid, TRUE);
+        str = tvb_bcd_dig_to_str(pinfo->pool, tvb, curr_offset, len - (curr_offset - offset), &Dgt_msid, TRUE);
         proto_tree_add_string_format(tree, hf_ansi_a_imsi, tvb, curr_offset, len - (curr_offset - offset),
                                      str, "BCD Digits: %s", str);
 
@@ -3566,12 +3569,12 @@ elem_clg_party_ascii_num(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gu
         curr_offset++;
     }
 
-    poctets = tvb_get_string_enc(wmem_packet_scope(), tvb, curr_offset, len - (curr_offset - offset), ENC_ASCII|ENC_NA);
+    poctets = tvb_get_string_enc(pinfo->pool, tvb, curr_offset, len - (curr_offset - offset), ENC_ASCII|ENC_NA);
 
     proto_tree_add_string_format(tree, hf_ansi_a_clg_party_ascii_num, tvb, curr_offset, len - (curr_offset - offset),
         (gchar *) poctets,
         "Digits: %s",
-        (gchar *) format_text(wmem_packet_scope(), poctets, len - (curr_offset - offset)));
+        (gchar *) format_text(pinfo->pool, poctets, len - (curr_offset - offset)));
 
     proto_item_append_text(data_p->elem_item, " - (%s)", poctets);
 
@@ -4041,7 +4044,7 @@ elem_cld_party_bcd_num(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guin
     if (curr_offset - offset >= len) /* Sanity check */
         return (curr_offset - offset);
 
-    str = tvb_bcd_dig_to_wmem_packet_str(tvb, curr_offset, len - (curr_offset - offset), &Dgt_tbcd, FALSE);
+    str = tvb_bcd_dig_to_str(pinfo->pool, tvb, curr_offset, len - (curr_offset - offset), &Dgt_tbcd, FALSE);
     proto_tree_add_string(tree, hf_ansi_a_cld_party_bcd_num, tvb, curr_offset, len - (curr_offset - offset), str);
 
     proto_item_append_text(data_p->elem_item, " - (%s)", str);
@@ -5261,7 +5264,7 @@ static const value_string ansi_a_ms_info_rec_signal_tone_vals[] = {
     { 0, NULL }
 };
 
-const value_string ansi_a_ms_info_rec_signal_isdn_alert_vals[] = {
+static const value_string ansi_a_ms_info_rec_signal_isdn_alert_vals[] = {
     { 0x0,      "Normal Alerting" },
     { 0x1,      "Intergroup Alerting" },
     { 0x2,      "Special/Priority Alerting" },
@@ -5422,7 +5425,7 @@ elem_fwd_ms_info_recs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint
 
                     curr_offset++;
 
-                    str_num = (gchar*)wmem_alloc(wmem_packet_scope(), oct_len);
+                    str_num = (gchar*)wmem_alloc(pinfo->pool, oct_len);
                     for (i=0; i < (oct_len - 1); i++)
                     {
                         str_num[i] = (oct & 0x01) << 7;
@@ -5459,7 +5462,7 @@ elem_fwd_ms_info_recs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint
 
                     curr_offset += 2;
 
-                    str_num = (gchar*)wmem_alloc(wmem_packet_scope(), oct_len - 1);
+                    str_num = (gchar*)wmem_alloc(pinfo->pool, oct_len - 1);
                     for (i=0; i < (oct_len - 2); i++)
                     {
                         str_num[i] = (oct & 0x1f) << 3;
@@ -5612,12 +5615,12 @@ elem_rev_ms_info_recs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint
             switch (rec_type)
             {
             case ANSI_REV_MS_INFO_REC_KEYPAD_FAC:
-                poctets = tvb_get_string_enc(wmem_packet_scope(), tvb, curr_offset, oct_len, ENC_ASCII|ENC_NA);
+                poctets = tvb_get_string_enc(pinfo->pool, tvb, curr_offset, oct_len, ENC_ASCII|ENC_NA);
 
                 proto_tree_add_string_format(subtree, hf_ansi_a_cld_party_ascii_num, tvb, curr_offset, oct_len,
                     (gchar *) poctets,
                     "Digits: %s",
-                    (gchar *) format_text(wmem_packet_scope(), poctets, oct_len));
+                    (gchar *) format_text(pinfo->pool, poctets, oct_len));
 
                 curr_offset += oct_len;
                 break;
@@ -5634,7 +5637,7 @@ elem_rev_ms_info_recs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint
 
                     curr_offset++;
 
-                    str_num = (gchar*)wmem_alloc(wmem_packet_scope(), oct_len);
+                    str_num = (gchar*)wmem_alloc(pinfo->pool, oct_len);
                     for (i=0; i < (oct_len - 1); i++)
                     {
                         str_num[i] = (oct & 0x01) << 7;
@@ -5672,7 +5675,7 @@ elem_rev_ms_info_recs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint
 
                     curr_offset += 2;
 
-                    str_num = (gchar*)wmem_alloc(wmem_packet_scope(), oct_len - 1);
+                    str_num = (gchar*)wmem_alloc(pinfo->pool, oct_len - 1);
                     for (i=0; i < (oct_len - 2); i++)
                     {
                         str_num[i] = (oct & 0x1f) << 3;
@@ -6079,12 +6082,12 @@ elem_cld_party_ascii_num(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gu
     proto_tree_add_item(tree, hf_ansi_a_cld_party_ascii_num_plan, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
     curr_offset++;
 
-    poctets = tvb_get_string_enc(wmem_packet_scope(), tvb, curr_offset, len - (curr_offset - offset), ENC_ASCII|ENC_NA);
+    poctets = tvb_get_string_enc(pinfo->pool, tvb, curr_offset, len - (curr_offset - offset), ENC_ASCII|ENC_NA);
 
     proto_tree_add_string_format(tree, hf_ansi_a_cld_party_ascii_num, tvb, curr_offset, len - (curr_offset - offset),
         (gchar *) poctets,
         "Digits: %s",
-        (gchar *) format_text(wmem_packet_scope(), poctets, len - (curr_offset - offset)));
+        (gchar *) format_text(pinfo->pool, poctets, len - (curr_offset - offset)));
 
     proto_item_append_text(data_p->elem_item, " - (%s)", poctets);
 
@@ -6828,7 +6831,7 @@ elem_a2p_bearer_format(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guin
         if (format_assigned &&
             (first_assigned_found == FALSE))
         {
-            rtp_dyn_payload_insert(rtp_dyn_payload, rtp_payload_type, mime_type, sample_rate);
+            rtp_dyn_payload_insert(rtp_dyn_payload, rtp_payload_type, mime_type, sample_rate, 1);
             rtp_dyn_payload_used = TRUE;
 
             first_assigned_found = TRUE;
@@ -6838,7 +6841,7 @@ elem_a2p_bearer_format(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guin
 
         if (in_band_format_assigned)
         {
-            rtp_dyn_payload_insert(rtp_dyn_payload, rtp_payload_type, "telephone-event", sample_rate);
+            rtp_dyn_payload_insert(rtp_dyn_payload, rtp_payload_type, "telephone-event", sample_rate, 1);
             rtp_dyn_payload_used = TRUE;
         }
 
@@ -6997,7 +7000,7 @@ elem_dtmf_chars(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 off
         return (curr_offset - offset);
 
     packed_len = len - (curr_offset - offset);
-    str = (char*)tvb_bcd_dig_to_wmem_packet_str(tvb, curr_offset, packed_len, &Dgt_dtmf, FALSE);
+    str = (char*)tvb_bcd_dig_to_str(pinfo->pool, tvb, curr_offset, packed_len, &Dgt_dtmf, FALSE);
     /*
      * the packed DTMF digits are not "terminated" with a '0xF' for an odd
      * number of digits but the unpack routine expects it
@@ -10513,7 +10516,7 @@ dissect_sip_dtap_bsmap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
         {
             ansi_a_tvb = tvb_new_composite();
             msg_type = (guint8 *) wmem_alloc(pinfo->pool, 1);
-            msg_type[0] = (guint8) strtoul(tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 2, ENC_ASCII|ENC_NA), NULL, 16);
+            msg_type[0] = (guint8) strtoul(tvb_get_string_enc(pinfo->pool, tvb, offset, 2, ENC_ASCII|ENC_NA), NULL, 16);
 
             if ((begin = tvb_find_guint8(tvb, offset, linelen, '"')) > 0)
             {
@@ -10539,7 +10542,7 @@ dissect_sip_dtap_bsmap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
                 if ((begin = tvb_find_guint8(tvb, offset, linelen, '=')) > 0)
                 {
                     begin++;
-                    tvb_composite_append(ansi_a_tvb, base64_to_tvb(tvb, tvb_get_string_enc(wmem_packet_scope(), tvb, begin, offset + linelen - begin, ENC_ASCII|ENC_NA)));
+                    tvb_composite_append(ansi_a_tvb, base64_to_tvb(tvb, tvb_get_string_enc(pinfo->pool, tvb, begin, offset + linelen - begin, ENC_ASCII|ENC_NA)));
                 }
 
                 offset = next_offset;
@@ -10570,27 +10573,50 @@ typedef enum
     COUNT_COLUMN
 } ansi_a_stat_columns;
 
-static stat_tap_table_item dtap_stat_fields[] = {{TABLE_ITEM_UINT, TAP_ALIGN_RIGHT, "IEI", "0x%02x  "}, {TABLE_ITEM_STRING, TAP_ALIGN_LEFT, "Message Name", "%-50s"},
-    {TABLE_ITEM_UINT, TAP_ALIGN_RIGHT, "Count", "%d"}};
+static stat_tap_table_item dtap_stat_fields[] =
+{
+    {TABLE_ITEM_UINT,   TAP_ALIGN_RIGHT, "IEI",          "0x%02x  "},
+    {TABLE_ITEM_STRING, TAP_ALIGN_LEFT,  "Message Name", "%-50s"},
+    {TABLE_ITEM_UINT,   TAP_ALIGN_RIGHT, "Count",        "%d"}
+};
 
 static void ansi_a_dtap_stat_init(stat_tap_table_ui* new_stat)
 {
+    const char *table_name = "ANSI A-I/F DTAP Statistics";
     int num_fields = sizeof(dtap_stat_fields)/sizeof(stat_tap_table_item);
-    stat_tap_table* table = stat_tap_init_table("ANSI A-I/F DTAP Statistics", num_fields, 0, NULL);
+    stat_tap_table *table;
     int i = 0;
     stat_tap_table_item_type items[sizeof(dtap_stat_fields)/sizeof(stat_tap_table_item)];
 
+    items[IEI_COLUMN].type = TABLE_ITEM_UINT;
+    items[MESSAGE_NAME_COLUMN].type = TABLE_ITEM_STRING;
+    items[COUNT_COLUMN].type = TABLE_ITEM_UINT;
+    items[COUNT_COLUMN].value.uint_value = 0;
+
+    /* N.B. user-data field not used by this protocol, but init anyway */
+    items[IEI_COLUMN].user_data.uint_value = 0;
+    items[MESSAGE_NAME_COLUMN].user_data.uint_value = 0;
+    items[COUNT_COLUMN].user_data.uint_value = 0;
+
+    /* Look for existing table */
+    table = stat_tap_find_table(new_stat, table_name);
+    if (table) {
+        if (new_stat->stat_tap_reset_table_cb) {
+            new_stat->stat_tap_reset_table_cb(table);
+        }
+        /* Nothing more to do */
+        return;
+    }
+
+    /* Initialize table */
+    table = stat_tap_init_table(table_name, num_fields, 0, NULL);
     stat_tap_add_table(new_stat, table);
 
-    /* Add a fow for each value type */
+    /* Add a row for each value type */
     while (ansi_a_dtap_strings[i].strptr)
     {
-        items[IEI_COLUMN].type = TABLE_ITEM_UINT;
         items[IEI_COLUMN].value.uint_value = ansi_a_dtap_strings[i].value;
-        items[MESSAGE_NAME_COLUMN].type = TABLE_ITEM_STRING;
         items[MESSAGE_NAME_COLUMN].value.string_value = ansi_a_dtap_strings[i].strptr;
-        items[COUNT_COLUMN].type = TABLE_ITEM_UINT;
-        items[COUNT_COLUMN].value.uint_value = 0;
 
         stat_tap_init_table_row(table, i, num_fields, items);
         i++;
@@ -10598,24 +10624,24 @@ static void ansi_a_dtap_stat_init(stat_tap_table_ui* new_stat)
 }
 
 static tap_packet_status
-ansi_a_dtap_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *data)
+ansi_a_dtap_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *data, tap_flags_t flags _U_)
 {
     stat_data_t* stat_data = (stat_data_t*)tapdata;
     const ansi_a_tap_rec_t      *data_p = (const ansi_a_tap_rec_t *)data;
     stat_tap_table_item_type* dtap_data;
     stat_tap_table* table;
-    guint i = 0, idx;
+    guint idx;
 
     if (data_p->pdu_type == BSSAP_PDU_TYPE_DTAP)
     {
         if (my_try_val_to_str_idx(data_p->message_type, ansi_a_dtap_strings, &idx) == NULL)
             return TAP_PACKET_DONT_REDRAW;
 
-        table = g_array_index(stat_data->stat_tap_data->tables, stat_tap_table*, i);
+        table = g_array_index(stat_data->stat_tap_data->tables, stat_tap_table*, 0);
 
-        dtap_data = stat_tap_get_field_data(table, data_p->message_type, COUNT_COLUMN);
+        dtap_data = stat_tap_get_field_data(table, idx, COUNT_COLUMN);
         dtap_data->value.uint_value++;
-        stat_tap_set_field_data(table, data_p->message_type, COUNT_COLUMN, dtap_data);
+        stat_tap_set_field_data(table, idx, COUNT_COLUMN, dtap_data);
 
         return TAP_PACKET_REDRAW;
     }
@@ -10643,22 +10669,33 @@ static stat_tap_table_item bsmap_stat_fields[] = {{TABLE_ITEM_UINT, TAP_ALIGN_RI
 
 static void ansi_a_bsmap_stat_init(stat_tap_table_ui* new_stat)
 {
+    const char *table_name = "ANSI A-I/F BSMAP Statistics";
     int num_fields = sizeof(bsmap_stat_fields)/sizeof(stat_tap_table_item);
-    stat_tap_table* table = stat_tap_init_table("ANSI A-I/F BSMAP Statistics", num_fields, 0, NULL);
+    stat_tap_table *table;
     int i = 0;
     stat_tap_table_item_type items[sizeof(bsmap_stat_fields)/sizeof(stat_tap_table_item)];
 
+    items[IEI_COLUMN].type = TABLE_ITEM_UINT;
+    items[MESSAGE_NAME_COLUMN].type = TABLE_ITEM_STRING;
+    items[COUNT_COLUMN].type = TABLE_ITEM_UINT;
+    items[COUNT_COLUMN].value.uint_value = 0;
+
+    table = stat_tap_find_table(new_stat, table_name);
+    if (table) {
+        if (new_stat->stat_tap_reset_table_cb) {
+            new_stat->stat_tap_reset_table_cb(table);
+        }
+        return;
+    }
+
+    table = stat_tap_init_table(table_name, num_fields, 0, NULL);
     stat_tap_add_table(new_stat, table);
 
-    /* Add a fow for each value type */
+    /* Add a row for each value type */
     while (ansi_a_bsmap_strings[i].strptr)
     {
-        items[IEI_COLUMN].type = TABLE_ITEM_UINT;
         items[IEI_COLUMN].value.uint_value = ansi_a_bsmap_strings[i].value;
-        items[MESSAGE_NAME_COLUMN].type = TABLE_ITEM_STRING;
         items[MESSAGE_NAME_COLUMN].value.string_value = ansi_a_bsmap_strings[i].strptr;
-        items[COUNT_COLUMN].type = TABLE_ITEM_UINT;
-        items[COUNT_COLUMN].value.uint_value = 0;
 
         stat_tap_init_table_row(table, i, num_fields, items);
         i++;
@@ -10666,24 +10703,24 @@ static void ansi_a_bsmap_stat_init(stat_tap_table_ui* new_stat)
 }
 
 static tap_packet_status
-ansi_a_bsmap_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *data)
+ansi_a_bsmap_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *data, tap_flags_t flags _U_)
 {
     stat_data_t* stat_data = (stat_data_t*)tapdata;
     const ansi_a_tap_rec_t      *data_p = (const ansi_a_tap_rec_t *)data;
     stat_tap_table_item_type* dtap_data;
     stat_tap_table* table;
-    guint i = 0, idx;
+    guint idx;
 
     if (data_p->pdu_type == BSSAP_PDU_TYPE_BSMAP)
     {
         if (my_try_val_to_str_idx(data_p->message_type, ansi_a_bsmap_strings, &idx) == NULL)
             return TAP_PACKET_DONT_REDRAW;
 
-        table = g_array_index(stat_data->stat_tap_data->tables, stat_tap_table*, i);
+        table = g_array_index(stat_data->stat_tap_data->tables, stat_tap_table*, 0);
 
-        dtap_data = stat_tap_get_field_data(table, data_p->message_type, COUNT_COLUMN);
+        dtap_data = stat_tap_get_field_data(table, idx, COUNT_COLUMN);
         dtap_data->value.uint_value++;
-        stat_tap_set_field_data(table, data_p->message_type, COUNT_COLUMN, dtap_data);
+        stat_tap_set_field_data(table, idx, COUNT_COLUMN, dtap_data);
 
         return TAP_PACKET_REDRAW;
     }
@@ -11329,7 +11366,7 @@ proto_register_ansi_a(void)
         },
         { &hf_ansi_a_mid_broadcast_message_id,
             { "Message ID", "ansi_a_bsmap.mid.broadcast.message_id",
-            FT_UINT8, BASE_DEC, NULL, 0x2f,
+            FT_UINT8, BASE_DEC, NULL, 0x3f,
             NULL, HFILL }
         },
         { &hf_ansi_a_mid_broadcast_zone_id,
@@ -11524,7 +11561,7 @@ proto_register_ansi_a(void)
         },
         { &hf_ansi_a_is2000_chan_id_chan_walsh_code_chan_idx,
             { "Walsh Code Channel Index", "ansi_a_bsmap.is2000_chan_id.chan.walsh_code_chan_idx",
-            FT_UINT16, BASE_DEC, NULL, 0x7ff,
+            FT_UINT16, BASE_DEC, NULL, 0x07ff,
             NULL, HFILL }
         },
         { &hf_ansi_a_is2000_chan_id_chan_pilot_pn_code,
@@ -12838,8 +12875,13 @@ proto_register_ansi_a(void)
         expert_register_protocol(proto_a_bsmap);
     expert_register_field_array(expert_a_bsmap, ei, array_length(ei));
 
+    bsmap_handle = register_dissector("ansi_a_bsmap", dissect_bsmap, proto_a_bsmap);
+
     proto_a_dtap =
         proto_register_protocol("ANSI A-I/F DTAP", "ANSI DTAP", "ansi_a_dtap");
+
+    dtap_handle = register_dissector("ansi_a_dtap", dissect_dtap, proto_a_dtap);
+    sip_dtap_bsmap_handle = register_dissector("ansi_a_dtap_bsmap", dissect_sip_dtap_bsmap, proto_a_dtap);
 
     is637_dissector_table =
         register_dissector_table("ansi_a.sms", "IS-637-A (SMS)",
@@ -12888,12 +12930,6 @@ proto_reg_handoff_ansi_a(void)
 
     if (!ansi_a_prefs_initialized)
     {
-        dissector_handle_t      bsmap_handle, sip_dtap_bsmap_handle;
-
-        bsmap_handle = create_dissector_handle(dissect_bsmap, proto_a_bsmap);
-        dtap_handle = create_dissector_handle(dissect_dtap, proto_a_dtap);
-        sip_dtap_bsmap_handle = create_dissector_handle(dissect_sip_dtap_bsmap, proto_a_dtap);
-
         dissector_add_uint("bsap.pdu_type",  BSSAP_PDU_TYPE_BSMAP, bsmap_handle);
         dissector_add_uint("bsap.pdu_type",  BSSAP_PDU_TYPE_DTAP, dtap_handle);
         dissector_add_string("media_type", "application/femtointerfacemsg", sip_dtap_bsmap_handle);

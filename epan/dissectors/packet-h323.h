@@ -1,11 +1,8 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-h323.h                                                              */
-/* asn2wrs.py -p h323 -c ./h323.cnf -s ./packet-h323-template -D . -O ../.. RAS-PROTOCOL-TUNNEL.asn ROBUSTNESS-DATA.asn */
+/* asn2wrs.py -L -p h323 -c ./h323.cnf -s ./packet-h323-template -D . -O ../.. RAS-PROTOCOL-TUNNEL.asn ROBUSTNESS-DATA.asn */
 
-/* Input file: packet-h323-template.h */
-
-#line 1 "./asn1/h323/packet-h323-template.h"
 /* packet-h323.h
  * Routines for H.235 packet dissection
  * 2007  Tomas Kukosa
@@ -51,10 +48,10 @@ typedef struct _gef_ctx_t {
   const gchar *key;
 } gef_ctx_t;
 
-extern gef_ctx_t* gef_ctx_alloc(gef_ctx_t *parent, const gchar *type);
+extern gef_ctx_t* gef_ctx_alloc(wmem_allocator_t *pool, gef_ctx_t *parent, const gchar *type);
 extern gboolean gef_ctx_check_signature(gef_ctx_t *gefx);
 extern gef_ctx_t* gef_ctx_get(void *ptr);
-extern void gef_ctx_update_key(gef_ctx_t *gefx);
+extern void gef_ctx_update_key(wmem_allocator_t *pool, gef_ctx_t *gefx);
 
 #endif  /* PACKET_H323_H */
 

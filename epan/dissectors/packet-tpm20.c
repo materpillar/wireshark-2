@@ -10,12 +10,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#include <stdbool.h>
+#include "config.h"
+
 #include <epan/packet.h>
 #include <epan/to_str.h>
 #include <epan/tvbuff.h>
 #include <epan/expert.h>
-#include <epan/wmem/wmem_tree.h>
+#include <epan/wmem_scopes.h>
 
 typedef struct {
 	guint32 com_pnum;
@@ -135,7 +136,7 @@ struct num_handles {
 	int *resp_pd[MAX_HNDL];
 };
 
-struct num_handles tpm_handles_map[] = {
+static struct num_handles tpm_handles_map[] = {
 	{ 0x11f, 2, { &hf_tpmi_rh_provision, &hf_tpmi_dh_object, 0 }, 0, { 0, 0, 0}}, /* CC_NV_UndefineSpaceSpecial */
 	{ 0x120, 2, { &hf_tpmi_rh_provision, &hf_tpmi_dh_object, 0 }, 0, { 0, 0, 0}}, /* CC_EvictControl */
 	{ 0x121, 1, { &hf_tpmi_rh_hierarhy, 0, 0 }, 0, { 0, 0, 0 }}, /* CC_HierarchyControl */
@@ -607,13 +608,13 @@ static const value_string responses [] = {
 	{ 0, NULL }
 };
 
-#define TPMA_SESSION_CONTINUESESSION 0x00000001
-#define TPMA_SESSION_AUDITEXCLUSIVE  0x00000002
-#define TPMA_SESSION_AUDITRESET      0x00000004
-#define TPMA_SESSION_RESERVED1_MASK  0x00000018
-#define TPMA_SESSION_DECRYPT         0x00000020
-#define TPMA_SESSION_ENCRYPT         0x00000040
-#define TPMA_SESSION_AUDIT           0x00000080
+#define TPMA_SESSION_CONTINUESESSION 0x01
+#define TPMA_SESSION_AUDITEXCLUSIVE  0x02
+#define TPMA_SESSION_AUDITRESET      0x04
+#define TPMA_SESSION_RESERVED1_MASK  0x18
+#define TPMA_SESSION_DECRYPT         0x20
+#define TPMA_SESSION_ENCRYPT         0x40
+#define TPMA_SESSION_AUDIT           0x80
 
 static tpm_entry *get_command_entry(wmem_tree_t *tree, guint32 pnum)
 {
@@ -1181,7 +1182,7 @@ static hf_register_info hf[] = {
 	{ "Response rc", "tpm.resp.rc", FT_UINT32, BASE_HEX, VALS(responses),
 	   0x0, NULL, HFILL }},
 	{ &hf_tpm20_startup_type,
-	{ "Startup type", "tpm.statup.type", FT_UINT16, BASE_HEX, VALS(startup_types),
+	{ "Startup type", "tpm.startup.type", FT_UINT16, BASE_HEX, VALS(startup_types),
 	   0x0, NULL, HFILL }},
 	{ &hf_tpmi_dh_object,
 	{ "TPMI_DH_OBJECT", "tpm.handle.TPMI_DH_OBJECT", FT_UINT32, BASE_HEX, VALS(handles),

@@ -21,6 +21,8 @@
 void proto_register_netsync(void);
 void proto_reg_handoff_netsync(void);
 
+static dissector_handle_t netsync_handle;
+
 /*
  * See
  *
@@ -148,7 +150,7 @@ static gint dissect_netsync_cmd_error( tvbuff_t *tvb,  gint offset, proto_tree *
 	offset += tvb_get_varint( tvb, offset, FT_VARINT_MAX_LEN, &len, ENC_VARINT_PROTOBUF );
 
 	proto_tree_add_item(tree, hf_netsync_cmd_error_msg, tvb,
-				offset, (gint)len, ENC_ASCII|ENC_NA );
+				offset, (gint)len, ENC_ASCII );
 	offset += (gint)len;
 
 	return offset;
@@ -166,7 +168,7 @@ static gint dissect_netsync_cmd_hello(tvbuff_t *tvb,  gint offset, proto_tree *t
 
 	offset += tvb_get_varint( tvb, offset, FT_VARINT_MAX_LEN, &len, ENC_VARINT_PROTOBUF );
 	proto_tree_add_item(tree, hf_netsync_cmd_hello_keyname, tvb,
-				offset, (gint)len, ENC_ASCII|ENC_NA );
+				offset, (gint)len, ENC_ASCII );
 	offset += (gint)len;
 
 
@@ -193,7 +195,7 @@ static gint dissect_netsync_cmd_anonymous(tvbuff_t *tvb,  gint offset, proto_tre
 
 	offset += tvb_get_varint( tvb, offset, FT_VARINT_MAX_LEN, &len, ENC_VARINT_PROTOBUF );
 	proto_tree_add_item(tree, hf_netsync_cmd_anonymous_collection, tvb,
-				offset, (gint)len, ENC_ASCII|ENC_NA );
+				offset, (gint)len, ENC_ASCII );
 	offset += (gint)len;
 
 	proto_tree_add_item(tree, hf_netsync_cmd_nonce, tvb,
@@ -215,7 +217,7 @@ static gint dissect_netsync_cmd_auth(tvbuff_t *tvb,  gint offset, proto_tree *tr
 
 	offset += tvb_get_varint( tvb, offset, FT_VARINT_MAX_LEN, &len, ENC_VARINT_PROTOBUF );
 	proto_tree_add_item(tree, hf_netsync_cmd_auth_collection, tvb,
-				offset, (gint)len, ENC_ASCII|ENC_NA );
+				offset, (gint)len, ENC_ASCII );
 	offset += (gint)len;
 
 	proto_tree_add_item(tree, hf_netsync_cmd_auth_id, tvb,
@@ -708,15 +710,12 @@ proto_register_netsync(void)
 		" To use this option, you must also enable \"Allow subdissectors to reassemble TCP streams\" in the TCP protocol settings.",
 		&netsync_desegment);
 
+	netsync_handle = register_dissector("netsync", dissect_netsync, proto_netsync);
 }
 
 void
 proto_reg_handoff_netsync(void)
 {
-	dissector_handle_t netsync_handle;
-
-	netsync_handle = create_dissector_handle(dissect_netsync, proto_netsync);
-
 	dissector_add_uint_with_preference("tcp.port", TCP_PORT_NETSYNC, netsync_handle);
 }
 

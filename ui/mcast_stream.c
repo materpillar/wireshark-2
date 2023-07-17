@@ -32,9 +32,7 @@
 #include <epan/tap.h>
 #include <epan/to_str.h>
 
-#include "ui/alert_box.h"
 #include "ui/mcast_stream.h"
-#include "ui/simple_dialog.h"
 
 gint32  mcast_stream_trigger         =     50; /* limit for triggering the burst alarm (in packets per second) */
 gint32  mcast_stream_bufferalarm     =  10000; /* limit for triggering the buffer alarm (in bytes) */
@@ -131,8 +129,8 @@ mcaststream_draw(void *ti_ptr)
 
 /****************************************************************************/
 /* whenever a udp packet is seen by the tap listener */
-static tap_packet_status
-mcaststream_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, const void *arg2 _U_)
+tap_packet_status
+mcaststream_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, const void *arg2 _U_, tap_flags_t flags _U_)
 {
     mcaststream_tapinfo_t *tapinfo = (mcaststream_tapinfo_t *)arg;
     mcast_stream_info_t tmp_strinfo;
@@ -196,7 +194,7 @@ mcaststream_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, const
         tmp_strinfo.total_bytes = 0;
 
         /* reset slidingwindow and buffer parameters */
-        tmp_strinfo.element.buff = (nstime_t *)g_malloc(buffsize * sizeof(nstime_t));
+        tmp_strinfo.element.buff = g_new(nstime_t, buffsize);
         tmp_strinfo.element.first=0;
         tmp_strinfo.element.last=0;
         tmp_strinfo.element.burstsize=1;
@@ -210,16 +208,16 @@ mcaststream_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, const
         tmp_strinfo.element.buffstatus=0;
         tmp_strinfo.element.maxbw=0;
 
-        strinfo = (mcast_stream_info_t *)g_malloc(sizeof(mcast_stream_info_t));
+        strinfo = g_new(mcast_stream_info_t, 1);
         *strinfo = tmp_strinfo;  /* memberwise copy of struct */
         tapinfo->strinfo_list = g_list_append(tapinfo->strinfo_list, strinfo);
-        strinfo->element.buff = (nstime_t *)g_malloc(buffsize * sizeof(nstime_t));
+        strinfo->element.buff = g_new(nstime_t, buffsize);
 
         /* set time with the first packet */
         if (tapinfo->npackets == 0) {
-            tapinfo->allstreams = (mcast_stream_info_t *)g_malloc(sizeof(mcast_stream_info_t));
+            tapinfo->allstreams = g_new(mcast_stream_info_t, 1);
             tapinfo->allstreams->element.buff =
-                    (nstime_t *)g_malloc(buffsize * sizeof(nstime_t));
+                    g_new(nstime_t, buffsize);
             tapinfo->allstreams->start_rel = pinfo->rel_ts;
             tapinfo->allstreams->total_bytes = 0;
             tapinfo->allstreams->element.first=0;
@@ -247,7 +245,7 @@ mcaststream_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, const
 
     /* increment the packets counter for this stream and calculate average pps */
     ++(strinfo->npackets);
-    
+
     if (deltatime > 0) {
         strinfo->apackets = strinfo->npackets / deltatime;
         strinfo->average_bw = ((double)(strinfo->total_bytes*8) / deltatime);
@@ -281,27 +279,6 @@ mcaststream_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, const
 }
 
 /****************************************************************************/
-/* scan for Mcast streams */
-void
-mcaststream_scan(mcaststream_tapinfo_t *tapinfo, capture_file *cap_file)
-{
-    gboolean was_registered;
-
-    if (!tapinfo || !cap_file) {
-        return;
-    }
-
-    was_registered = tapinfo->is_registered;
-    if (!tapinfo->is_registered)
-        register_tap_listener_mcast_stream(tapinfo);
-
-    cf_retap_packets(cap_file);
-
-    if (!was_registered)
-        remove_tap_listener_mcast_stream(tapinfo);
-}
-
-/****************************************************************************/
 /* TAP INTERFACE */
 /****************************************************************************/
 
@@ -317,29 +294,26 @@ remove_tap_listener_mcast_stream(mcaststream_tapinfo_t *tapinfo)
 
 
 /****************************************************************************/
-void
+GString *
 register_tap_listener_mcast_stream(mcaststream_tapinfo_t *tapinfo)
 {
     GString *error_string;
-
     if (!tapinfo) {
-        return;
+        return NULL;
     }
 
-    if (!tapinfo->is_registered) {
-        error_string = register_tap_listener("udp", tapinfo,
-            NULL, 0, mcaststream_reset_cb, mcaststream_packet,
-            mcaststream_draw, NULL);
+    if (tapinfo->is_registered) {
+        return NULL;
+    }
 
-        if (error_string != NULL) {
-            simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
-                          "%s", error_string->str);
-            g_string_free(error_string, TRUE);
-            exit(1);
-        }
+    error_string = register_tap_listener("udp", tapinfo,
+        NULL, 0, mcaststream_reset_cb, mcaststream_packet,
+        mcaststream_draw, NULL);
 
+    if (NULL == error_string) {
         tapinfo->is_registered = TRUE;
     }
+    return error_string;
 }
 
 /*******************************************************************************/
@@ -446,16 +420,3 @@ slidingwindow(mcast_stream_info_t *strinfo, packet_info *pinfo)
 
     strinfo->element.count++;
 }
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

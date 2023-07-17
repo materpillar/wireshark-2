@@ -7,6 +7,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+#include "config.h"
+
 #include "file.h"
 
 #include <wiretap/wtap.h>
@@ -45,12 +47,14 @@
 
 #include "epan/prefs.h"
 #include <ui/qt/utils/qt_ui_utils.h>
-#include <wireshark_application.h>
+#include <main_application.h>
 
-CaptureFileDialog::CaptureFileDialog(QWidget *parent, capture_file *cf, QString &display_filter) :
+static const double WIDTH_SCALE_FACTOR = 1.4;
+static const double HEIGHT_SCALE_FACTOR = 1.4;
+
+CaptureFileDialog::CaptureFileDialog(QWidget *parent, capture_file *cf) :
     WiresharkFileDialog(parent),
     cap_file_(cf),
-    display_filter_(display_filter),
 #if !defined(Q_OS_WIN)
     display_filter_edit_(NULL),
     default_ft_(-1),
@@ -68,7 +72,7 @@ CaptureFileDialog::CaptureFileDialog(QWidget *parent, capture_file *cf, QString 
          * use the "last opened" directory saved in the preferences file if
          * there was one.
          */
-        setDirectory(wsApp->lastOpenDir());
+        setDirectory(mainApp->lastOpenDir());
         break;
 
     case FO_STYLE_SPECIFIED:
@@ -106,22 +110,40 @@ CaptureFileDialog::CaptureFileDialog(QWidget *parent, capture_file *cf, QString 
 
 check_savability_t CaptureFileDialog::checkSaveAsWithComments(QWidget *parent, capture_file *cf, int file_type) {
     guint32 comment_types;
+    bool all_comment_types_supported = true;
 
     /* What types of comments do we have? */
     comment_types = cf_comment_types(cf);
 
     /* Does the file's format support all the comments we have? */
-    if (wtap_dump_supports_comment_types(file_type, comment_types)) {
+    if (comment_types & WTAP_COMMENT_PER_SECTION) {
+        if (wtap_file_type_subtype_supports_option(file_type,
+                                                   WTAP_BLOCK_SECTION,
+                                                   OPT_COMMENT) == OPTION_NOT_SUPPORTED)
+            all_comment_types_supported = false;
+    }
+    if (comment_types & WTAP_COMMENT_PER_INTERFACE) {
+        if (wtap_file_type_subtype_supports_option(file_type,
+                                                   WTAP_BLOCK_IF_ID_AND_INFO,
+                                                   OPT_COMMENT) == OPTION_NOT_SUPPORTED)
+            all_comment_types_supported = false;
+    }
+    if (comment_types & WTAP_COMMENT_PER_PACKET) {
+        if (wtap_file_type_subtype_supports_option(file_type,
+                                                   WTAP_BLOCK_PACKET,
+                                                   OPT_COMMENT) == OPTION_NOT_SUPPORTED)
+            all_comment_types_supported = false;
+    }
+    if (all_comment_types_supported) {
         /* Yes.  Let the save happen; we can save all the comments, so
            there's no need to delete them. */
         return SAVE;
     }
 
-    QMessageBox msg_dialog;
+    QMessageBox msg_dialog(parent);
     QPushButton *save_button;
     QPushButton *discard_button;
 
-    msg_dialog.setParent(parent);
     msg_dialog.setIcon(QMessageBox::Question);
     msg_dialog.setText(tr("This capture file contains comments."));
     msg_dialog.setStandardButtons(QMessageBox::Cancel);
@@ -254,16 +276,16 @@ wtap_compression_type CaptureFileDialog::compressionType() {
     return compression_type_;
 }
 
-int CaptureFileDialog::open(QString &file_name, unsigned int &type) {
-    QString title_str = wsApp->windowTitleString(tr("Open Capture File"));
+int CaptureFileDialog::open(QString &file_name, unsigned int &type, QString &display_filter) {
+    QString title_str = mainApp->windowTitleString(tr("Open Capture File"));
     GString *fname = g_string_new(file_name.toUtf8().constData());
-    GString *dfilter = g_string_new(display_filter_.toUtf8().constData());
+    GString *dfilter = g_string_new(display_filter.toUtf8().constData());
     gboolean wof_status;
 
     // XXX Add a widget->HWND routine to qt_ui_utils and use it instead.
     wof_status = win32_open_file((HWND)parentWidget()->effectiveWinId(), title_str.toStdWString().c_str(), fname, &type, dfilter);
     file_name = fname->str;
-    display_filter_ = dfilter->str;
+    display_filter = dfilter->str;
 
     g_string_free(fname, TRUE);
     g_string_free(dfilter, TRUE);
@@ -272,7 +294,7 @@ int CaptureFileDialog::open(QString &file_name, unsigned int &type) {
 }
 
 check_savability_t CaptureFileDialog::saveAs(QString &file_name, bool must_support_all_comments) {
-    QString title_str = wsApp->windowTitleString(tr("Save Capture File As"));
+    QString title_str = mainApp->windowTitleString(tr("Save Capture File As"));
     GString *fname = g_string_new(file_name.toUtf8().constData());
     gboolean wsf_status;
 
@@ -289,7 +311,7 @@ check_savability_t CaptureFileDialog::saveAs(QString &file_name, bool must_suppo
 }
 
 check_savability_t CaptureFileDialog::exportSelectedPackets(QString &file_name, packet_range_t *range, QString selRange) {
-    QString title_str = wsApp->windowTitleString(tr("Export Specified Packets"));
+    QString title_str = mainApp->windowTitleString(tr("Export Specified Packets"));
     GString *fname = g_string_new(file_name.toUtf8().constData());
     gboolean wespf_status;
 
@@ -310,16 +332,16 @@ check_savability_t CaptureFileDialog::exportSelectedPackets(QString &file_name, 
     return CANCELLED;
 }
 
-int CaptureFileDialog::merge(QString &file_name) {
-    QString title_str = wsApp->windowTitleString(tr("Merge Capture File"));
+int CaptureFileDialog::merge(QString &file_name, QString &display_filter) {
+    QString title_str = mainApp->windowTitleString(tr("Merge Capture File"));
     GString *fname = g_string_new(file_name.toUtf8().constData());
-    GString *dfilter = g_string_new(display_filter_.toUtf8().constData());
+    GString *dfilter = g_string_new(display_filter.toUtf8().constData());
     gboolean wmf_status;
 
 
     wmf_status = win32_merge_file((HWND)parentWidget()->effectiveWinId(), title_str.toStdWString().c_str(), fname, dfilter, &merge_type_);
     file_name = fname->str;
-    display_filter_ = dfilter->str;
+    display_filter = dfilter->str;
 
     g_string_free(fname, TRUE);
     g_string_free(dfilter, TRUE);
@@ -496,7 +518,7 @@ void CaptureFileDialog::fixFilenameExtension()
     // Find suffixes such as "pcap" or "pcap.gz" if any
     if (!fi.suffix().isEmpty()) {
         QStringList current_suffixes(fi.suffix());
-        int pos = filename.lastIndexOf('.', -2 - current_suffixes.at(0).size());
+        int pos = static_cast<int>(filename.lastIndexOf('.', -2 - current_suffixes.at(0).size()));
         if (pos > 0) {
             current_suffixes.prepend(filename.right(filename.size() - (pos + 1)));
         }
@@ -585,7 +607,7 @@ void CaptureFileDialog::addPreview(QVBoxLayout &v_box) {
     preview_grid->addWidget(&preview_first_elapsed_, 3, 1);
     preview_labels_ << lbl << &preview_first_elapsed_;
 
-    connect(this, SIGNAL(currentChanged(const QString &)), this, SLOT(preview(const QString &)));
+    connect(this, &CaptureFileDialog::currentChanged, this, &CaptureFileDialog::preview);
 
     preview("");
 }
@@ -607,20 +629,20 @@ void CaptureFileDialog::addMergeControls(QVBoxLayout &v_box) {
 }
 
 int CaptureFileDialog::selectedFileType() {
-    return type_hash_.value(selectedNameFilter(), -1);
+    return type_hash_.value(selectedNameFilter(), WTAP_FILE_TYPE_SUBTYPE_UNKNOWN);
 }
 
 wtap_compression_type CaptureFileDialog::compressionType() {
     return compress_.isChecked() ? WTAP_GZIP_COMPRESSED : WTAP_UNCOMPRESSED;
 }
 
-void CaptureFileDialog::addDisplayFilterEdit() {
+void CaptureFileDialog::addDisplayFilterEdit(QString &display_filter) {
     QGridLayout *fd_grid = qobject_cast<QGridLayout*>(layout());
 
     fd_grid->addWidget(new QLabel(tr("Read filter:")), last_row_, 0);
 
     display_filter_edit_ = new DisplayFilterEdit(this, ReadFilterToApply);
-    display_filter_edit_->setText(display_filter_);
+    display_filter_edit_->setText(display_filter);
     fd_grid->addWidget(display_filter_edit_, last_row_, 1);
     last_row_++;
 }
@@ -674,25 +696,27 @@ QDialogButtonBox *CaptureFileDialog::addHelpButton(topic_action_e help_topic)
 
     if (button_box) {
         button_box->addButton(QDialogButtonBox::Help);
-        connect(button_box, SIGNAL(helpRequested()), this, SLOT(on_buttonBox_helpRequested()));
+        connect(button_box, &QDialogButtonBox::helpRequested, this, &CaptureFileDialog::on_buttonBox_helpRequested);
     }
     return button_box;
 }
 
-int CaptureFileDialog::open(QString &file_name, unsigned int &type) {
-    setWindowTitle(wsApp->windowTitleString(tr("Open Capture File")));
-    setNameFilters(buildFileOpenTypeList());
+int CaptureFileDialog::open(QString &file_name, unsigned int &type, QString &display_filter) {
+    setWindowTitle(mainApp->windowTitleString(tr("Open Capture File")));
+    QStringList open_type_filters(buildFileOpenTypeList());
+    setNameFilters(open_type_filters);
+    selectNameFilter(open_type_filters.at(1));
     setFileMode(QFileDialog::ExistingFile);
 
     addFormatTypeSelector(left_v_box_);
-    addDisplayFilterEdit();
+    addDisplayFilterEdit(display_filter);
     addPreview(right_v_box_);
     addHelpButton(HELP_OPEN_DIALOG);
 
     // Grow the dialog to account for the extra widgets.
-    resize(width(), height() + left_v_box_.minimumSize().height() + display_filter_edit_->minimumSize().height());
+    resize(width() * WIDTH_SCALE_FACTOR, height() * HEIGHT_SCALE_FACTOR + left_v_box_.minimumSize().height() + display_filter_edit_->minimumSize().height());
 
-    display_filter_.clear();
+    display_filter.clear();
 
     if (!file_name.isEmpty()) {
         selectFile(file_name);
@@ -701,7 +725,7 @@ int CaptureFileDialog::open(QString &file_name, unsigned int &type) {
     if (WiresharkFileDialog::exec() && selectedFiles().length() > 0) {
         file_name = selectedFiles()[0];
         type = open_info_name_to_type(qPrintable(format_type_.currentText()));
-        display_filter_.append(display_filter_edit_->text());
+        display_filter.append(display_filter_edit_->text());
 
         return QDialog::Accepted;
     } else {
@@ -710,7 +734,7 @@ int CaptureFileDialog::open(QString &file_name, unsigned int &type) {
 }
 
 check_savability_t CaptureFileDialog::saveAs(QString &file_name, bool must_support_all_comments) {
-    setWindowTitle(wsApp->windowTitleString(tr("Save Capture File As")));
+    setWindowTitle(mainApp->windowTitleString(tr("Save Capture File As")));
     // XXX There doesn't appear to be a way to use setNameFilters without restricting
     // what the user can select. We might want to use our own combobox instead and
     // let the user select anything.
@@ -722,7 +746,7 @@ check_savability_t CaptureFileDialog::saveAs(QString &file_name, bool must_suppo
     addHelpButton(HELP_SAVE_DIALOG);
 
     // Grow the dialog to account for the extra widgets.
-    resize(width(), height() + left_v_box_.minimumSize().height());
+    resize(width() * WIDTH_SCALE_FACTOR, height() * HEIGHT_SCALE_FACTOR + left_v_box_.minimumSize().height());
 
     if (!file_name.isEmpty()) {
         selectFile(file_name);
@@ -730,8 +754,22 @@ check_savability_t CaptureFileDialog::saveAs(QString &file_name, bool must_suppo
     connect(this, &QFileDialog::filterSelected, this, &CaptureFileDialog::fixFilenameExtension);
 
     if (WiresharkFileDialog::exec() && selectedFiles().length() > 0) {
+        int file_type;
+
         file_name = selectedFiles()[0];
-        return checkSaveAsWithComments(this, cap_file_, selectedFileType());
+        file_type = selectedFileType();
+        /* Is the file type bogus? */
+        if (file_type == WTAP_FILE_TYPE_SUBTYPE_UNKNOWN) {
+            /* This "should not happen". */
+            QMessageBox msg_dialog;
+
+            msg_dialog.setIcon(QMessageBox::Critical);
+            msg_dialog.setText(tr("Unknown file type returned by save as dialog."));
+            msg_dialog.setInformativeText(tr("Please report this as a Wireshark issue at https://gitlab.com/wireshark/wireshark/-/issues."));
+            msg_dialog.exec();
+            return CANCELLED;
+        }
+        return checkSaveAsWithComments(this, cap_file_, file_type);
     }
     return CANCELLED;
 }
@@ -739,7 +777,7 @@ check_savability_t CaptureFileDialog::saveAs(QString &file_name, bool must_suppo
 check_savability_t CaptureFileDialog::exportSelectedPackets(QString &file_name, packet_range_t *range, QString selRange) {
     QDialogButtonBox *button_box;
 
-    setWindowTitle(wsApp->windowTitleString(tr("Export Specified Packets")));
+    setWindowTitle(mainApp->windowTitleString(tr("Export Specified Packets")));
     // XXX See comment in ::saveAs regarding setNameFilters
     setNameFilters(buildFileSaveAsTypeList(false));
     setAcceptMode(QFileDialog::AcceptSave);
@@ -752,13 +790,13 @@ check_savability_t CaptureFileDialog::exportSelectedPackets(QString &file_name, 
     if (button_box) {
         save_bt_ = button_box->button(QDialogButtonBox::Save);
         if (save_bt_) {
-            connect(&packet_range_group_box_, SIGNAL(validityChanged(bool)),
-                    save_bt_, SLOT(setEnabled(bool)));
+            connect(&packet_range_group_box_, &PacketRangeGroupBox::validityChanged,
+                    save_bt_, &QPushButton::setEnabled);
         }
     }
 
     // Grow the dialog to account for the extra widgets.
-    resize(width(), height() + (packet_range_group_box_.height() * 2 / 3));
+    resize(width() * WIDTH_SCALE_FACTOR, height() * HEIGHT_SCALE_FACTOR + (packet_range_group_box_.height() * 2 / 3));
 
     if (!file_name.isEmpty()) {
         selectFile(file_name);
@@ -766,31 +804,45 @@ check_savability_t CaptureFileDialog::exportSelectedPackets(QString &file_name, 
     connect(this, &QFileDialog::filterSelected, this, &CaptureFileDialog::fixFilenameExtension);
 
     if (WiresharkFileDialog::exec() && selectedFiles().length() > 0) {
+        int file_type;
+
         file_name = selectedFiles()[0];
-        return checkSaveAsWithComments(this, cap_file_, selectedFileType());
+        file_type = selectedFileType();
+        /* Is the file type bogus? */
+        if (file_type == WTAP_FILE_TYPE_SUBTYPE_UNKNOWN) {
+            /* This "should not happen". */
+            QMessageBox msg_dialog;
+
+            msg_dialog.setIcon(QMessageBox::Critical);
+            msg_dialog.setText(tr("Unknown file type returned by save as dialog."));
+            msg_dialog.setInformativeText(tr("Please report this as a Wireshark issue at https://gitlab.com/wireshark/wireshark/-/issues."));
+            msg_dialog.exec();
+            return CANCELLED;
+        }
+        return checkSaveAsWithComments(this, cap_file_, file_type);
     }
     return CANCELLED;
 }
 
-int CaptureFileDialog::merge(QString &file_name) {
-    setWindowTitle(wsApp->windowTitleString(tr("Merge Capture File")));
+int CaptureFileDialog::merge(QString &file_name, QString &display_filter) {
+    setWindowTitle(mainApp->windowTitleString(tr("Merge Capture File")));
     setNameFilters(buildFileOpenTypeList());
     setFileMode(QFileDialog::ExistingFile);
 
-    addDisplayFilterEdit();
+    addDisplayFilterEdit(display_filter);
     addMergeControls(left_v_box_);
     addPreview(right_v_box_);
     addHelpButton(HELP_MERGE_DIALOG);
 
     file_name.clear();
-    display_filter_.clear();
+    display_filter.clear();
 
     // Grow the dialog to account for the extra widgets.
-    resize(width(), height() + right_v_box_.minimumSize().height() + display_filter_edit_->minimumSize().height());
+    resize(width() * WIDTH_SCALE_FACTOR, height() * HEIGHT_SCALE_FACTOR + right_v_box_.minimumSize().height() + display_filter_edit_->minimumSize().height());
 
     if (WiresharkFileDialog::exec() && selectedFiles().length() > 0) {
         file_name.append(selectedFiles()[0]);
-        display_filter_.append(display_filter_edit_->text());
+        display_filter.append(display_filter_edit_->text());
 
         return QDialog::Accepted;
     } else {
@@ -814,9 +866,10 @@ QStringList CaptureFileDialog::buildFileSaveAsTypeList(bool must_support_all_com
         required_comment_types = 0; /* none of them */
 
   /* What types of file can we save this file as? */
-    savable_file_types_subtypes = wtap_get_savable_file_types_subtypes(cap_file_->cd_t,
+    savable_file_types_subtypes = wtap_get_savable_file_types_subtypes_for_file(cap_file_->cd_t,
                                                                        cap_file_->linktypes,
-                                                                       required_comment_types);
+                                                                       required_comment_types,
+                                                                       FT_SORT_BY_DESCRIPTION);
 
     if (savable_file_types_subtypes != NULL) {
         int ft;
@@ -827,7 +880,7 @@ QStringList CaptureFileDialog::buildFileSaveAsTypeList(bool must_support_all_com
             ft = g_array_index(savable_file_types_subtypes, int, i);
             if (default_ft_ < 1)
                 default_ft_ = ft; /* first file type is the default */
-            QString type_name(wtap_file_type_subtype_string(ft));
+            QString type_name(wtap_file_type_subtype_description(ft));
             filters << type_name + fileType(ft, type_suffixes_[type_name]);
             type_hash_[type_name] = ft;
         }
@@ -895,12 +948,12 @@ void CaptureFileDialog::preview(const QString & path)
     }
 
     // Format
-    preview_format_.setText(QString::fromUtf8(wtap_file_type_subtype_string(wtap_file_type_subtype(wth))));
+    preview_format_.setText(QString::fromUtf8(wtap_file_type_subtype_description(wtap_file_type_subtype(wth))));
 
     // Size
     gint64 filesize = wtap_file_size(wth, &err);
     // Finder and Windows Explorer use IEC. What do the various Linux file managers use?
-    QString size_str(gchar_free_to_qstring(format_size(filesize, format_size_unit_bytes|format_size_prefix_iec)));
+    QString size_str(gchar_free_to_qstring(format_size(filesize, FORMAT_SIZE_UNIT_BYTES, FORMAT_SIZE_PREFIX_IEC)));
 
     status = get_stats_for_preview(wth, &stats, &err, &err_info);
 
@@ -976,20 +1029,7 @@ void CaptureFileDialog::preview(const QString & path)
 
 void CaptureFileDialog::on_buttonBox_helpRequested()
 {
-    if (help_topic_ != TOPIC_ACTION_NONE) wsApp->helpTopicAction(help_topic_);
+    if (help_topic_ != TOPIC_ACTION_NONE) mainApp->helpTopicAction(help_topic_);
 }
 
 #endif // ! Q_OS_WIN
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

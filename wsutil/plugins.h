@@ -1,4 +1,4 @@
-/* plugins.h
+/** @file
  * definitions for plugins structures
  *
  * Wireshark - Network traffic analyzer
@@ -11,14 +11,11 @@
 #ifndef __PLUGINS_H__
 #define __PLUGINS_H__
 
+#include <wireshark.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-#include <glib.h>
-#include <gmodule.h>
-
-#include "ws_symbol_export.h"
 
 typedef void (*plugin_register_func)(void);
 
@@ -43,6 +40,8 @@ WS_DLL_PUBLIC void plugins_dump_all(void);
 WS_DLL_PUBLIC int plugins_get_count(void);
 
 WS_DLL_PUBLIC void plugins_cleanup(plugins_t *plugins);
+
+WS_DLL_PUBLIC gboolean plugins_supported(void);
 
 #ifdef __cplusplus
 }

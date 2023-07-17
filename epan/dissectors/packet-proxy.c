@@ -27,7 +27,7 @@
 #include <wsutil/inet_addr.h>
 #include <wsutil/strtoi.h>
 
-#include <packet-tcp.h>
+#include "packet-tcp.h"
 
 void proto_reg_handoff_proxy(void);
 void proto_register_proxy(void);
@@ -106,6 +106,7 @@ static const value_string proxy2_family_vals[] = {
 #define PP2_TYPE_AUTHORITY      0x02
 #define PP2_TYPE_CRC32C         0x03
 #define PP2_TYPE_NOOP           0x04
+#define PP2_TYPE_UNIQUE_ID      0x05
 #define PP2_TYPE_SSL            0x20
 #define PP2_SUBTYPE_SSL_VERSION 0x21
 #define PP2_SUBTYPE_SSL_CN      0x22
@@ -121,6 +122,7 @@ static const value_string proxy2_tlv_vals[] = {
     { PP2_TYPE_AUTHORITY, "AUTHORITY" },
     { PP2_TYPE_CRC32C, "CRC32C" },
     { PP2_TYPE_NOOP, "NOOP" },
+    { PP2_TYPE_UNIQUE_ID, "UNIQUE_ID" },
     { PP2_TYPE_SSL, "SSL" },
     { PP2_SUBTYPE_SSL_VERSION, "SSL VERSION" },
     { PP2_SUBTYPE_SSL_CN, "SSL CN" },
@@ -133,9 +135,9 @@ static const value_string proxy2_tlv_vals[] = {
 };
 
 static int
-dissect_proxy_v2_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *proxy_tree, int offset)
+dissect_proxy_v2_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *proxy_tree, int offset, int next_offset)
 {
-    while ( tvb_reported_length_remaining(tvb, offset) > 0) {
+    while (offset < next_offset) {
         guint32 type, length;
         proto_item *ti_tlv;
         proto_tree *tlv_tree;
@@ -147,7 +149,7 @@ dissect_proxy_v2_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *proxy_tree, 
         proto_tree_add_item_ret_uint(tlv_tree, hf_proxy2_tlv_length, tvb, offset, 2, ENC_BIG_ENDIAN, &length);
         offset += 2;
 
-        proto_item_append_text(ti_tlv, ": (t=%u,l=%d) %s", type, length, val_to_str(type, proxy2_tlv_vals ,"Unknown type") );
+        proto_item_append_text(ti_tlv, ": (t=%u,l=%d) %s", type, length, val_to_str_const(type, proxy2_tlv_vals ,"Unknown type") );
         proto_item_set_len(ti_tlv, 1 + 2 + length);
 
         proto_tree_add_item(tlv_tree, hf_proxy2_tlv_value, tvb, offset, length, ENC_NA);
@@ -157,28 +159,28 @@ dissect_proxy_v2_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *proxy_tree, 
             offset += 1;
             proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_verify, tvb, offset, 4, ENC_NA);
             offset += 4;
-            offset = dissect_proxy_v2_tlv(tvb, pinfo, tlv_tree, offset);
+            offset = dissect_proxy_v2_tlv(tvb, pinfo, tlv_tree, offset, next_offset);
         break;
         case PP2_SUBTYPE_SSL_VERSION: /* SSL Version */
-            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_version, tvb, offset, length, ENC_ASCII|ENC_NA);
-            proto_item_append_text(ti_tlv, ": %s", tvb_get_string_enc(wmem_packet_scope(), tvb, offset, length, ENC_ASCII));
+            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_version, tvb, offset, length, ENC_ASCII);
+            proto_item_append_text(ti_tlv, ": %s", tvb_get_string_enc(pinfo->pool, tvb, offset, length, ENC_ASCII));
             offset += length;
         break;
         case PP2_SUBTYPE_SSL_CN: /* SSL CommonName */
-            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_cn, tvb, offset, length, ENC_ASCII|ENC_NA);
-            proto_item_append_text(ti_tlv, ": %s", tvb_get_string_enc(wmem_packet_scope(), tvb, offset, length, ENC_ASCII));
+            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_cn, tvb, offset, length, ENC_ASCII);
+            proto_item_append_text(ti_tlv, ": %s", tvb_get_string_enc(pinfo->pool, tvb, offset, length, ENC_ASCII));
             offset += length;
         break;
         case PP2_SUBTYPE_SSL_CIPHER: /* SSL Cipher */
-            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_cipher, tvb, offset, length, ENC_ASCII|ENC_NA);
+            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_cipher, tvb, offset, length, ENC_ASCII);
             offset += length;
         break;
         case PP2_SUBTYPE_SSL_SIG_ALG: /* SSL Signature Algorithm */
-            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_sig_alg, tvb, offset, length, ENC_ASCII|ENC_NA);
+            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_sig_alg, tvb, offset, length, ENC_ASCII);
             offset += length;
         break;
         case PP2_SUBTYPE_SSL_KEY_ALG: /* SSL Key Algorithm */
-            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_key_alg, tvb, offset, length, ENC_ASCII|ENC_NA);
+            proto_tree_add_item(tlv_tree, hf_proxy2_tlv_ssl_key_alg, tvb, offset, length, ENC_ASCII);
             offset += length;
         break;
         default:
@@ -205,7 +207,7 @@ is_proxy_v1(tvbuff_t *tvb, gint *header_length)
         return FALSE;
     }
 
-    if (tvb_memeql(tvb, 0, "PROXY ", 6) != 0) {
+    if (tvb_memeql(tvb, 0, (const guint8*)"PROXY ", 6) != 0) {
         return FALSE;
     }
 
@@ -215,7 +217,7 @@ is_proxy_v1(tvbuff_t *tvb, gint *header_length)
     }
 
     /* The line must end with a CRLF and not just a single CR or LF. */
-    if (tvb_memeql(tvb, next_offset - 2, "\r\n", 2) != 0) {
+    if (tvb_memeql(tvb, next_offset - 2, (const guint8*)"\r\n", 2) != 0) {
         return FALSE;
     }
 
@@ -481,9 +483,10 @@ dissect_proxy_v2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         return offset;
     }
 
-    if (offset < header_len) {
+    /* Do we have additional TLV to parse? */
+    if (offset < next_offset) {
         /* TLV */
-        offset = dissect_proxy_v2_tlv(tvb, pinfo, proxy_tree, offset);
+        offset = dissect_proxy_v2_tlv(tvb, pinfo, proxy_tree, offset, next_offset);
     }
 
     return offset;
@@ -494,7 +497,7 @@ dissect_proxy_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *da
 {
     if (tvb_reported_length(tvb) >= 16 &&
         tvb_captured_length(tvb) >= sizeof(proxy_v2_magic) &&
-        tvb_memeql(tvb, 0, proxy_v2_magic, sizeof(proxy_v2_magic)) == 0) {
+        tvb_memeql(tvb, 0, (const guint8*)proxy_v2_magic, sizeof(proxy_v2_magic)) == 0) {
         // TODO maybe check for "(hdr.v2.ver_cmd & 0xF0) == 0x20" as done in "9. Sample code" from
         // https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt?
         dissect_proxy_v2(tvb, pinfo, tree, data);
@@ -709,8 +712,8 @@ proto_register_proxy(void)
 void
 proto_reg_handoff_proxy(void)
 {
-    heur_dissector_add("tcp", dissect_proxy_heur, "proxy", "proxy_tcp", proto_proxy, HEURISTIC_ENABLE);
-    heur_dissector_add("udp", dissect_proxy_heur, "proxy", "proxy_udp", proto_proxy, HEURISTIC_ENABLE);
+    heur_dissector_add("tcp", dissect_proxy_heur, "PROXY over TCP", "proxy_tcp", proto_proxy, HEURISTIC_ENABLE);
+    heur_dissector_add("udp", dissect_proxy_heur, "PROXY over UDP", "proxy_udp", proto_proxy, HEURISTIC_ENABLE);
 }
 
 /*

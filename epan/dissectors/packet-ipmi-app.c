@@ -772,7 +772,7 @@ rq39(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 
 	proto_tree_add_bitmask_text(tree, tvb, 0, 1, NULL, NULL,
 			ett_ipmi_app_39_byte1, byte1, ENC_LITTLE_ENDIAN, 0);
-	proto_tree_add_item(tree, hf_ipmi_app_39_user, tvb, 1, 16, ENC_ASCII|ENC_NA);
+	proto_tree_add_item(tree, hf_ipmi_app_39_user, tvb, 1, 16, ENC_ASCII);
 }
 
 static void
@@ -1226,7 +1226,7 @@ proto_register_ipmi_app(void)
 				"ipmi.app25.initial_countdown", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
 		{ &hf_ipmi_app_25_present_countdown,
 			{ "Present countdown value (100ms/count)",
-				"ipmi.app25.initial_countdown", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
+				"ipmi.app25.present_countdown", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
 
 		{ &hf_ipmi_app_2e_byte1_oem2,
 			{ "OEM 2",

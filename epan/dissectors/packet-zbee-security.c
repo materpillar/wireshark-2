@@ -43,6 +43,7 @@ static gboolean    zbee_security_parse_key(const gchar *, guint8 *, gboolean);
 
 /* Field pointers. */
 static int hf_zbee_sec_field = -1;
+static int hf_zbee_sec_level = -1;
 static int hf_zbee_sec_key_id = -1;
 static int hf_zbee_sec_nonce = -1;
 static int hf_zbee_sec_counter = -1;
@@ -148,7 +149,7 @@ static gboolean uat_key_record_update_cb(void* r, char** err) {
         if (rec->string[0] != 0) {
             *err = NULL;
             if ( !zbee_security_parse_key(rec->string, key, rec->byte_order) ) {
-                *err = g_strdup_printf("Expecting %d hexadecimal bytes or\n"
+                *err = ws_strdup_printf("Expecting %d hexadecimal bytes or\n"
                         "a %d character double-quoted string", ZBEE_SEC_CONST_KEYSIZE, ZBEE_SEC_CONST_KEYSIZE);
                 return FALSE;
             }
@@ -192,7 +193,7 @@ static void uat_key_record_post_update(void) {
             key_record.frame_num = ZBEE_SEC_PC_KEY; /* means it's a user PC key */
             key_record.label = g_strdup(uat_key_records[i].label);
             memcpy(key_record.key, key, ZBEE_SEC_CONST_KEYSIZE);
-            zbee_pc_keyring = g_slist_prepend(zbee_pc_keyring, g_memdup(&key_record, sizeof(key_record_t)));
+            zbee_pc_keyring = g_slist_prepend(zbee_pc_keyring, g_memdup2(&key_record, sizeof(key_record_t)));
         }
     }
 }
@@ -223,6 +224,10 @@ void zbee_security_register(module_t *zbee_prefs, int proto)
         { &hf_zbee_sec_field,
           { "Security Control Field",   "zbee.sec.field", FT_UINT8, BASE_HEX, NULL,
             0x0, NULL, HFILL }},
+
+        { &hf_zbee_sec_level,
+          { "Security Level",          "zbee.sec.sec_level", FT_UINT8, BASE_HEX, NULL,
+            ZBEE_SEC_CONTROL_LEVEL, NULL, HFILL }},
 
         { &hf_zbee_sec_key_id,
           { "Key Id",                    "zbee.sec.key_id", FT_UINT8, BASE_HEX, VALS(zbee_sec_key_names),
@@ -448,6 +453,7 @@ dissect_zbee_secure(tvbuff_t *tvb, packet_info *pinfo, proto_tree* tree, guint o
     ieee802154_map_rec *map_rec = NULL;
 
     static int * const sec_flags[] = {
+        &hf_zbee_sec_level,
         &hf_zbee_sec_key_id,
         &hf_zbee_sec_nonce,
         NULL
@@ -476,14 +482,14 @@ dissect_zbee_secure(tvbuff_t *tvb, packet_info *pinfo, proto_tree* tree, guint o
      * Eww, I think I just threw up a little...  ZigBee requires this field
      * to be patched before computing the MIC, but we don't have write-access
      * to the tvbuff. So we need to allocate a copy of the whole thing just
-     * so we can fix these 3 bits. Memory allocated by tvb_memdup(wmem_packet_scope(),...)
+     * so we can fix these 3 bits. Memory allocated by tvb_memdup(pinfo->pool,...)
      * is automatically freed before the next packet is processed.
      */
-    enc_buffer = (guint8 *)tvb_memdup(wmem_packet_scope(), tvb, 0, tvb_captured_length(tvb));
+    enc_buffer = (guint8 *)tvb_memdup(pinfo->pool, tvb, 0, tvb_captured_length(tvb));
     /*
      * Override the const qualifiers and patch the security level field, we
      * know it is safe to overide the const qualifiers because we just
-     * allocated this memory via tvb_memdup(wmem_packet_scope(),...).
+     * allocated this memory via tvb_memdup(pinfo->pool,...).
      */
     enc_buffer[offset] = packet.control;
     packet.level    = zbee_get_bit_field(packet.control, ZBEE_SEC_CONTROL_LEVEL);
@@ -546,7 +552,33 @@ dissect_zbee_secure(tvbuff_t *tvb, packet_info *pinfo, proto_tree* tree, guint o
             default:
                 /* use the nwk extended source address for APS decryption */
                 if ( nwk_hints && (map_rec = nwk_hints->map_rec) )
-                    packet.src64 = map_rec->addr64;
+                {
+                    switch (nwk_hints->relay_type)
+                    {
+                        case ZBEE_APS_RELAY_DOWNSTREAM:
+                        {
+                            ieee802154_short_addr   addr16;
+                            /* In case of downstream Relay must use long address
+                             * of ZC. Seek for it in the address translation
+                             * table. */
+                            addr16.addr = 0;
+                            addr16.pan = ieee_hints->src_pan;
+                            map_rec = (ieee802154_map_rec *) g_hash_table_lookup(zbee_nwk_map.short_table, &addr16);
+                            if (map_rec)
+                            {
+                                packet.src64 = map_rec->addr64;
+                            }
+                        }
+                        break;
+                        case ZBEE_APS_RELAY_UPSTREAM:
+                            /* In case of downstream Relay must use long address of Joiner from the Relay message */
+                            packet.src64 = nwk_hints->joiner_addr64;
+                            break;
+                        default:
+                            packet.src64 = map_rec->addr64;
+                            break;
+                    }
+                }
                 else
                     proto_tree_add_expert(sec_tree, pinfo, &ei_zbee_sec_extended_source_unknown, tvb, 0, 0);
                 break;
@@ -591,8 +623,9 @@ dissect_zbee_secure(tvbuff_t *tvb, packet_info *pinfo, proto_tree* tree, guint o
                 mic_len, ENC_NA);
     }
 
-    /* Check for null payload. */
     payload_len = tvb_reported_length_remaining(tvb, offset+mic_len);
+
+    /* Check for null payload. */
     if (payload_len == 0)
         return NULL;
 
@@ -1129,7 +1162,7 @@ zbee_sec_hash(guint8 *input, guint input_len, guint8 *output)
      * append the byte 0x80.
      */
     cipher_in[j++] = 0x80;
-    /* Pad with '0' until the the current block is exactly 'n' bits from the
+    /* Pad with '0' until the current block is exactly 'n' bits from the
      * end.
      */
     while (j!=(ZBEE_SEC_CONST_BLOCKSIZE-2)) {
@@ -1224,7 +1257,7 @@ void zbee_sec_add_key_to_keyring(packet_info *pinfo, const guint8 *key)
         if ( !nwk_keyring ) {
             nwk_keyring = (GSList **)g_malloc0(sizeof(GSList*));
             g_hash_table_insert(zbee_table_nwk_keyring,
-                    g_memdup(&nwk_hints->src_pan, sizeof(nwk_hints->src_pan)), nwk_keyring);
+                g_memdup2(&nwk_hints->src_pan, sizeof(nwk_hints->src_pan)), nwk_keyring);
         }
 
         if ( nwk_keyring ) {
@@ -1235,7 +1268,7 @@ void zbee_sec_add_key_to_keyring(packet_info *pinfo, const guint8 *key)
                 key_record.frame_num = pinfo->num;
                 key_record.label = NULL;
                 memcpy(&key_record.key, key, ZBEE_APS_CMD_KEY_LENGTH);
-                *nwk_keyring = g_slist_prepend(*nwk_keyring, g_memdup(&key_record, sizeof(key_record_t)));
+                *nwk_keyring = g_slist_prepend(*nwk_keyring, g_memdup2(&key_record, sizeof(key_record_t)));
             }
         }
     }

@@ -10,6 +10,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+#include "config.h"
+
 #include <epan/packet.h>
 #include "packet-knxip.h"
 
@@ -266,14 +268,6 @@ static const value_string ft_vals[] = {
   { 0, NULL }
 };
 
-/* Repeat on error?
-*/
-static const value_string rep_vals[] = {
-  { 0, "Yes" },
-  { 1, "No" },
-  { 0, NULL }
-};
-
 /* Broadcast Type
 */
 static const value_string bt_vals[] = {
@@ -289,22 +283,6 @@ static const value_string prio_vals[] = {
   { 2, "Urgent" },
   { 1, "Normal" },
   { 3, "Low" },
-  { 0, NULL }
-};
-
-/* Ack requested?
-*/
-static const value_string ack_vals[] = {
-  { 0, "No" },
-  { 1, "Yes" },
-  { 0, NULL }
-};
-
-/* Confirmation Error?
-*/
-static const value_string ce_vals[] = {
-  { 0, "No" },
-  { 1, "Yes" },
   { 0, NULL }
 };
 
@@ -961,11 +939,11 @@ static const gchar* get_pid_name( gint ot, gint pid )
 
 /* Decrypt data security APDU with a specific key.
 */
-static const guint8* decrypt_data_security_data_with_key( const guint8* key, const guint8* encrypted, gint encrypted_size, const guint8* cemi, gint cemi_size )
+static const guint8* decrypt_data_security_data_with_key( wmem_allocator_t *pool, const guint8* key, const guint8* encrypted, gint encrypted_size, const guint8* cemi, gint cemi_size )
 {
-  guint8 ctr_0[ 16 ];
-  guint8 b_0[ 16 ];
-  guint8 mac[ 16 ];
+  guint8 ctr_0[ KNX_KEY_LENGTH ];
+  guint8 b_0[ KNX_KEY_LENGTH ];
+  guint8 mac[ KNX_KEY_LENGTH ];
   guint8* a_bytes = 0;
   const guint8* p_bytes = NULL;
   gint a_length = 0;
@@ -1029,7 +1007,7 @@ static const guint8* decrypt_data_security_data_with_key( const guint8* key, con
 
         decrypted = knx_ccm_encrypt( 0, key, p_bytes, p_length, encrypted + encrypted_size - 4, 4, ctr_0, 4 );
 
-        a_bytes = (guint8*) wmem_alloc( wmem_packet_scope(), encrypted_size );
+        a_bytes = (guint8*) wmem_alloc( pool, encrypted_size );
         if( (scf & 0x30) == 0x10 ) // A+C
         {
           a_bytes[ 0 ] = scf;
@@ -1045,12 +1023,12 @@ static const guint8* decrypt_data_security_data_with_key( const guint8* key, con
         }
 
         knx_ccm_calc_cbc_mac( mac, key, a_bytes, a_length, p_bytes, p_length, b_0 );
-        wmem_free( wmem_packet_scope(), a_bytes );
+        wmem_free( pool, a_bytes );
 
         if( memcmp( mac, decrypted + p_length, 4 ) != 0 )
         {
           // Wrong mac. Return 0.
-          wmem_free( wmem_packet_scope(), decrypted );
+          wmem_free( pool, decrypted );
           decrypted = NULL;
         }
       }
@@ -1073,7 +1051,7 @@ struct data_security_info
 
 /* Decrypt data security APDU.
 */
-static const guint8* decrypt_data_security_data( const guint8* encrypted, gint encrypted_size, const guint8* cemi, gint cemi_size, struct data_security_info* info )
+static const guint8* decrypt_data_security_data( wmem_allocator_t *pool, const guint8* encrypted, gint encrypted_size, const guint8* cemi, gint cemi_size, struct data_security_info* info )
 {
   const guint8* key = NULL;
   const guint8* decrypted = NULL;
@@ -1086,7 +1064,7 @@ static const guint8* decrypt_data_security_data( const guint8* encrypted, gint e
 
   gchar* output = info->output_text;
   gint output_max = sizeof info->output_text;
-  g_snprintf( output, output_max, "with " );
+  snprintf( output, output_max, "with " );
   while( *output ) { ++output; --output_max; }
 
   // Try keys from keyring.XML
@@ -1101,11 +1079,11 @@ static const guint8* decrypt_data_security_data( const guint8* encrypted, gint e
       {
         keys_found = 1;
         key = ga_key->key;
-        decrypted = decrypt_data_security_data_with_key( key, encrypted, encrypted_size, cemi, cemi_size );
+        decrypted = decrypt_data_security_data_with_key( pool, key, encrypted, encrypted_size, cemi, cemi_size );
 
         if( decrypted )
         {
-          g_snprintf( output, output_max, "GA " );
+          snprintf( output, output_max, "GA " );
           while( *output ) { ++output; --output_max; }
           break;
         }
@@ -1123,11 +1101,11 @@ static const guint8* decrypt_data_security_data( const guint8* encrypted, gint e
       {
         keys_found = 1;
         key = ia_key->key;
-        decrypted = decrypt_data_security_data_with_key( key, encrypted, encrypted_size, cemi, cemi_size );
+        decrypted = decrypt_data_security_data_with_key( pool, key, encrypted, encrypted_size, cemi, cemi_size );
 
         if( decrypted )
         {
-          g_snprintf( output, output_max, "dest IA " );
+          snprintf( output, output_max, "dest IA " );
           while( *output ) { ++output; --output_max; }
           break;
         }
@@ -1146,11 +1124,11 @@ static const guint8* decrypt_data_security_data( const guint8* encrypted, gint e
       {
         keys_found = 1;
         key = ia_key->key;
-        decrypted = decrypt_data_security_data_with_key( key, encrypted, encrypted_size, cemi, cemi_size );
+        decrypted = decrypt_data_security_data_with_key( pool, key, encrypted, encrypted_size, cemi, cemi_size );
 
         if( decrypted )
         {
-          g_snprintf( output, output_max, "source IA " );
+          snprintf( output, output_max, "source IA " );
           while( *output ) { ++output; --output_max; }
           break;
         }
@@ -1167,7 +1145,7 @@ static const guint8* decrypt_data_security_data( const guint8* encrypted, gint e
     {
       keys_found = 1;
       key = knx_decryption_keys[ key_index ];
-      decrypted = decrypt_data_security_data_with_key( key, encrypted, encrypted_size, cemi, cemi_size );
+      decrypted = decrypt_data_security_data_with_key( pool, key, encrypted, encrypted_size, cemi, cemi_size );
 
       if( decrypted )
       {
@@ -1180,17 +1158,17 @@ static const guint8* decrypt_data_security_data( const guint8* encrypted, gint e
   {
     guint8 count;
 
-    g_snprintf( output, output_max, "key" );
+    snprintf( output, output_max, "key" );
 
     for( count = 16; count; --count )
     {
       while( *output ) { ++output; --output_max; }
-      g_snprintf( output, output_max, " %02X", *key++ );
+      snprintf( output, output_max, " %02X", *key++ );
     }
   }
   else
   {
-    g_snprintf( info->output_text, sizeof info->output_text, keys_found ? "failed" : "no keys found" );
+    snprintf( info->output_text, sizeof info->output_text, keys_found ? "failed" : "no keys found" );
   }
 
   return decrypted;
@@ -1240,8 +1218,9 @@ static guint16 dissect_ot( tvbuff_t *tvb, packet_info *pinfo, proto_item *node, 
     proto_item_append_text( node, ", OT=%u", ot );
 
     proto_tree_add_item( list, hf_cemi_ot, tvb, offset, 2, ENC_BIG_ENDIAN );
+    offset += 2;
 
-    *p_offset = offset += 2;
+    *p_offset = offset;
     return ot;
   }
 
@@ -1709,8 +1688,8 @@ static void dissect_memory_ext_service( tvbuff_t* tvb, packet_info* pinfo, proto
 
     /* 3 bytes Memory Address */
     guint32 x = tvb_get_guint24( tvb, offset + 1, ENC_BIG_ENDIAN );
-    col_append_fstr( cinfo, COL_INFO, " X=$%06" G_GINT32_MODIFIER "X", x );
-    proto_item_append_text( cemi_node, ", X=$%06" G_GINT32_MODIFIER "X", x );
+    col_append_fstr( cinfo, COL_INFO, " X=$%06" PRIX32, x );
+    proto_item_append_text( cemi_node, ", X=$%06" PRIX32, x );
 
     if( is_response )
     {
@@ -2352,7 +2331,7 @@ static void dissect_data_security_service( tvbuff_t* tvb, packet_info* pinfo, pr
         {
           if( ia_seq->seq > seq_nr )
           {
-            expert_add_info_format( pinfo, node, KIP_ERROR, "Expected: min $%012" G_GINT64_MODIFIER "X", ia_seq->seq );
+            expert_add_info_format( pinfo, node, KIP_ERROR, "Expected: min $%012" PRIX64, ia_seq->seq );
             break;
           }
         }
@@ -2364,7 +2343,7 @@ static void dissect_data_security_service( tvbuff_t* tvb, packet_info* pinfo, pr
       encrypted_size = size - offset;
 
       // Decrypt.
-      decrypted = decrypt_data_security_data( encrypted, encrypted_size, cemi, size, &info );
+      decrypted = decrypt_data_security_data( pinfo->pool, encrypted, encrypted_size, cemi, size, &info );
 
       if( decrypted )
       {
@@ -2398,7 +2377,7 @@ static void dissect_data_security_service( tvbuff_t* tvb, packet_info* pinfo, pr
           {
             if( offsetToApci + size2 <= innerTelegramSize )
             {
-              guint8* innerTelegram = (guint8*) wmem_alloc( wmem_packet_scope(), innerTelegramSize );
+              guint8* innerTelegram = (guint8*) wmem_alloc( pinfo->pool, innerTelegramSize );
 
               memcpy( innerTelegram, cemi, offsetToApci );
               memcpy( innerTelegram + offsetToApci, decrypted, size2 );
@@ -2885,7 +2864,7 @@ static void dissect_cemi_transport_layer( tvbuff_t* tvb, packet_info* pinfo, pro
       name = try_val_to_str( tc, tc_vals );
       if( !name )
       {
-        g_snprintf( text, sizeof text, "TC=%u", tc );
+        snprintf( text, sizeof text, "TC=%u", tc );
         name = text;
       }
       col_append_fstr( cinfo, COL_INFO, " %s", name );
@@ -3189,7 +3168,7 @@ static void dissect_cemi_link_layer( tvbuff_t* tvb, packet_info* pinfo, proto_tr
           guint8 hc = (c & 0x70) >> 4;  /* Hop Count */
           guint8 eff = c & 0x0F;  /* Extended Frame Format (0 = standard) */
 
-          g_snprintf( text, sizeof text, "%u", (c & 0x70) >> 4 );   /* hop count */
+          snprintf( text, sizeof text, "%u", (c & 0x70) >> 4 );   /* hop count */
           proto_item_append_text( cemi_node, ", H=%u", hc );
           node = proto_tree_add_none_format( cemi_list, hf_folder, tvb, offset, 1, "Ctrl2: Hops = %u", hc );
           if( eff )
@@ -3217,7 +3196,7 @@ static void dissect_cemi_link_layer( tvbuff_t* tvb, packet_info* pinfo, proto_tr
       else
       {
         source_addr = tvb_get_ntohs( tvb, offset );
-        g_snprintf( text, sizeof text, "%u.%u.%u", (source_addr >> 12) & 0xF, (source_addr >> 8) & 0xF, source_addr & 0xFF );
+        snprintf( text, sizeof text, "%u.%u.%u", (source_addr >> 12) & 0xF, (source_addr >> 8) & 0xF, source_addr & 0xFF );
         col_append_fstr( cinfo, COL_INFO, " %s", text );
         if( tree )
         {
@@ -3244,12 +3223,12 @@ static void dissect_cemi_link_layer( tvbuff_t* tvb, packet_info* pinfo, proto_tr
         if( unicast )
         {
           /* Individual Address */
-          g_snprintf( text, sizeof text, "%u.%u.%u", (dest_addr >> 12) & 0xF, (dest_addr >> 8) & 0xF, dest_addr & 0xFF );
+          snprintf( text, sizeof text, "%u.%u.%u", (dest_addr >> 12) & 0xF, (dest_addr >> 8) & 0xF, dest_addr & 0xFF );
         }
         else
         {
           /* Group Address */
-          g_snprintf( text, sizeof text, "%u/%u/%u", (dest_addr >> 11) & 0x1F, (dest_addr >> 8) & 0x7, dest_addr & 0xFF );
+          snprintf( text, sizeof text, "%u/%u/%u", (dest_addr >> 11) & 0x1F, (dest_addr >> 8) & 0x7, dest_addr & 0xFF );
         }
 
         col_append_fstr( cinfo, COL_INFO, "->%s", text );
@@ -3414,11 +3393,11 @@ void proto_register_cemi( void )
     { &hf_cemi_ne, { "Count", "cemi.n", FT_UINT8, BASE_DEC, NULL, 0xF0, NULL, HFILL } },
     { &hf_cemi_sx, { "Index", "cemi.x", FT_UINT16, BASE_DEC, NULL, 0x0FFF, NULL, HFILL } },
     { &hf_cemi_ft, { "Frame Type", "cemi.ft", FT_UINT8, BASE_DEC, VALS( ft_vals ), 0x80, NULL, HFILL } },
-    { &hf_cemi_rep, { "Repeat On Error", "cemi.rep", FT_UINT8, BASE_DEC, VALS( rep_vals ), 0x20, NULL, HFILL } },
+    { &hf_cemi_rep, { "Repeat On Error", "cemi.rep", FT_BOOLEAN, 8, TFS(&tfs_no_yes), 0x20, NULL, HFILL } },
     { &hf_cemi_bt, { "Broadcast Type", "cemi.bt", FT_UINT8, BASE_DEC, VALS( bt_vals ), 0x10, NULL, HFILL } },
     { &hf_cemi_prio, { "Priority", "cemi.prio", FT_UINT8, BASE_DEC, VALS( prio_vals ), 0x0C, NULL, HFILL } },
-    { &hf_cemi_ack, { "Ack Wanted", "cemi.ack", FT_UINT8, BASE_DEC, VALS( ack_vals ), 0x02, NULL, HFILL } },
-    { &hf_cemi_ce, { "Confirmation Error", "cemi.ce", FT_UINT8, BASE_DEC, VALS( ce_vals ), 0x01, NULL, HFILL } },
+    { &hf_cemi_ack, { "Ack Wanted", "cemi.ack", FT_BOOLEAN, 8, TFS(&tfs_no_yes), 0x02, NULL, HFILL } },
+    { &hf_cemi_ce, { "Confirmation Error", "cemi.ce", FT_BOOLEAN, 8, TFS(&tfs_no_yes), 0x01, NULL, HFILL } },
     { &hf_cemi_at, { "Address Type", "cemi.at", FT_UINT8, BASE_DEC, VALS( at_vals ), 0x80, NULL, HFILL } },
     { &hf_cemi_hc, { "Hop Count", "cemi.hc", FT_UINT8, BASE_DEC, NULL, 0x70, NULL, HFILL } },
     { &hf_cemi_eff, { "Extended Frame Format", "cemi.eff", FT_UINT8, BASE_HEX, NULL, 0x0F, NULL, HFILL } },

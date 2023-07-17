@@ -1,4 +1,5 @@
-/* tap-rlc-stream.h
+/** @file
+ *
  * LTE RLC stream statistics
  *
  * Wireshark - Network traffic analyzer
@@ -11,19 +12,19 @@
 #ifndef __TAP_RLC_GRAPH_H__
 #define __TAP_RLC_GRAPH_H__
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include <epan/epan.h>
 #include <epan/packet.h>
 #include <cfile.h>
 #include <epan/dissectors/packet-rlc-lte.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 struct rlc_segment {
     struct rlc_segment *next;
     guint32         num;            /* framenum */
-    guint32         rel_secs;
+    time_t          rel_secs;
     guint32         rel_usecs;
 
     gboolean        isControlPDU;

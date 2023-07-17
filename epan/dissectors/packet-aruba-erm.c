@@ -94,6 +94,8 @@
 #include <epan/prefs.h>
 #include <epan/decode_as.h>
 
+#include <wsutil/802_11-utils.h>
+
 #define PROTO_SHORT_NAME "ARUBA_ERM"
 #define PROTO_LONG_NAME  "Aruba Networks encapsulated remote mirroring"
 
@@ -305,6 +307,28 @@ dissect_aruba_erm_type3(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
     proto_item_set_len(aruba_erm_tree, offset);
     next_tvb = tvb_new_subset_remaining(tvb, offset);
 
+    /*
+     * We don't know they PHY, but we do have the data rate;
+     * try to guess the PHY based on the data rate and channel.
+     */
+    if (RATE_IS_DSSS(phdr.data_rate)) {
+        /* 11b */
+        phdr.phy = PHDR_802_11_PHY_11B;
+        phdr.phy_info.info_11b.has_short_preamble = FALSE;
+    } else if (RATE_IS_OFDM(phdr.data_rate)) {
+        /* 11a or 11g, depending on the band. */
+        if (CHAN_IS_BG(phdr.channel)) {
+            /* 11g */
+            phdr.phy = PHDR_802_11_PHY_11G;
+            phdr.phy_info.info_11g.has_mode = FALSE;
+        } else {
+            /* 11a */
+            phdr.phy = PHDR_802_11_PHY_11A;
+            phdr.phy_info.info_11a.has_channel_type = FALSE;
+            phdr.phy_info.info_11a.has_turbo_type = FALSE;
+        }
+    }
+
     if(signal_strength == 100){ /* When signal = 100 %, it is TX packet and there is no FCS */
         phdr.fcs_len = 0; /* TX packet, no FCS */
     } else {
@@ -362,7 +386,7 @@ dissect_aruba_erm_type6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
 static void
 aruba_erm_prompt(packet_info *pinfo _U_, gchar* result)
 {
-    g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Aruba ERM payload as");
+    snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Aruba ERM payload as");
 }
 
 void
@@ -444,10 +468,18 @@ proto_register_aruba_erm(void)
     expert_aruba_erm = expert_register_protocol(proto_aruba_erm);
     expert_register_field_array(expert_aruba_erm, ei, array_length(ei));
 
-    register_dissector("aruba_erm", dissect_aruba_erm, proto_aruba_erm);
+    aruba_erm_handle = register_dissector("aruba_erm", dissect_aruba_erm, proto_aruba_erm);
 
     aruba_erm_subdissector_table = register_decode_as_next_proto(proto_aruba_erm, "aruba_erm.type",
                                                                 "Aruba ERM Type", aruba_erm_prompt);
+
+    aruba_erm_handle_type0 = register_dissector("aruba_erm.type0", dissect_aruba_erm_type0, proto_aruba_erm_type0);
+    aruba_erm_handle_type1 = register_dissector("aruba_erm.type1", dissect_aruba_erm_type1, proto_aruba_erm_type1);
+    aruba_erm_handle_type2 = register_dissector("aruba_erm.type2", dissect_aruba_erm_type2, proto_aruba_erm_type2);
+    aruba_erm_handle_type3 = register_dissector("aruba_erm.type3", dissect_aruba_erm_type3, proto_aruba_erm_type3);
+    aruba_erm_handle_type4 = register_dissector("aruba_erm.type4", dissect_aruba_erm_type4, proto_aruba_erm_type4);
+    aruba_erm_handle_type5 = register_dissector("aruba_erm.type5", dissect_aruba_erm_type5, proto_aruba_erm_type5);
+    aruba_erm_handle_type6 = register_dissector("aruba_erm.type6", dissect_aruba_erm_type6, proto_aruba_erm_type6);
 }
 
 void
@@ -458,14 +490,6 @@ proto_reg_handoff_aruba_erm(void)
     ppi_handle = find_dissector_add_dependency("ppi", proto_aruba_erm);
     peek_handle = find_dissector_add_dependency("peekremote", proto_aruba_erm);
     radiotap_handle = find_dissector_add_dependency("radiotap", proto_aruba_erm);
-    aruba_erm_handle = create_dissector_handle(dissect_aruba_erm, proto_aruba_erm);
-    aruba_erm_handle_type0 = create_dissector_handle(dissect_aruba_erm_type0, proto_aruba_erm_type0);
-    aruba_erm_handle_type1 = create_dissector_handle(dissect_aruba_erm_type1, proto_aruba_erm_type1);
-    aruba_erm_handle_type2 = create_dissector_handle(dissect_aruba_erm_type2, proto_aruba_erm_type2);
-    aruba_erm_handle_type3 = create_dissector_handle(dissect_aruba_erm_type3, proto_aruba_erm_type3);
-    aruba_erm_handle_type4 = create_dissector_handle(dissect_aruba_erm_type4, proto_aruba_erm_type4);
-    aruba_erm_handle_type5 = create_dissector_handle(dissect_aruba_erm_type5, proto_aruba_erm_type5);
-    aruba_erm_handle_type6 = create_dissector_handle(dissect_aruba_erm_type6, proto_aruba_erm_type6);
 
     dissector_add_uint_range_with_preference("udp.port", "", aruba_erm_handle);
     dissector_add_for_decode_as("aruba_erm.type", aruba_erm_handle_type0);

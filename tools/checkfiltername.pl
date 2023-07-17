@@ -328,6 +328,7 @@ sub is_proto_dup_allowed {
 	if (($_[0] eq "amqp") && (index($_[1], "amqp") >= 0)) {return 1;}
 	if (($_[0] eq "bat") && (index($_[1], "batman") >= 0)) {return 1;}
 	if (($_[0] eq "browser") && (index($_[1], "browser_") >= 0)) {return 1;}
+	if (($_[0] eq "data") && (index($_[1], "data") >= 0)) {return 1;}
 	if (($_[0] eq "dlsw") && (index($_[1], "dlsw_version") >= 0)) {return 1;}
 	if (($_[0] eq "dns") && (index($_[1], "dnskey") >= 0)) {return 1;}
 	if (($_[0] eq "ecmp") && (index($_[1], "ecmp_") >= 0)) {return 1;}
@@ -349,6 +350,8 @@ sub is_proto_dup_allowed {
 	if (($_[0] eq "sm") && (index($_[1], "sm_") >= 0)) {return 1;}
 	if (($_[0] eq "smpp") && (index($_[1], "smppplus") >= 0)) {return 1;}
 	if (($_[0] eq "spray") && (index($_[1], "sprayarr") >= 0)) {return 1;}
+	if (($_[0] eq "stat") && (index($_[1], "stat_") >= 0)) {return 1;}
+	if (($_[0] eq "stat") && (index($_[1], "state") >= 0)) {return 1;}
 	if (($_[0] eq "tds") && (index($_[1], "tds_") >= 0)) {return 1;}
 	if (($_[0] eq "time") && (index($_[1], "time") >= 0)) {return 1;}
 	if (($_[0] eq "tn3270") && (index($_[1], "tn3270e") >= 0)) {return 1;}

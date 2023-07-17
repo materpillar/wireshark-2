@@ -22,9 +22,9 @@
 #include <epan/expert.h>
 #include <epan/prefs.h>
 #include <epan/addr_resolv.h>
-#include <epan/wmem/wmem.h>
+#include <epan/wmem_scopes.h>
 #include <epan/conversation.h>
-#include <epan/dissectors/packet-tcp.h>
+#include "packet-tcp.h"
 
 #define RTITCP_MAGIC_NUMBER             0xdd54dd55
 #define RTPS_MAGIC_NUMBER               0x52545053
@@ -262,7 +262,7 @@ static void rtitcp_util_add_error_attribute(proto_tree *attribute, tvbuff_t* tvb
                              gint offset, guint size) {
     proto_tree_add_item(attribute, hf_rtitcp_control_attribute_error_code_value, tvb, offset, 4, ENC_BIG_ENDIAN);
     proto_tree_add_item(attribute, hf_rtitcp_control_attribute_error_code_description, tvb, offset + 4,
-            size - 4, ENC_ASCII|ENC_NA);
+            size - 4, ENC_ASCII);
 }
 
 static void rtitcp_util_add_locator_t(proto_tree *tree, packet_info *pinfo _U_, tvbuff_t * tvb,
@@ -289,9 +289,9 @@ static void rtitcp_util_add_locator_t(proto_tree *tree, packet_info *pinfo _U_, 
             col_append_str(pinfo->cinfo, COL_INFO, " (");
         }
         proto_item_append_text(rtitcp_message, "%s%s:%u",
-            *first_attribute ? "" : ", ", tvb_ip_to_str(tvb, offset + 12), port);
+            *first_attribute ? "" : ", ", tvb_ip_to_str(pinfo->pool, tvb, offset + 12), port);
         col_append_fstr(pinfo->cinfo, COL_INFO, "%s%s:%u",
-                *first_attribute ? "" : ", ", tvb_ip_to_str(tvb, offset + 12), port);
+                *first_attribute ? "" : ", ", tvb_ip_to_str(pinfo->pool, tvb, offset + 12), port);
     } else {
         proto_tree_add_item(tree, hf_rtitcp_locator_ipv6, tvb, offset, 16, ENC_NA);
         if (*first_attribute) {
@@ -299,9 +299,9 @@ static void rtitcp_util_add_locator_t(proto_tree *tree, packet_info *pinfo _U_, 
             col_append_str(pinfo->cinfo, COL_INFO, " (");
         }
         proto_item_append_text(rtitcp_message, "%s%s",
-            *first_attribute ? "" : ", ", tvb_ip6_to_str(tvb, offset));
+            *first_attribute ? "" : ", ", tvb_ip6_to_str(pinfo->pool, tvb, offset));
         col_append_fstr(pinfo->cinfo, COL_INFO, "%s%s",
-                *first_attribute ? "" : ", ", tvb_ip6_to_str(tvb, offset));
+                *first_attribute ? "" : ", ", tvb_ip6_to_str(pinfo->pool, tvb, offset));
     }
 }
 
@@ -324,7 +324,7 @@ static guint dissect_attribute(tvbuff_t *tvb, packet_info *pinfo,
             attributes_list_offset+offset, 2, ENC_BIG_ENDIAN);
     proto_tree_add_item(attribute, hf_rtitcp_control_attribute_length, tvb,
             attributes_list_offset+offset+2, 2, ENC_BIG_ENDIAN);
-    proto_item_set_text(attribute,"%s", val_to_str(attribute_type, attribute_types_vals, "Unknown attribute"));
+    proto_item_set_text(attribute,"%s", val_to_str_const(attribute_type, attribute_types_vals, "Unknown attribute"));
 
     switch (attribute_type) {
         case RTPS_LOCATOR_PORT_ATTRIBUTE_TYPE: {
@@ -360,10 +360,10 @@ static guint dissect_attribute(tvbuff_t *tvb, packet_info *pinfo,
             }
             proto_item_append_text(rtitcp_message, "%s%s",
                 (*first_attribute) ? "" : ", ",
-                tvb_bytes_to_str(wmem_packet_scope(), tvb, attributes_list_offset+offset+4, 16));
+                tvb_bytes_to_str(pinfo->pool, tvb, attributes_list_offset+offset+4, 16));
             col_append_fstr(pinfo->cinfo, COL_INFO, "%s%s",
                 (*first_attribute) ? "" : ", ",
-                tvb_bytes_to_str(wmem_packet_scope(), tvb, attributes_list_offset+offset+4, 16));
+                tvb_bytes_to_str(pinfo->pool, tvb, attributes_list_offset+offset+4, 16));
             (*first_attribute) = FALSE;
             break;
         }
@@ -377,10 +377,10 @@ static guint dissect_attribute(tvbuff_t *tvb, packet_info *pinfo,
             }
             proto_item_append_text(rtitcp_message, "%s%s",
                 (*first_attribute) ? "" : ", ",
-                val_to_str(attribute_connection_type, rtitcp_attribute_connection_type_vals, "Unknown attribute"));
+                val_to_str_const(attribute_connection_type, rtitcp_attribute_connection_type_vals, "Unknown attribute"));
             col_append_fstr(pinfo->cinfo, COL_INFO, "%s%s",
                 (*first_attribute) ? "" : ", ",
-                val_to_str(attribute_connection_type, rtitcp_attribute_connection_type_vals, "Unknown attribute"));
+                val_to_str_const(attribute_connection_type, rtitcp_attribute_connection_type_vals, "Unknown attribute"));
             (*first_attribute) = FALSE;
             break;
         }
@@ -486,10 +486,10 @@ static guint16 dissect_control_message(proto_tree *rtitcp_tree, tvbuff_t *tvb, p
     /* Check the control message kind */
     control_message_kind = tvb_get_guint16(tvb, offset, ENC_BIG_ENDIAN);
     col_append_sep_str(pinfo->cinfo, COL_INFO, ", ",
-                val_to_str(control_message_kind,ctrl_message_types_vals, "Unknown control message"));
+                val_to_str_const(control_message_kind,ctrl_message_types_vals, "Unknown control message"));
     proto_tree_add_uint(rtitcp_message, hf_rtitcp_control_kind, tvb, offset, 2, control_message_kind);
     proto_item_set_text(rtitcp_message,"RTI TCP Control Message , Kind: %s",
-            val_to_str(control_message_kind,ctrl_message_types_vals, "Unknown control message"));
+            val_to_str_const(control_message_kind,ctrl_message_types_vals, "Unknown control message"));
     offset += 2;
 
     /* Take the length in bytes of the attributes list */
@@ -506,7 +506,7 @@ static guint16 dissect_control_message(proto_tree *rtitcp_tree, tvbuff_t *tvb, p
 
     /* Now we dissect the transaction id */
     proto_tree_add_item(rtitcp_message, hf_rtitcp_control_transaction_id, tvb, offset, 12, ENC_NA);
-    transaction_id_str = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, 12);
+    transaction_id_str = tvb_bytes_to_str(pinfo->pool, tvb, offset, 12);
 
     /* Get the transaction identifier. Not the whole transaction but the middle part, which
      * shouldn't coincide */
@@ -552,7 +552,7 @@ static guint16 dissect_control_message(proto_tree *rtitcp_tree, tvbuff_t *tvb, p
     }
     if (!rtitcp_trans) {
             /* create a "fake" rtitcp_trans structure */
-            rtitcp_trans=wmem_new(wmem_packet_scope(), rtitcp_transaction_t);
+            rtitcp_trans=wmem_new(pinfo->pool, rtitcp_transaction_t);
             rtitcp_trans->req_frame = 0;
             rtitcp_trans->rep_frame = 0;
             rtitcp_trans->req_time = pinfo->abs_ts;
@@ -615,19 +615,16 @@ static guint16 dissect_control_message(proto_tree *rtitcp_tree, tvbuff_t *tvb, p
 
 /* This function dissects all the control messages found */
 static guint dissect_rtitcp_control_protocol(proto_tree *rtitcp_tree, tvbuff_t *tvb, packet_info *pinfo) {
-    guint messages_count, offset;
+    guint offset;
     guint16 msg_length;
     guint32 tvb_len;
 
     offset = 0;
     tvb_len = tvb_reported_length(tvb);
 
-    messages_count = 0;
-
     while (offset < tvb_len) {
         msg_length = dissect_control_message(rtitcp_tree, tvb, pinfo, offset);
         offset += msg_length;
-        ++messages_count;
     }
 
     return offset;
@@ -783,7 +780,7 @@ proto_register_rtitcp(void)
 
         { &hf_rtitcp_header_control_byte, {
             "Control Byte", "rtitcp.header.control_byte",
-            FT_UINT8, BASE_HEX, NULL, 0,
+            FT_UINT16, BASE_HEX, NULL, 0,
             0, HFILL }
         },
 

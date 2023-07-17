@@ -23,6 +23,8 @@
 void proto_register_marker(void);
 void proto_reg_handoff_marker(void);
 
+static dissector_handle_t marker_handle;
+
 /* MARKER TLVs subtype */
 #define MARKER_TERMINATOR               0x0
 #define MARKERPDU_MARKER_INFO           0x1
@@ -101,7 +103,7 @@ dissect_marker(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _
 
     proto_tree_add_item(marker_tree, hf_marker_req_system, tvb,
         offset, 6, ENC_NA);
-    sysidstr = tvb_ether_to_str(tvb, offset);
+    sysidstr = tvb_ether_to_str(pinfo->pool, tvb, offset);
     offset += 6;
 
     proto_tree_add_item_ret_uint(marker_tree, hf_marker_req_trans_id, tvb,
@@ -215,14 +217,12 @@ proto_register_marker(void)
     expert_marker = expert_register_protocol(proto_marker);
     expert_register_field_array(expert_marker, ei, array_length(ei));
 
+    marker_handle = register_dissector("marker", dissect_marker, proto_marker);
 }
 
 void
 proto_reg_handoff_marker(void)
 {
-    dissector_handle_t marker_handle;
-
-    marker_handle = create_dissector_handle(dissect_marker, proto_marker);
     dissector_add_uint("slow.subtype", MARKER_SUBTYPE, marker_handle);
 }
 

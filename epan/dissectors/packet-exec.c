@@ -211,7 +211,7 @@ dissect_exec(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 
 	if(hash_info->state == WAIT_FOR_STDERR_PORT
 	&& tvb_reported_length_remaining(tvb, offset)){
-		field_stringz = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &length, ENC_ASCII);
+		field_stringz = tvb_get_stringz_enc(pinfo->pool, tvb, offset, &length, ENC_ASCII);
 
 		/* Check if this looks like the stderr_port field.
 		 * It is optional, so it may only be 1 character long
@@ -234,7 +234,7 @@ dissect_exec(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 
 	if(hash_info->state == WAIT_FOR_USERNAME
 	&& tvb_reported_length_remaining(tvb, offset)){
-		field_stringz = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &length, ENC_ASCII);
+		field_stringz = tvb_get_stringz_enc(pinfo->pool, tvb, offset, &length, ENC_ASCII);
 
 		/* Check if this looks like the username field */
 		if(length != 1 && length <= EXEC_USERNAME_LEN
@@ -262,7 +262,7 @@ dissect_exec(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 
 	if(hash_info->state == WAIT_FOR_PASSWORD
 	&& tvb_reported_length_remaining(tvb, offset)){
-		field_stringz = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &length, ENC_ASCII);
+		field_stringz = tvb_get_stringz_enc(pinfo->pool, tvb, offset, &length, ENC_ASCII);
 
 		/* Check if this looks like the password field */
 		if(length != 1 && length <= EXEC_PASSWORD_LEN
@@ -279,7 +279,7 @@ dissect_exec(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 
 	if(hash_info->state == WAIT_FOR_COMMAND
 	&& tvb_reported_length_remaining(tvb, offset)){
-		field_stringz = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &length, ENC_ASCII);
+		field_stringz = tvb_get_stringz_enc(pinfo->pool, tvb, offset, &length, ENC_ASCII);
 
 		/* Check if this looks like the command field */
 		if(length != 1 && length <= EXEC_COMMAND_LEN
@@ -365,6 +365,9 @@ proto_register_exec(void)
 	/* Register the protocol name and description */
 	proto_exec = proto_register_protocol("Remote Process Execution", "EXEC", "exec");
 
+	/* Register the dissector function */
+	register_dissector("exec", dissect_exec, proto_exec);
+
 	/* Required function calls to register the header fields and subtrees used */
 	proto_register_field_array(proto_exec, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
@@ -387,10 +390,7 @@ proto_register_exec(void)
 void
 proto_reg_handoff_exec(void)
 {
-	dissector_handle_t exec_handle;
-
-	exec_handle = create_dissector_handle(dissect_exec, proto_exec);
-	dissector_add_uint_with_preference("tcp.port", EXEC_PORT, exec_handle);
+	dissector_add_uint_with_preference("tcp.port", EXEC_PORT, find_dissector("exec"));
 }
 
 /*

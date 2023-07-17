@@ -99,7 +99,7 @@ tvb_atalkid_to_str(tvbuff_t *tvb, gint offset)
 
   cur=(gchar *)wmem_alloc(wmem_packet_scope(), 16);
   node=tvb_get_guint8(tvb, offset+1)<<8|tvb_get_guint8(tvb, offset+2);
-  g_snprintf(cur, 16, "%d.%d",node,tvb_get_guint8(tvb, offset+3));
+  snprintf(cur, 16, "%d.%d",node,tvb_get_guint8(tvb, offset+3));
   return cur;
 }
 
@@ -109,7 +109,7 @@ tvb_aarphrdaddr_to_str(tvbuff_t *tvb, gint offset, int ad_len, guint16 type)
   if (AARP_HW_IS_ETHER(type, ad_len)) {
     /* Ethernet address (or Token Ring address, which is the same type
        of address). */
-    return tvb_ether_to_str(tvb, offset);
+    return tvb_ether_to_str(wmem_packet_scope(), tvb, offset);
   }
   return tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, ad_len);
 }
@@ -345,6 +345,7 @@ proto_register_aarp(void)
   proto_aarp = proto_register_protocol("Appletalk Address Resolution Protocol",
                                        "AARP",
                                        "aarp");
+  register_dissector("aarp", dissect_aarp, proto_aarp);
   proto_register_field_array(proto_aarp, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
 
@@ -356,9 +357,8 @@ proto_register_aarp(void)
 void
 proto_reg_handoff_aarp(void)
 {
-  dissector_handle_t aarp_handle;
+  dissector_handle_t aarp_handle = find_dissector("aarp");
 
-  aarp_handle = create_dissector_handle(dissect_aarp, proto_aarp);
   dissector_add_uint("ethertype", ETHERTYPE_AARP, aarp_handle);
   dissector_add_uint("chdlc.protocol", ETHERTYPE_AARP, aarp_handle);
 }

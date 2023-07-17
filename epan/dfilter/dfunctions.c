@@ -7,43 +7,55 @@
  */
 
 #include "config.h"
+#define WS_LOG_DOMAIN LOG_DOMAIN_DFILTER
 
 #include <glib.h>
 
 #include "dfilter-int.h"
 #include "dfunctions.h"
+#include "sttype-field.h"
+#include "semcheck.h"
 
 #include <string.h>
 
-#include <ftypes/ftypes-int.h>
 #include <ftypes/ftypes.h>
 #include <epan/exceptions.h>
+#include <wsutil/ws_assert.h>
+
+#define FAIL(dfw, node, ...) \
+    do { \
+        ws_noisy("Semantic check failed here."); \
+        dfilter_fail_throw(dfw, DF_ERROR_GENERIC, stnode_location(node), __VA_ARGS__); \
+    } while (0)
 
 /* Convert an FT_STRING using a callback function */
 static gboolean
-string_walk(GList* arg1list, GList **retval, gchar(*conv_func)(gchar))
+string_walk(GSList *stack, guint32 arg_count _U_, df_cell_t *retval, gchar(*conv_func)(gchar))
 {
-    GList       *arg1;
+    GPtrArray   *arg1;
     fvalue_t    *arg_fvalue;
     fvalue_t    *new_ft_string;
-    char *s, *c;
+    const wmem_strbuf_t *src;
+    wmem_strbuf_t       *dst;
 
-    arg1 = arg1list;
-    while (arg1) {
-        arg_fvalue = (fvalue_t *)arg1->data;
+    ws_assert(arg_count == 1);
+    arg1 = stack->data;
+    if (arg1 == NULL)
+        return FALSE;
+
+    for (guint i = 0; i < arg1->len; i++) {
+        arg_fvalue = arg1->pdata[i];
         /* XXX - it would be nice to handle FT_TVBUFF, too */
-        if (IS_FT_STRING(fvalue_type_ftenum(arg_fvalue))) {
-            s = (char *)wmem_strdup(NULL, (gchar *)fvalue_get(arg_fvalue));
-            for (c = s; *c; c++) {
-                    *c = conv_func(*c);
+        if (FT_IS_STRING(fvalue_type_ftenum(arg_fvalue))) {
+            src = fvalue_get_strbuf(arg_fvalue);
+            dst = wmem_strbuf_new_sized(NULL, src->len);
+            for (size_t j = 0; j < src->len; j++) {
+                    wmem_strbuf_append_c(dst, conv_func(src->str[j]));
             }
-
             new_ft_string = fvalue_new(FT_STRING);
-            fvalue_set_string(new_ft_string, s);
-            wmem_free(NULL, s);
-            *retval = g_list_append(*retval, new_ft_string);
+            fvalue_set_strbuf(new_ft_string, dst);
+            df_cell_append(retval, new_ft_string);
         }
-        arg1 = arg1->next;
     }
 
     return TRUE;
@@ -51,65 +63,55 @@ string_walk(GList* arg1list, GList **retval, gchar(*conv_func)(gchar))
 
 /* dfilter function: lower() */
 static gboolean
-df_func_lower(GList* arg1list, GList *arg2junk _U_, GList **retval)
+df_func_lower(GSList *stack, guint32 arg_count, df_cell_t *retval)
 {
-    return string_walk(arg1list, retval, g_ascii_tolower);
+    return string_walk(stack, arg_count, retval, g_ascii_tolower);
 }
 
 /* dfilter function: upper() */
 static gboolean
-df_func_upper(GList* arg1list, GList *arg2junk _U_, GList **retval)
+df_func_upper(GSList *stack, guint32 arg_count, df_cell_t *retval)
 {
-    return string_walk(arg1list, retval, g_ascii_toupper);
-}
-
-/* dfilter function: len() */
-static gboolean
-df_func_len(GList* arg1list, GList *arg2junk _U_, GList **retval)
-{
-    GList       *arg1;
-    fvalue_t    *arg_fvalue;
-    fvalue_t    *ft_len;
-
-    arg1 = arg1list;
-    while (arg1) {
-        arg_fvalue = (fvalue_t *)arg1->data;
-        ft_len = fvalue_new(FT_UINT32);
-        fvalue_set_uinteger(ft_len, fvalue_length(arg_fvalue));
-        *retval = g_list_append(*retval, ft_len);
-        arg1 = arg1->next;
-    }
-
-    return TRUE;
+    return string_walk(stack, arg_count, retval, g_ascii_toupper);
 }
 
 /* dfilter function: count() */
 static gboolean
-df_func_count(GList* arg1list, GList *arg2junk _U_, GList **retval)
+df_func_count(GSList *stack, guint32 arg_count _U_, df_cell_t *retval)
 {
+    GPtrArray *arg1;
     fvalue_t *ft_ret;
     guint32   num_items;
 
-    num_items = (guint32)g_list_length(arg1list);
+    ws_assert(arg_count == 1);
+    arg1 = stack->data;
+    if (arg1 == NULL)
+        return FALSE;
 
+    num_items = arg1->len;
     ft_ret = fvalue_new(FT_UINT32);
     fvalue_set_uinteger(ft_ret, num_items);
-    *retval = g_list_append(*retval, ft_ret);
+    df_cell_append(retval, ft_ret);
 
     return TRUE;
 }
 
 /* dfilter function: string() */
 static gboolean
-df_func_string(GList* arg1list, GList *arg2junk _U_, GList **retval)
+df_func_string(GSList *stack, guint32 arg_count _U_, df_cell_t *retval)
 {
-    GList    *arg1 = arg1list;
+    GPtrArray *arg1;
     fvalue_t *arg_fvalue;
     fvalue_t *new_ft_string;
     char     *s;
 
-    while (arg1) {
-        arg_fvalue = (fvalue_t *)arg1->data;
+    ws_assert(arg_count == 1);
+    arg1 = stack->data;
+    if (arg1 == NULL)
+        return FALSE;
+
+    for (guint i = 0; i < arg1->len; i++) {
+        arg_fvalue = arg1->pdata[i];
         switch (fvalue_type_ftenum(arg_fvalue))
         {
         case FT_UINT8:
@@ -156,173 +158,346 @@ df_func_string(GList* arg1list, GList *arg2junk _U_, GList **retval)
         new_ft_string = fvalue_new(FT_STRING);
         fvalue_set_string(new_ft_string, s);
         wmem_free(NULL, s);
-        *retval = g_list_append(*retval, new_ft_string);
-
-        arg1 = arg1->next;
+        df_cell_append(retval, new_ft_string);
     }
 
     return TRUE;
 }
 
+static gboolean
+df_func_compare(GSList *stack, guint32 arg_count, df_cell_t *retval,
+                    gboolean (*fv_cmp)(const fvalue_t *a, const fvalue_t *b))
+{
+    fvalue_t *fv_ret = NULL;
+    GSList   *args;
+    GPtrArray *arg1;
+    fvalue_t *arg_fvalue;
+    guint32 i;
+
+    for (args = stack, i = 0; i < arg_count; args = args->next, i++) {
+        arg1 = args->data;
+        for (guint j = 0; j < arg1->len; j++) {
+            arg_fvalue = arg1->pdata[j];
+            if (fv_ret == NULL || fv_cmp(arg_fvalue, fv_ret)) {
+                fv_ret = arg_fvalue;
+            }
+        }
+    }
+
+    if (fv_ret == NULL)
+        return FALSE;
+
+    df_cell_append(retval, fvalue_dup(fv_ret));
+
+    return TRUE;
+}
+
+/* Find maximum value. */
+static gboolean
+df_func_max(GSList *stack, guint32 arg_count, df_cell_t *retval)
+{
+    return df_func_compare(stack, arg_count, retval, fvalue_gt);
+}
+
+/* Find minimum value. */
+static gboolean
+df_func_min(GSList *stack, guint32 arg_count, df_cell_t *retval)
+{
+    return df_func_compare(stack, arg_count, retval, fvalue_lt);
+}
+
+static gboolean
+df_func_abs(GSList *stack, guint32 arg_count _U_, df_cell_t *retval)
+{
+    GPtrArray *arg1;
+    fvalue_t *fv_arg, *new_fv;
+    char     *err_msg = NULL;
+
+    ws_assert(arg_count == 1);
+    arg1 = stack->data;
+    if (arg1 == NULL)
+        return FALSE;
+
+    for (guint i = 0; i < arg1->len; i++) {
+        fv_arg = arg1->pdata[i];
+        if (fvalue_is_negative(fv_arg)) {
+            new_fv = fvalue_unary_minus(fv_arg, &err_msg);
+            if (new_fv == NULL) {
+                ws_debug("abs: %s", err_msg);
+                g_free(err_msg);
+                err_msg = NULL;
+            }
+        }
+        else {
+            new_fv = fvalue_dup(fv_arg);
+        }
+        df_cell_append(retval, new_fv);
+    }
+
+    return !df_cell_is_empty(retval);
+}
+
 /* For upper() and lower() checks that the parameter passed to
  * it is an FT_STRING */
-static void
-ul_semcheck_params(dfwork_t *dfw, int param_num, stnode_t *st_node)
+static ftenum_t
+ul_semcheck_is_field_string(dfwork_t *dfw, const char *func_name, ftenum_t lhs_ftype _U_,
+                            GSList *param_list, df_loc_t func_loc _U_)
 {
-    sttype_id_t type;
-    ftenum_t    ftype;
     header_field_info *hfinfo;
 
-    type = stnode_type_id(st_node);
+    ws_assert(g_slist_length(param_list) == 1);
+    stnode_t *st_node = param_list->data;
 
-    if (param_num == 0) {
-        switch(type) {
-            case STTYPE_FIELD:
-                hfinfo = (header_field_info *)stnode_data(st_node);
-                ftype = hfinfo->type;
-                if (!IS_FT_STRING(ftype)) {
-                    dfilter_fail(dfw, "Only strings can be used in upper() or lower() or len()");
-                    THROW(TypeError);
-                }
-                break;
-            default:
-                dfilter_fail(dfw, "Only string-type fields can be used in upper() or lower() or len()");
-                THROW(TypeError);
+    if (stnode_type_id(st_node) == STTYPE_FIELD) {
+        dfw->field_count++;
+        hfinfo = sttype_field_hfinfo(st_node);
+        if (FT_IS_STRING(hfinfo->type)) {
+            return FT_STRING;
         }
     }
-    else {
-        g_assert_not_reached();
-    }
+    FAIL(dfw, st_node, "Only string type fields can be used as parameter for %s()", func_name);
 }
 
-/* For len() checks that the parameter passed is valid */
-static void
-ul_semcheck_len_params(dfwork_t *dfw, int param_num, stnode_t *st_node)
+static ftenum_t
+ul_semcheck_is_field(dfwork_t *dfw, const char *func_name, ftenum_t lhs_ftype _U_,
+                            GSList *param_list, df_loc_t func_loc _U_)
 {
-    sttype_id_t type;
+    ws_assert(g_slist_length(param_list) == 1);
+    stnode_t *st_node = param_list->data;
 
-    type = stnode_type_id(st_node);
+    if (stnode_type_id(st_node) == STTYPE_FIELD) {
+        dfw->field_count++;
+        return FT_UINT32;
+    }
 
-    if (param_num == 0) {
-        switch(type) {
-            case STTYPE_FIELD:
-                break;
-            default:
-                dfilter_fail(dfw, "invalid type in function len()");
-                THROW(TypeError);
-        }
-    }
-    else {
-        g_assert_not_reached();
-    }
+    FAIL(dfw, st_node, "Only fields can be used as parameter for %s()", func_name);
 }
 
-static void
-ul_semcheck_field_param(dfwork_t *dfw, int param_num, stnode_t *st_node)
+static ftenum_t
+ul_semcheck_can_length(dfwork_t *dfw, const char *func_name, ftenum_t lhs_ftype,
+                            GSList *param_list, df_loc_t func_loc)
 {
-    sttype_id_t type;
+    ws_assert(g_slist_length(param_list) == 1);
+    stnode_t *st_node = param_list->data;
 
-    type = stnode_type_id(st_node);
-
-    if (param_num == 0) {
-        switch(type) {
-            case STTYPE_FIELD:
-                break;
-            default:
-                dfilter_fail(dfw, "Only type fields can be used as parameter for count()");
-                THROW(TypeError);
-        }
+    ul_semcheck_is_field(dfw, func_name, lhs_ftype, param_list, func_loc);
+    if (!ftype_can_length(sttype_field_ftenum(st_node))) {
+        FAIL(dfw, st_node, "Field %s does not support the %s() function", stnode_todisplay(st_node), func_name);
     }
-    else {
-        g_assert_not_reached();
-    }
+    return FT_UINT32;
 }
 
-static void
-ul_semcheck_string_param(dfwork_t *dfw, int param_num, stnode_t *st_node)
+static ftenum_t
+ul_semcheck_string_param(dfwork_t *dfw, const char *func_name, ftenum_t lhs_ftype _U_,
+                            GSList *param_list, df_loc_t func_loc _U_)
 {
-    sttype_id_t type;
-    ftenum_t    ftype;
     header_field_info *hfinfo;
-    const char* msg = "To string conversion for this field is not supported";
 
-    type = stnode_type_id(st_node);
+    ws_assert(g_slist_length(param_list) == 1);
+    stnode_t *st_node = param_list->data;
 
-    if (param_num == 0) {
-        switch(type) {
-            case STTYPE_FIELD:
-                hfinfo = (header_field_info *)stnode_data(st_node);
-                ftype = hfinfo->type;
-                switch (ftype)
-                {
-                case FT_UINT8:
-                case FT_UINT16:
-                case FT_UINT24:
-                case FT_UINT32:
-                case FT_UINT40:
-                case FT_UINT48:
-                case FT_UINT56:
-                case FT_UINT64:
-                case FT_INT8:
-                case FT_INT16:
-                case FT_INT32:
-                case FT_INT40:
-                case FT_INT48:
-                case FT_INT56:
-                case FT_INT64:
-                case FT_IPv4:
-                case FT_IPv6:
-                case FT_FLOAT:
-                case FT_DOUBLE:
-                case FT_ETHER:
-                case FT_FRAMENUM:
-                case FT_AX25:
-                case FT_IPXNET:
-                case FT_GUID:
-                case FT_OID:
-                case FT_EUI64:
-                case FT_VINES:
-                case FT_REL_OID:
-                case FT_SYSTEM_ID:
-                case FT_FCWWN:
-                case FT_IEEE_11073_SFLOAT:
-                case FT_IEEE_11073_FLOAT:
-                    break;
-                default:
-                    dfilter_fail(dfw, "%s", msg);
-                    THROW(TypeError);
-                    break;
-                }
-                break;
+    if (stnode_type_id(st_node) == STTYPE_FIELD) {
+        dfw->field_count++;
+        hfinfo = sttype_field_hfinfo(st_node);
+        switch (hfinfo->type) {
+            case FT_UINT8:
+            case FT_UINT16:
+            case FT_UINT24:
+            case FT_UINT32:
+            case FT_UINT40:
+            case FT_UINT48:
+            case FT_UINT56:
+            case FT_UINT64:
+            case FT_INT8:
+            case FT_INT16:
+            case FT_INT32:
+            case FT_INT40:
+            case FT_INT48:
+            case FT_INT56:
+            case FT_INT64:
+            case FT_IPv4:
+            case FT_IPv6:
+            case FT_FLOAT:
+            case FT_DOUBLE:
+            case FT_ETHER:
+            case FT_FRAMENUM:
+            case FT_AX25:
+            case FT_IPXNET:
+            case FT_GUID:
+            case FT_OID:
+            case FT_EUI64:
+            case FT_VINES:
+            case FT_REL_OID:
+            case FT_SYSTEM_ID:
+            case FT_FCWWN:
+            case FT_IEEE_11073_SFLOAT:
+            case FT_IEEE_11073_FLOAT:
+                return FT_STRING;
             default:
-                dfilter_fail(dfw, "%s", msg);
-                THROW(TypeError);
+                break;
+        }
+        FAIL(dfw, st_node, "String conversion for field \"%s\" is not supported", hfinfo->abbrev);
+    }
+    FAIL(dfw, st_node, "Only fields can be used as parameter for %s()", func_name);
+}
+
+/* Check arguments are all the same type and they can be compared. */
+/*
+  Every STTYPE_LITERAL needs to be resolved to a STTYPE_FVALUE. If we don't
+  have type information (lhs_ftype is FT_NONE) and we have not seen an argument
+  with a definite type we defer resolving literals to values until we have examined
+  the entire list of function arguments. If we still cannot resolve to a definite
+  type after that (all arguments must have the same type) then we give up and
+  return FT_NONE.
+*/
+static ftenum_t
+ul_semcheck_compare(dfwork_t *dfw, const char *func_name, ftenum_t lhs_ftype,
+                        GSList *param_list, df_loc_t func_loc _U_)
+{
+    stnode_t *arg;
+    sttype_id_t type;
+    ftenum_t ftype, ft_arg;
+    GSList *l;
+    fvalue_t *fv;
+    wmem_list_t *literals = NULL;
+
+    ftype = lhs_ftype;
+
+    for (l = param_list; l != NULL; l = l->next) {
+        arg = l->data;
+        type = stnode_type_id(arg);
+
+        if (type == STTYPE_ARITHMETIC) {
+            ft_arg = check_arithmetic(dfw, arg, ftype);
+        }
+        else if (type == STTYPE_LITERAL) {
+            if (ftype != FT_NONE) {
+                fv = dfilter_fvalue_from_literal(dfw, ftype, arg, FALSE, NULL);
+                stnode_replace(arg, STTYPE_FVALUE, fv);
+                ft_arg = fvalue_type_ftenum(fv);
+            }
+            else {
+                if (literals == NULL) {
+                    literals = wmem_list_new(dfw->dfw_scope);
+                }
+                wmem_list_append(literals, arg);
+                ft_arg = FT_NONE;
+            }
+        }
+        else if (type == STTYPE_FUNCTION) {
+            ft_arg = check_function(dfw, arg, ftype);
+        }
+        else if (type == STTYPE_FIELD) {
+            dfw->field_count++;
+            ft_arg = sttype_field_ftenum(arg);
+        }
+        else if (type == STTYPE_REFERENCE) {
+            ft_arg = sttype_field_ftenum(arg);
+        }
+        else {
+            FAIL(dfw, arg, "Argument '%s' is not valid for %s()",
+                                    stnode_todisplay(arg), func_name);
+        }
+
+        if (ftype == FT_NONE) {
+            ftype = ft_arg;
+        }
+        if (ft_arg != FT_NONE && ftype != FT_NONE && !compatible_ftypes(ft_arg, ftype)) {
+            FAIL(dfw, arg, "Arguments to '%s' must be type compatible (expected %s, got %s)",
+                                        func_name, ftype_name(ftype), ftype_name(ft_arg));
+        }
+        if (ft_arg != FT_NONE && !ftype_can_cmp(ft_arg)) {
+            FAIL(dfw, arg, "Argument '%s' to '%s' cannot be ordered",
+                                    stnode_todisplay(arg), func_name);
         }
     }
-    else {
-        g_assert_not_reached();
+
+    if (literals != NULL) {
+        if (ftype != FT_NONE) {
+            wmem_list_frame_t *fp;
+            stnode_t *st;
+            for (fp = wmem_list_head(literals); fp != NULL; fp = wmem_list_frame_next(fp)) {
+                st = wmem_list_frame_data(fp);
+                fv = dfilter_fvalue_from_literal(dfw, ftype, st, FALSE, NULL);
+                stnode_replace(st, STTYPE_FVALUE, fv);
+            }
+        }
+        wmem_destroy_list(literals);
     }
+
+    return ftype;
+}
+
+static ftenum_t
+ul_semcheck_absolute_value(dfwork_t *dfw, const char *func_name, ftenum_t lhs_ftype,
+                        GSList *param_list, df_loc_t func_loc _U_)
+{
+    ws_assert(g_slist_length(param_list) == 1);
+    stnode_t *st_node;
+    ftenum_t ftype;
+    fvalue_t *fv;
+
+    st_node = param_list->data;
+
+    if (stnode_type_id(st_node) == STTYPE_ARITHMETIC) {
+        ftype = check_arithmetic(dfw, st_node, lhs_ftype);
+    }
+    else if (stnode_type_id(st_node) == STTYPE_LITERAL) {
+        if (lhs_ftype != FT_NONE) {
+            /* Convert RHS literal to the same ftype as LHS. */
+            fv = dfilter_fvalue_from_literal(dfw, lhs_ftype, st_node, FALSE, NULL);
+            stnode_replace(st_node, STTYPE_FVALUE, fv);
+            ftype = fvalue_type_ftenum(fv);
+        }
+        else {
+            FAIL(dfw, st_node, "Need a field or field-like value on the LHS.");
+        }
+    }
+    else if (stnode_type_id(st_node) == STTYPE_FUNCTION) {
+        ftype = check_function(dfw, st_node, lhs_ftype);
+    }
+    else if (stnode_type_id(st_node) == STTYPE_FIELD) {
+        dfw->field_count++;
+        ftype = sttype_field_ftenum(st_node);
+    }
+    else {
+        ftype = FT_NONE;
+    }
+
+    if (ftype == FT_NONE) {
+        FAIL(dfw, st_node, "Type %s is not valid for %s",
+                        stnode_type_name(st_node), func_name);
+    }
+    if (!ftype_can_is_negative(ftype)) {
+        FAIL(dfw, st_node, "'%s' is not a valid argument to '%s'()",
+                        stnode_todisplay(st_node), func_name);
+    }
+    return ftype;
 }
 
 /* The table of all display-filter functions */
 static df_func_def_t
 df_functions[] = {
-    { "lower",  df_func_lower,  FT_STRING, 1, 1, ul_semcheck_params },
-    { "upper",  df_func_upper,  FT_STRING, 1, 1, ul_semcheck_params },
-    { "len",    df_func_len,    FT_UINT32, 1, 1, ul_semcheck_len_params },
-    { "count",  df_func_count,  FT_UINT32, 1, 1, ul_semcheck_field_param },
-    { "string", df_func_string, FT_STRING, 1, 1, ul_semcheck_string_param },
-    { NULL, NULL, FT_NONE, 0, 0, NULL }
+    { "lower",  df_func_lower,  1, 1, ul_semcheck_is_field_string },
+    { "upper",  df_func_upper,  1, 1, ul_semcheck_is_field_string },
+    /* Length function is implemented as a DFVM instruction. */
+    { "len",    NULL,           1, 1, ul_semcheck_can_length },
+    { "count",  df_func_count,  1, 1, ul_semcheck_is_field },
+    { "string", df_func_string, 1, 1, ul_semcheck_string_param },
+    { "max",    df_func_max,    1, 0, ul_semcheck_compare },
+    { "min",    df_func_min,    1, 0, ul_semcheck_compare },
+    { "abs",    df_func_abs,    1, 1, ul_semcheck_absolute_value },
+    { NULL, NULL, 0, 0, NULL }
 };
 
 /* Lookup a display filter function record by name */
 df_func_def_t*
-df_func_lookup(char *name)
+df_func_lookup(const char *name)
 {
     df_func_def_t *func_def;
 
     func_def = df_functions;
-    while (func_def->function != NULL) {
+    while (func_def->name != NULL) {
         if (strcmp(func_def->name, name) == 0) {
             return func_def;
         }

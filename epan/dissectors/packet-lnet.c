@@ -33,6 +33,7 @@ VALUE_STRING_ARRAY2(portal_index);
 void proto_reg_handoff_lnet(void);
 void proto_register_lnet(void);
 
+static dissector_handle_t lnet_handle;
 
 /* Initialize the protocol and registered fields */
 static int proto_lnet = -1;
@@ -250,11 +251,11 @@ get_lnet_conv(packet_info *pinfo, guint64 match_bits) {
     lnet_conv_info_t *conv_info;
 
     // Ignore ports because this is kernel level and there can only be one Lustre instance per server
-    conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst, conversation_pt_to_endpoint_type(pinfo->ptype),
+    conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst, conversation_pt_to_conversation_type(pinfo->ptype),
                                      0, 0, 0);
     if (conversation == NULL)
         conversation = conversation_new(pinfo->num, &pinfo->src,
-                                        &pinfo->dst, conversation_pt_to_endpoint_type(pinfo->ptype), 0, 0, 0);
+                                        &pinfo->dst, conversation_pt_to_conversation_type(pinfo->ptype), 0, 0, 0);
 
     conv_info = (lnet_conv_info_t *)conversation_get_proto_data(conversation, proto_lnet);
     if (!conv_info) {
@@ -359,7 +360,7 @@ lnet_dissect_struct_nid(tvbuff_t * tvb, proto_tree *parent_tree, int offset, int
     item = proto_tree_add_item(parent_tree, hf_index, tvb, offset, 8, ENC_NA);
     tree = proto_item_add_subtree(item, ett_lnet_nid);
 
-    ip = tvb_get_ntohl(tvb, offset);
+    ip = tvb_get_ipv4(tvb, offset);
     proto_tree_add_item(tree, hf_lnet_nid_addr, tvb, offset, 4, ENC_LITTLE_ENDIAN);
     offset+=4;
     proto_tree_add_item_ret_uint(tree, hf_lnet_nid_interface, tvb, offset, 2, ENC_LITTLE_ENDIAN, &interface);
@@ -1041,9 +1042,9 @@ proto_register_lnet(void)
     expert_module_t *expert_lnet;
     static ei_register_info ei[] = {
         { &ei_lnet_buflen,
-          { "lnet.bad_buflen", PI_ERROR, PI_MALFORMED, "Buffer length mis-match", EXPFILL } },
+          { "lnet.bad_buflen", PI_MALFORMED, PI_ERROR, "Buffer length mis-match", EXPFILL } },
         { &ei_lnet_type,
-          { "lnet.bad_type", PI_ERROR, PI_PROTOCOL, "LNET Type mis-match", EXPFILL } }
+          { "lnet.bad_type", PI_PROTOCOL, PI_ERROR, "LNET Type mis-match", EXPFILL } }
     };
 
     proto_lnet = proto_register_protocol("Lustre Network", "LNet", "lnet");
@@ -1053,6 +1054,8 @@ proto_register_lnet(void)
     expert_lnet = expert_register_protocol(proto_lnet);
     expert_register_field_array(expert_lnet, ei, array_length(ei));
 
+    lnet_handle = register_dissector("lnet", dissect_lnet, proto_lnet);
+
     subdissector_table = register_dissector_table("lnet.ptl_index", "lnet portal index",
                                                   proto_lnet,
                                                   FT_UINT32 , BASE_DEC);
@@ -1061,13 +1064,10 @@ proto_register_lnet(void)
 void
 proto_reg_handoff_lnet(void)
 {
-    dissector_handle_t lnet_handle;
-
     heur_dissector_add("infiniband.payload", dissect_lnet_ib_heur, "LNet over IB",
                         "lnet_ib", proto_lnet, HEURISTIC_ENABLE);
     heur_dissector_add("infiniband.mad.cm.private", dissect_lnet_ib_heur, "LNet over IB CM",
                         "lnet_ib_cm_private",  proto_lnet, HEURISTIC_ENABLE);
-    lnet_handle = create_dissector_handle(dissect_lnet, proto_lnet);
     dissector_add_for_decode_as("infiniband", lnet_handle);
     dissector_add_uint_with_preference("tcp.port", LNET_TCP_PORT, lnet_handle);
 }

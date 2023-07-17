@@ -25,6 +25,8 @@
 void proto_reg_handoff_dsr(void);
 void proto_register_dsr(void);
 
+static dissector_handle_t dsr_handle;
+
 static dissector_table_t ip_dissector_table;
 
 /* Initialize the protocol and registered fields */
@@ -223,7 +225,7 @@ dissect_dsr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                                         proto_item_append_text(ti_hoplist, " :");
                                         for(i=0;i<(opt_len-4)/4;i++) {
                                                 proto_tree_add_item(opt_hoplist_tree, hf_dsr_opt_rreq_address, tvb, offset_in_option, 4, ENC_NA); /* Opt rreq address */
-                                                proto_item_append_text(ti_hoplist, " %s", tvb_ip_to_str(tvb, offset_in_option));
+                                                proto_item_append_text(ti_hoplist, " %s", tvb_ip_to_str(pinfo->pool, tvb, offset_in_option));
                                                 offset_in_option += 4;
                                         }
                                 }
@@ -249,7 +251,7 @@ dissect_dsr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                                         proto_item_append_text(ti_hoplist, " :");
                                         for(i=0;i<(opt_len-1)/4;i++) {
                                                 proto_tree_add_item(opt_hoplist_tree, hf_dsr_opt_rrep_address, tvb, offset_in_option, 4, ENC_NA); /*Opt rrep address */
-                                                proto_item_append_text(ti_hoplist, " %s", tvb_ip_to_str(tvb, offset_in_option));
+                                                proto_item_append_text(ti_hoplist, " %s", tvb_ip_to_str(pinfo->pool, tvb, offset_in_option));
                                                 offset_in_option += 4;
                                         }
                                 }
@@ -295,7 +297,7 @@ dissect_dsr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                                                 proto_tree_add_item(opt_tree, hf_dsr_opt_err_unknownflow_dest, tvb, offset_in_option, 4, ENC_NA);/* Opt err unknown flow original ip destination address */
                                                 offset_in_option += 4;
 
-                                                proto_tree_add_item(opt_tree, hf_dsr_opt_err_unknownflow_id, tvb, offset_in_option, 2, ENC_BIG_ENDIAN);/* Opt err unknown flow flow id */
+                                                proto_tree_add_item(opt_tree, hf_dsr_opt_err_unknownflow_id, tvb, offset_in_option, 2, ENC_BIG_ENDIAN);/* Opt err unknown flow id */
                                                 /*offset_in_option += 1;*/
                                                 break;
                                         case DSR_RERR_TYPE_DEFAULTFLOWUNKNOWN:
@@ -376,7 +378,7 @@ dissect_dsr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                                         proto_item_append_text(ti_hoplist, " :");
                                         for(i=0;i<(opt_len-2)/4;i++) {
                                                 proto_tree_add_item(opt_hoplist_tree, hf_dsr_opt_srcrt_address, tvb, offset_in_option , 4, ENC_NA); /* Opt srcrt addresses */
-                                                proto_item_append_text(ti_hoplist, " %s", tvb_ip_to_str(tvb, offset_in_option));
+                                                proto_item_append_text(ti_hoplist, " %s", tvb_ip_to_str(pinfo->pool, tvb, offset_in_option));
                                                 offset_in_option  += 4;
                                         }
                                 }
@@ -486,7 +488,7 @@ proto_register_dsr(void)
         },
         { &hf_dsr_length,
             { "Length", "dsr.len",
-               FT_UINT8, BASE_DEC,
+               FT_UINT16, BASE_DEC,
                NULL, 0x0,
               "Payload length", HFILL }
         },
@@ -728,6 +730,7 @@ proto_register_dsr(void)
                         "Dynamic Source Routing",
                         "DSR",
                         "dsr");
+    dsr_handle = register_dissector("dsr", dissect_dsr, proto_dsr);
 
     /* Required function calls to register the header fields and subtrees */
     proto_register_field_array(proto_dsr, hf, array_length(hf));
@@ -738,11 +741,7 @@ proto_register_dsr(void)
 void
 proto_reg_handoff_dsr(void)
 {
-    dissector_handle_t dsr_handle;
-
     ip_dissector_table = find_dissector_table("ip.proto");
-
-    dsr_handle = create_dissector_handle(dissect_dsr, proto_dsr);
     dissector_add_uint("ip.proto", IP_PROTO_DSR, dsr_handle);
 }
 /*

@@ -39,6 +39,8 @@
 void proto_register_omapi(void);
 void proto_reg_handoff_omapi(void);
 
+static dissector_handle_t omapi_handle;
+
 static int proto_omapi = -1;
 static int hf_omapi_version = -1;
 static int hf_omapi_hlength = -1;
@@ -110,7 +112,7 @@ dissect_omapi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
 
   ti = proto_tree_add_item(tree, proto_omapi, tvb, 0, -1, ENC_NA);
   omapi_tree = proto_item_add_subtree(ti, ett_omapi);
-  cursor = ptvcursor_new(omapi_tree, tvb, 0);
+  cursor = ptvcursor_new(pinfo->pool, omapi_tree, tvb, 0);
 
   if (tvb_reported_length_remaining(tvb, 0) < 24)
   {
@@ -154,7 +156,7 @@ dissect_omapi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
   while (msglength)
   {
     ptvcursor_add(cursor, hf_omapi_msg_name_len, 2, ENC_BIG_ENDIAN);
-    ptvcursor_add(cursor, hf_omapi_msg_name, msglength, ENC_ASCII|ENC_NA);
+    ptvcursor_add(cursor, hf_omapi_msg_name, msglength, ENC_ASCII);
     msglength = tvb_get_ntohl(tvb, ptvcursor_current_offset(cursor));
     ptvcursor_add(cursor, hf_omapi_msg_value_len, 4, ENC_BIG_ENDIAN);
 
@@ -168,7 +170,7 @@ dissect_omapi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
     }
     else
     {
-      ptvcursor_add(cursor, hf_omapi_msg_value, msglength, ENC_ASCII|ENC_NA);
+      ptvcursor_add(cursor, hf_omapi_msg_value, msglength, ENC_ASCII);
     }
 
     msglength = tvb_get_ntohs(tvb, ptvcursor_current_offset(cursor));
@@ -180,7 +182,7 @@ dissect_omapi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
   while (objlength)
   {
     ptvcursor_add(cursor, hf_omapi_obj_name_len, 2, ENC_BIG_ENDIAN);
-    ptvcursor_add(cursor, hf_omapi_obj_name, objlength, ENC_ASCII|ENC_NA);
+    ptvcursor_add(cursor, hf_omapi_obj_name, objlength, ENC_ASCII);
     objlength = tvb_get_ntohl(tvb, ptvcursor_current_offset(cursor));
     ptvcursor_add(cursor, hf_omapi_obj_value_len, 4, ENC_BIG_ENDIAN);
 
@@ -298,14 +300,13 @@ proto_register_omapi(void)
   proto_omapi = proto_register_protocol("ISC Object Management API", "OMAPI", "omapi");
   proto_register_field_array(proto_omapi, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
+
+  omapi_handle = register_dissector("omapi", dissect_omapi, proto_omapi);
 }
 
 void
 proto_reg_handoff_omapi(void)
 {
-  dissector_handle_t omapi_handle;
-
-  omapi_handle = create_dissector_handle(dissect_omapi, proto_omapi);
   dissector_add_uint_with_preference("tcp.port", OMAPI_PORT, omapi_handle);
 }
 

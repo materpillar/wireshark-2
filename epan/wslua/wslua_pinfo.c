@@ -13,10 +13,11 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
+#include "config.h"
 
 #include "wslua_pinfo_common.h"
 
-#include <epan/wmem/wmem.h>
+#include <epan/wmem_scopes.h>
 #include <epan/conversation.h>
 #include <string.h>
 
@@ -178,6 +179,9 @@ static int Pinfo__tostring(lua_State *L) { lua_pushstring(L,"a Pinfo"); return 1
 #define PINFO_NAMED_BOOLEAN_GETTER(name,member) \
     WSLUA_ATTRIBUTE_NAMED_BOOLEAN_GETTER(Pinfo,name,ws_pinfo->member)
 
+#define PINFO_NAMED_BOOLEAN_SETTER(name,member) \
+    WSLUA_ATTRIBUTE_NAMED_BOOLEAN_SETTER(Pinfo,name,ws_pinfo->member)
+
 #define PINFO_NUMBER_GETTER(name) \
     WSLUA_ATTRIBUTE_NAMED_NUMBER_GETTER(Pinfo,name,ws_pinfo->name)
 
@@ -248,8 +252,9 @@ PINFO_NUMBER_SETTER(desegment_offset,int);
 /* WSLUA_ATTRIBUTE Pinfo_fragmented RO If the protocol is only a fragment. */
 PINFO_NAMED_BOOLEAN_GETTER(fragmented,fragmented);
 
-/* WSLUA_ATTRIBUTE Pinfo_in_error_pkt RO If we're inside an error packet. */
+/* WSLUA_ATTRIBUTE Pinfo_in_error_pkt RW If we're inside an error packet. */
 PINFO_NAMED_BOOLEAN_GETTER(in_error_pkt,flags.in_error_pkt);
+PINFO_NAMED_BOOLEAN_SETTER(in_error_pkt,flags.in_error_pkt);
 
 /* WSLUA_ATTRIBUTE Pinfo_match_uint RO Matched uint for calling subdissector from table. */
 PINFO_NUMBER_GETTER(match_uint);
@@ -292,8 +297,9 @@ PINFO_ADDRESS_SETTER(src);
 PINFO_ADDRESS_GETTER(dst);
 PINFO_ADDRESS_SETTER(dst);
 
-/* WSLUA_ATTRIBUTE Pinfo_p2p_dir RO direction of this Packet. (incoming / outgoing) */
+/* WSLUA_ATTRIBUTE Pinfo_p2p_dir RW Direction of this Packet. (incoming / outgoing) */
 PINFO_NUMBER_GETTER(p2p_dir);
+PINFO_NUMBER_SETTER(p2p_dir,int);
 
 /* WSLUA_ATTRIBUTE Pinfo_match RO Port/Data we are matching. */
 static int Pinfo_get_match(lua_State *L) {
@@ -358,7 +364,7 @@ static int Pinfo_get_private(lua_State *L) {
     return 1;
 }
 
-/* WSLUA_ATTRIBUTE Pinfo_hi RW higher Address of this Packet. */
+/* WSLUA_ATTRIBUTE Pinfo_hi RW Higher Address of this Packet. */
 static int Pinfo_get_hi(lua_State *L) {
     Pinfo pinfo = checkPinfo(L,1);
     Address addr;
@@ -374,7 +380,7 @@ static int Pinfo_get_hi(lua_State *L) {
     return 1;
 }
 
-/* WSLUA_ATTRIBUTE Pinfo_lo RO lower Address of this Packet. */
+/* WSLUA_ATTRIBUTE Pinfo_lo RO Lower Address of this Packet. */
 static int Pinfo_get_lo(lua_State *L) {
     Pinfo pinfo = checkPinfo(L,1);
     Address addr;
@@ -390,7 +396,7 @@ static int Pinfo_get_lo(lua_State *L) {
     return 1;
 }
 
-/* WSLUA_ATTRIBUTE Pinfo_conversation WO sets the packet conversation to the given Proto object. */
+/* WSLUA_ATTRIBUTE Pinfo_conversation WO Sets the packet conversation to the given Proto object. */
 static int Pinfo_set_conversation(lua_State *L) {
     Pinfo pinfo = checkPinfo(L,1);
     Proto proto = checkProto(L,2);
@@ -455,11 +461,11 @@ WSLUA_ATTRIBUTES Pinfo_attributes[] = {
     WSLUA_ATTRIBUTE_RWREG(Pinfo,desegment_offset),
     WSLUA_ATTRIBUTE_ROREG(Pinfo,private),
     WSLUA_ATTRIBUTE_ROREG(Pinfo,fragmented),
-    WSLUA_ATTRIBUTE_ROREG(Pinfo,in_error_pkt),
+    WSLUA_ATTRIBUTE_RWREG(Pinfo,in_error_pkt),
     WSLUA_ATTRIBUTE_ROREG(Pinfo,match_uint),
     WSLUA_ATTRIBUTE_ROREG(Pinfo,match_string),
     WSLUA_ATTRIBUTE_WOREG(Pinfo,conversation),
-    WSLUA_ATTRIBUTE_ROREG(Pinfo,p2p_dir),
+    WSLUA_ATTRIBUTE_RWREG(Pinfo,p2p_dir),
     { NULL, NULL, NULL }
 };
 

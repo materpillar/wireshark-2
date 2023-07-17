@@ -11,7 +11,7 @@
 #define __PACKET_USB_H__
 
 #include <epan/value_string.h>
-#include <epan/wmem/wmem.h>
+#include <epan/wmem_scopes.h>
 #include <epan/conversation.h>
 
 typedef struct _usb_address_t {
@@ -29,6 +29,16 @@ typedef struct _usb_address_t {
 
 typedef struct _usb_conv_info_t usb_conv_info_t;
 
+/* Wireshark specific (i.e. numeric values are arbitrary) enum representing
+ * USB device speed.
+ */
+typedef enum {
+    USB_SPEED_UNKNOWN,  /* Unknown, skip speed specific processing */
+    USB_SPEED_LOW,
+    USB_SPEED_FULL,
+    USB_SPEED_HIGH,
+} usb_speed_t;
+
 /* header type */
 typedef enum {
     USB_HEADER_LINUX_48_BYTES,
@@ -36,11 +46,21 @@ typedef enum {
     USB_HEADER_USBPCAP,
     USB_HEADER_MAUSB,
     USB_HEADER_USBIP,
-    USB_HEADER_DARWIN
+    USB_HEADER_DARWIN,
+    USB_HEADER_PSEUDO_URB,
 } usb_header_t;
 
 #define USB_HEADER_IS_LINUX(type) \
     ((type) == USB_HEADER_LINUX_48_BYTES || (type) == USB_HEADER_LINUX_64_BYTES)
+
+typedef struct _usb_pseudo_urb_t {
+    gboolean from_host;
+    guint8 transfer_type;
+    guint8 device_address;
+    guint8 endpoint;
+    guint16 bus_id;
+    usb_speed_t speed;
+} usb_pseudo_urb_t;
 
 /* there is one such structure for each request/response */
 typedef struct _usb_trans_info_t {
@@ -79,7 +99,14 @@ typedef struct _usb_trans_info_t {
     guint64 usb_id;
 } usb_trans_info_t;
 
-enum usb_conv_class_data_type {USB_CONV_UNKNOWN = 0, USB_CONV_U3V, USB_CONV_AUDIO, USB_CONV_VIDEO, USB_CONV_MASS_STORAGE};
+enum usb_conv_class_data_type {
+    USB_CONV_UNKNOWN = 0,
+    USB_CONV_U3V,
+    USB_CONV_AUDIO,
+    USB_CONV_VIDEO,
+    USB_CONV_MASS_STORAGE_BOT,
+    USB_CONV_MASS_STORAGE_UASP,
+};
 
 /* Conversation Structure
  * there is one such structure for each device/endpoint conversation */
@@ -89,11 +116,13 @@ struct _usb_conv_info_t {
     guint8   endpoint;
     gint     direction;
     guint8   transfer_type; /* transfer type from URB */
-    guint8   descriptor_transfer_type; /* transfer type lifted from the device descriptor */
+    guint8   descriptor_transfer_type; /* transfer type lifted from the configuration descriptor */
+    guint16  max_packet_size; /* max packet size from configuration descriptor */
     guint32  device_protocol;
     gboolean is_request;
     gboolean is_setup;
     guint8   setup_requesttype;
+    usb_speed_t speed;
 
     guint16 interfaceClass;     /* Interface Descriptor - class          */
     guint16 interfaceSubclass;  /* Interface Descriptor - subclass       */
@@ -182,6 +211,21 @@ typedef struct _usb_tap_data_t {
 
 #define IF_SUBCLASS_MISC_U3V          0x05
 
+#define IF_SUBCLASS_APP_DFU           0x01
+
+#define IF_PROTOCOL_DFU_RUNTIME       0x01
+#define IF_PROTOCOL_DFU_MODE          0x02
+
+/* Key to be used with "usb.control", "usb.bulk" and/or "usb.interrupt"
+ * dissector tables when the dissector only applies to specific triple.
+ * Use class code directly if the code is not shared with other specifications.
+ *
+ * MSB (bit 31) is arbitrarily chosen to ensure class registered dissectors
+ * won't clash with protocol key.
+ */
+#define USB_PROTOCOL_KEY(class, subclass, protocol) \
+    (1u << 31 | (class & 0xff) << 16 | (subclass & 0xff) << 8 | (protocol & 0xff))
+
 /* bmRequestType values */
 #define USB_DIR_OUT                     0               /* to device */
 #define USB_DIR_IN                      0x80            /* to host */
@@ -254,6 +298,8 @@ extern const true_false_string tfs_endpoint_direction;
 extern value_string_ext usb_class_vals_ext;
 
 usb_conv_info_t *get_usb_iface_conv_info(packet_info *pinfo, guint8 interface_num);
+usb_conv_info_t *get_existing_usb_ep_conv_info(packet_info *pinfo, guint16 bus_id,
+                                               guint16 device_address, int endpoint);
 
 proto_item * dissect_usb_descriptor_header(proto_tree *tree,
                                            tvbuff_t *tvb, int offset,
@@ -261,11 +307,15 @@ proto_item * dissect_usb_descriptor_header(proto_tree *tree,
 
 void dissect_usb_endpoint_address(proto_tree *tree, tvbuff_t *tvb, int offset);
 
+unsigned int
+sanitize_usb_max_packet_size(guint8 ep_type, usb_speed_t speed,
+                             unsigned int max_packet_size);
+
 int
 dissect_usb_endpoint_descriptor(packet_info *pinfo, proto_tree *parent_tree,
                                 tvbuff_t *tvb, int offset,
                                 usb_conv_info_t  *usb_conv_info,
-                                guint8 *out_ep_type);
+                                guint8 *out_ep_type, usb_speed_t speed);
 
 int
 dissect_usb_unknown_descriptor(packet_info *pinfo _U_, proto_tree *parent_tree,
@@ -275,15 +325,13 @@ dissect_usb_unknown_descriptor(packet_info *pinfo _U_, proto_tree *parent_tree,
 int
 dissect_urb_transfer_flags(tvbuff_t *tvb, int offset, proto_tree* tree, int hf, int endian);
 
-void
-usb_set_addr(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, guint16 bus_id, guint16 device_address,
-             int endpoint, gboolean req);
-
 struct mausb_header;
 
 void
 dissect_usb_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent,
                    usb_header_t header_type, void *extra_data);
+
+void usb_lpm_besl_str(gchar *buf, guint32 value);
 
 #endif
 

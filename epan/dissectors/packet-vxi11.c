@@ -236,7 +236,7 @@ dissect_flags(tvbuff_t *tvb, int offset, proto_tree *tree)
 
             if (flags != 0)
             {
-                wmem_strbuf_t *strbuf = wmem_strbuf_new_label(wmem_packet_scope());
+                wmem_strbuf_t *strbuf = wmem_strbuf_create(wmem_packet_scope());
 
                 if (flags & VXI11_CORE_FLAG_WAITLOCK)
                 {
@@ -281,7 +281,7 @@ dissect_reason(tvbuff_t *tvb, int offset, proto_tree *tree)
 
             if (reason != 0)
             {
-                wmem_strbuf_t *strbuf = wmem_strbuf_new_label(wmem_packet_scope());
+                wmem_strbuf_t *strbuf = wmem_strbuf_create(wmem_packet_scope());
 
                 if (reason & VXI11_CORE_REASON_REQCNT)
                 {
@@ -524,7 +524,7 @@ dissect_device_read_resp(tvbuff_t *tvb,
     datalength = tvb_get_ntohl( tvb, offset);
     if(MAX_DATA_SHOW_SIZE <=datalength)
         datalength = MAX_DATA_SHOW_SIZE;
-    col_append_fstr( pinfo->cinfo, COL_INFO," %s",tvb_format_text(tvb, offset+4,(guint32) datalength));
+    col_append_fstr( pinfo->cinfo, COL_INFO," %s",tvb_format_text(pinfo->pool, tvb, offset+4,(guint32) datalength));
 
     offset = dissect_rpc_opaque_data(tvb, offset, tree, NULL, hf_vxi11_core_data, FALSE, 0, FALSE, NULL, NULL);
 
@@ -562,7 +562,7 @@ dissect_device_remote_func(tvbuff_t *tvb,
     const gchar *addrstr;
     int offset = 0;
 
-    addrstr = tvb_ip_to_str(tvb, offset);
+    addrstr = tvb_ip_to_str(pinfo->pool, tvb, offset);
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_host_addr, offset);
 
     port   = tvb_get_ntohl(tvb, offset);
@@ -596,7 +596,7 @@ dissect_device_write_parms(tvbuff_t *tvb,
     datalength = tvb_get_ntohl( tvb, offset);
     if(MAX_DATA_SHOW_SIZE <=datalength)
         datalength = MAX_DATA_SHOW_SIZE;
-    col_append_fstr( pinfo->cinfo, COL_INFO," %s",tvb_format_text(tvb, offset+4,(guint32) datalength));
+    col_append_fstr( pinfo->cinfo, COL_INFO," %s",tvb_format_text(pinfo->pool, tvb, offset+4,(guint32) datalength));
 
     offset = dissect_rpc_opaque_data(tvb, offset, tree, NULL, hf_vxi11_core_data, FALSE, 0, FALSE, NULL, NULL);
     proto_item_append_text(tree, " (Device_WriteParms) LID=%d", lid);

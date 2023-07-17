@@ -20,6 +20,7 @@
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
+#include <epan/strutil.h>
 #include "packet-btrfcomm.h"
 #include "packet-btsdp.h"
 
@@ -325,7 +326,7 @@ static const value_string cme_error_vals[] = {
     {  40,   "Network Personalization PIN Required" },
     {  41,   "Network Personalization PUK Required" },
     {  42,   "Network Subset Personalization PIN Required" },
-    {  43,   "Network Subset upersonalization PUK Required" },
+    {  43,   "Network Subset Personalization PUK Required" },
     {  44,   "Service Provider Personalization PIN Required" },
     {  45,   "Service Provider Personalization PUK Required" },
     {  46,   "Corporate Personalization PIN Required" },
@@ -378,7 +379,7 @@ static const value_string cops_act_vals[] = {
 
 static const range_string at_type_vals[] = {
     { 128, 143,  "The phone number format may be a national or international format, and may contain prefix and/or escape digits. No changes on the number presentation are required." },
-    { 144, 159,  " The phone number format is an international number, including the country code prefix. If the plus sign (\"+\") is not included as part of the number and shall be added by the AG as needed." },
+    { 144, 159,  "The phone number format is an international number, including the country code prefix. If the plus sign (\"+\") is not included as part of the number and shall be added by the AG as needed." },
     { 160, 175,  "National number. No prefix nor escape digits included." },
     { 0, 0, NULL }
 };
@@ -1919,9 +1920,7 @@ dissect_at_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         if (i_at_cmd && i_at_cmd->name == NULL) {
             char *name;
 
-            name = (char *) wmem_alloc(wmem_packet_scope(), i_char + 2);
-            g_strlcpy(name, at_command, i_char + 1);
-            name[i_char + 1] = '\0';
+            name = format_text(wmem_packet_scope(), at_command, i_char + 1);
             proto_item_append_text(command_item, ": %s (Unknown)", name);
             proto_item_append_text(pitem, " (Unknown - Non-Standard HFP Command)");
             expert_add_info(pinfo, pitem, &ei_non_mandatory_command);
@@ -2209,7 +2208,7 @@ dissect_bthfp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
     if (role == ROLE_UNKNOWN) {
         col_append_fstr(pinfo->cinfo, COL_INFO, "Data: %s",
-                tvb_format_text(tvb, 0, tvb_reported_length(tvb)));
+                tvb_format_text(pinfo->pool, tvb, 0, tvb_reported_length(tvb)));
         proto_tree_add_item(main_tree, hf_data, tvb, 0, tvb_captured_length(tvb), ENC_NA | ENC_ASCII);
         return tvb_reported_length(tvb);
     }
@@ -2438,12 +2437,11 @@ dissect_bthfp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             }
         }
     } else {
-        col_append_fstr(pinfo->cinfo, COL_INFO, "Fragment: %s",
-                tvb_format_text_wsp(wmem_packet_scope(), tvb, offset, tvb_captured_length_remaining(tvb, offset)));
         pitem = proto_tree_add_item(main_tree, hf_fragmented, tvb, 0, 0, ENC_NA);
         proto_item_set_generated(pitem);
-        proto_tree_add_item(main_tree, hf_fragment, tvb, offset,
-                tvb_captured_length_remaining(tvb, offset), ENC_ASCII | ENC_NA);
+        char *display_str;
+        proto_tree_add_item_ret_display_string(main_tree, hf_fragment, tvb, offset, -1, ENC_ASCII, pinfo->pool, &display_str);
+        col_append_fstr(pinfo->cinfo, COL_INFO, "Fragment: %s", display_str);
         offset = tvb_captured_length(tvb);
     }
 
@@ -2873,7 +2871,7 @@ proto_register_bthfp(void)
            NULL, HFILL}
         },
         { &hf_ccwa_show_result_code,
-           { "Show Result Code Presentation Status",       "bthfp.ccwa.presentaion_status",
+           { "Show Result Code Presentation Status",       "bthfp.ccwa.presentation_status",
            FT_UINT32, BASE_DEC, VALS(ccwa_show_result_code_vals), 0,
            NULL, HFILL}
         },

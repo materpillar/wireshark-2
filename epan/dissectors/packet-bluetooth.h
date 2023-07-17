@@ -10,14 +10,14 @@
 #ifndef __PACKET_BLUETOOTH_H__
 #define __PACKET_BLUETOOTH_H__
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
-#include <epan/wmem/wmem.h>
+#include <epan/wmem_scopes.h>
 
 #include "packet-usb.h"
 #include "packet-ubertooth.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
 #define PROTO_DATA_BLUETOOTH_SERVICE_UUID  0
 
@@ -88,6 +88,7 @@ typedef enum {
 /* chandle_sessions:         interface_id + adapter_id + connection_handle + frame_number -> connect_in_frame, disconnect_in_frame */
 /* chandle_to_bdaddr:        interface_id + adapter_id + connection_handle + frame_number -> bd_addr[6] */
 /* chandle_to_mode:          interface_id + adapter_id + connection_handle + frame_number -> mode */
+/* shandle_to_chandle:       interface_id + adapter_id + stream_handle + frame_number -> connection_handle */
 /* bdaddr_to_name:           bd_addr[6] + frame_number -> name */
 /* bdaddr_to_role:           bd_addr[6] + frame_number -> role */
 /* localhost_bdaddr:         interface_id + adapter_id + frame_number -> bd_addr[6] */
@@ -99,6 +100,7 @@ typedef struct _bluetooth_data_t {
     wmem_tree_t *chandle_sessions;
     wmem_tree_t *chandle_to_bdaddr;
     wmem_tree_t *chandle_to_mode;
+    wmem_tree_t *shandle_to_chandle;
     wmem_tree_t *bdaddr_to_name;
     wmem_tree_t *bdaddr_to_role;
     wmem_tree_t *localhost_bdaddr;
@@ -120,6 +122,7 @@ typedef struct _bluetooth_data_t {
 #define BT_LINK_TYPE_ACL     1
 #define BT_LINK_TYPE_SCO     2
 #define BT_LINK_TYPE_LL      3
+#define BT_LINK_TYPE_ISO     4
 
 typedef struct _chandle_session_t {
     guint32  connect_in_frame;
@@ -150,9 +153,14 @@ typedef struct _connection_mode_t {
     guint32  change_in_frame;
 } connection_mode_t;
 
-#define ROLE_UNKNOWN  0
-#define ROLE_MASTER   1
-#define ROLE_SLAVE    2
+typedef struct _stream_connection_handle_pair_t {
+    gint32   chandle;
+    guint32  change_in_frame;
+} stream_connection_handle_pair_t;
+
+#define ROLE_UNKNOWN    0
+#define ROLE_CENTRAL    1
+#define ROLE_PERIPHERAL 2
 
 typedef struct _localhost_bdaddr_entry_t {
     guint32  interface_id;
@@ -298,18 +306,24 @@ WS_DLL_PUBLIC wmem_tree_t *bluetooth_uuids;
 
 WS_DLL_PUBLIC value_string_ext  bluetooth_uuid_vals_ext;
 WS_DLL_PUBLIC value_string_ext  bluetooth_company_id_vals_ext;
-extern guint32           max_disconnect_in_frame;
+extern guint32           bluetooth_max_disconnect_in_frame;
 
 extern gint dissect_bd_addr(gint hf_bd_addr, packet_info *pinfo, proto_tree *tree,
         tvbuff_t *tvb, gint offset, gboolean is_local_bd_addr,
         guint32 interface_id, guint32 adapter_id, guint8 *bdaddr);
 
-extern bluetooth_uuid_t  get_uuid(tvbuff_t *tvb, gint offset, gint size);
-WS_DLL_PUBLIC const gchar  *print_uuid(bluetooth_uuid_t *uuid);
-WS_DLL_PUBLIC const gchar  *print_numeric_uuid(bluetooth_uuid_t *uuid);
+extern void bluetooth_unit_1p25_ms(gchar *buf, guint32 value);
+extern void bluetooth_unit_0p125_ms(gchar *buf, guint32 value);
+
+extern bluetooth_uuid_t  get_bluetooth_uuid(tvbuff_t *tvb, gint offset, gint size);
+WS_DLL_PUBLIC const gchar  *print_bluetooth_uuid(wmem_allocator_t *pool, bluetooth_uuid_t *uuid);
+WS_DLL_PUBLIC const gchar  *print_numeric_bluetooth_uuid(wmem_allocator_t *pool, bluetooth_uuid_t *uuid);
 
 extern void save_local_device_name_from_eir_ad(tvbuff_t *tvb, gint offset,
         packet_info *pinfo, guint8 size, bluetooth_data_t *bluetooth_data);
+
+WS_DLL_PUBLIC bluetooth_data_t *
+dissect_bluetooth_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
 
 #ifdef __cplusplus
 }

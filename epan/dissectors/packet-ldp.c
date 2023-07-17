@@ -45,6 +45,8 @@
 void proto_register_ldp(void);
 void proto_reg_handoff_ldp(void);
 
+static dissector_handle_t ldp_tcp_handle, ldp_handle;
+
 static int proto_ldp = -1;
 
 /* Delete the following if you do not use it, or add to it if you need */
@@ -561,7 +563,6 @@ static const value_string tlv_type_names[] = {
     { TLV_RSVP_TE_P2MP_LSP,                    "RSVP-TE P2MP LSP TLV"                   },
     { TLV_LDP_P2MP_LSP,                        "LDP P2MP LSP TLV"                       },
     { TLV_IP_MULTICAST_TUNNEL,                 "IP Multicast Tunnel TLV"                },
-    { TLV_IP_MULTICAST_TUNNEL,                 "IP Multicast Tunnel TLV"                },
 
     { 0, NULL}
 };
@@ -1065,11 +1066,11 @@ static const true_false_string tlv_upstr_sbit_vals = {
     "LSR is withdrawing the capability to distribute and receive upstream-assigned label bindings"
 };
 
-#define PW_NOT_FORWARDING               0x1
-#define PW_LAC_INGRESS_RECV_FAULT       0x2
-#define PW_LAC_EGRESS_TRANS_FAULT       0x4
-#define PW_PSN_PW_INGRESS_RECV_FAULT    0x8
-#define PW_PSN_PW_EGRESS_TRANS_FAULT    0x10
+#define PW_NOT_FORWARDING               0x00000001
+#define PW_LAC_INGRESS_RECV_FAULT       0x00000002
+#define PW_LAC_EGRESS_TRANS_FAULT       0x00000004
+#define PW_PSN_PW_INGRESS_RECV_FAULT    0x00000008
+#define PW_PSN_PW_EGRESS_TRANS_FAULT    0x00000010
 
 static void
 dissect_subtlv_interface_parameters(tvbuff_t *tvb, guint offset, proto_tree *tree, int rem, int *interface_parameters_hf[]);
@@ -1210,7 +1211,7 @@ dissect_tlv_fec(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tree *tre
                 break;
             }
 
-            addr=(guint8 *)wmem_alloc0(wmem_packet_scope(), addr_size);
+            addr=(guint8 *)wmem_alloc0(pinfo->pool, addr_size);
 
             for(ax=0; ax+1 <= prefix_len_octets; ax++)
                 addr[ax]=tvb_get_guint8(tvb, offset+ax);
@@ -1218,7 +1219,7 @@ dissect_tlv_fec(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tree *tre
                 addr[ax-1] = addr[ax-1]&(0xFF<<(8-prefix_len%8));
 
             set_address(&addr_str, addr_type, addr_size, addr);
-            str = address_to_str(wmem_packet_scope(), &addr_str);
+            str = address_to_str(pinfo->pool, &addr_str);
             proto_tree_add_string_format(fec_tree, hf_ldp_tlv_fec_pfval, tvb, offset, prefix_len_octets,
                                          str, "Prefix: %s", str);
 
@@ -1285,13 +1286,13 @@ dissect_tlv_fec(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tree *tre
                 break;
             }
 
-            addr=(guint8 *)wmem_alloc0(wmem_packet_scope(), addr_size);
+            addr=(guint8 *)wmem_alloc0(pinfo->pool, addr_size);
 
             for(ax=0; ax+1 <= host_len; ax++)
                 addr[ax]=tvb_get_guint8(tvb, offset+ax);
 
             set_address(&addr_str, addr_type, addr_size, addr);
-            str = address_to_str(wmem_packet_scope(), &addr_str);
+            str = address_to_str(pinfo->pool, &addr_str);
             proto_tree_add_string_format(fec_tree, hf_ldp_tlv_fec_hoval, tvb, offset, host_len,
                                          str, "Address: %s", str);
 
@@ -1681,7 +1682,7 @@ dissect_tlv_address_list(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_
     offset+=2; rem-=2;
     val_tree=proto_tree_add_subtree(tree, tvb, offset, rem, ett_ldp_tlv_val, NULL, "Addresses");
 
-    addr=(guint8 *)wmem_alloc(wmem_packet_scope(), addr_size);
+    addr=(guint8 *)wmem_alloc(pinfo->pool, addr_size);
 
     for(ix=1; rem >= addr_size; ix++, offset += addr_size,
             rem -= addr_size) {
@@ -1690,7 +1691,7 @@ dissect_tlv_address_list(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_
             break;
 
         set_address(&addr_str, addr_type, addr_size, addr);
-        str = address_to_str(wmem_packet_scope(), &addr_str);
+        str = address_to_str(pinfo->pool, &addr_str);
         proto_tree_add_string_format(val_tree,
                                      hf_ldp_tlv_addrl_addr, tvb, offset, addr_size, str,
                                      "Address %u: %s", ix, str);
@@ -1715,7 +1716,7 @@ dissect_tlv_path_vector(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_t
         proto_tree_add_ipv4_format(val_tree,
                                    hf_ldp_tlv_pv_lsrid, tvb, offset, 4,
                                    addr, "LSR Id %u: %s", ix,
-                                   tvb_ip_to_str(tvb, offset));
+                                   tvb_ip_to_str(pinfo->pool, tvb, offset));
     }
     if (rem)
         proto_tree_add_expert_format(tree, pinfo, &ei_ldp_tlv_fec_len, tvb, offset, rem, "Error processing TLV: Extra data at end of path vector");
@@ -1920,11 +1921,10 @@ static void
 dissect_tlv_mac(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tree *tree, int rem)
 {
     proto_tree   *val_tree;
-    guint8        ix;
 
     val_tree=proto_tree_add_subtree(tree, tvb, offset, rem, ett_ldp_tlv_val, NULL, "MAC addresses");
 
-    for(ix=1; rem >= 6; ix++, offset += 6, rem -= 6) {
+    for(; rem >= 6; offset += 6, rem -= 6) {
         proto_tree_add_item(val_tree, hf_ldp_tlv_mac, tvb, offset, 6, ENC_NA);
     }
     if (rem)
@@ -3805,7 +3805,7 @@ proto_register_ldp(void)
             NULL, 0, NULL, HFILL }},
 
         { &hf_ldp_tlv_generic_label,
-          { "Generic Label", "ldp.msg.tlv.generic.label", FT_UINT32, BASE_HEX,
+          { "Generic Label", "ldp.msg.tlv.generic.label", FT_UINT32, BASE_DEC_HEX,
             NULL, 0x000FFFFF, NULL, HFILL }},
 
         { &hf_ldp_tlv_atm_label_vbits,
@@ -4592,6 +4592,9 @@ proto_register_ldp(void)
     expert_ldp = expert_register_protocol(proto_ldp);
     expert_register_field_array(expert_ldp, ei, array_length(ei));
 
+    ldp_handle = register_dissector("ldp", dissect_ldp, proto_ldp);
+    ldp_tcp_handle = register_dissector("ldp.tcp", dissect_ldp_tcp, proto_ldp);
+
     /* Register our configuration options for , particularly our port */
 
     ldp_module = prefs_register_protocol(proto_ldp, NULL);
@@ -4608,10 +4611,6 @@ proto_register_ldp(void)
 void
 proto_reg_handoff_ldp(void)
 {
-    dissector_handle_t ldp_tcp_handle, ldp_handle;
-
-    ldp_tcp_handle = create_dissector_handle(dissect_ldp_tcp, proto_ldp);
-    ldp_handle = create_dissector_handle(dissect_ldp, proto_ldp);
     dissector_add_uint_with_preference("tcp.port", TCP_PORT_LDP, ldp_tcp_handle);
     dissector_add_uint_with_preference("udp.port", UDP_PORT_LDP, ldp_handle);
 }

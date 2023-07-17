@@ -11,25 +11,27 @@
 #include "config.h"
 #include <ui_interface_frame.h>
 
-#include "caputils/capture_ifinfo.h"
+#include "capture/capture_ifinfo.h"
 
 #ifdef Q_OS_WIN
-#include "caputils/capture-wpcap.h"
+#include "capture/capture-wpcap.h"
 #endif
 
 #include "ui/qt/interface_frame.h"
 #include <ui/qt/simple_dialog.h>
-#include <ui/qt/wireshark_application.h>
+#include <ui/qt/main_application.h>
 
 #include <ui/qt/models/interface_tree_model.h>
 #include <ui/qt/models/sparkline_delegate.h>
 
-#include <ui/qt/utils/tango_colors.h>
+#include <ui/qt/utils/color_utils.h>
 
 
 #include "extcap.h"
 
 #include <ui/recent.h>
+#include "capture_opts.h"
+#include "ui/capture_globals.h"
 #include <wsutil/utf8_entities.h>
 
 #include <QDesktopServices>
@@ -68,17 +70,7 @@ InterfaceFrame::InterfaceFrame(QWidget * parent)
                       "QTreeView {"
                       "  border: 0;"
                       "}"
-                      "QLabel {"
-                      "  border-radius: 0.5em;"
-                      "  padding: 0.33em;"
-                      "  margin-bottom: 0.25em;"
-                      // We might want to transition this to normal colors this after a timeout.
-                      "  color: #%1;"
-                      "  background-color: #%2;"
-                      "}"
-                    )
-                  .arg(ws_css_warn_text, 6, 16, QChar('0'))
-                  .arg(ws_css_warn_background, 6, 16, QChar('0')));
+                      ));
 
     ui->warningLabel->hide();
 
@@ -104,20 +96,22 @@ InterfaceFrame::InterfaceFrame(QWidget * parent)
     columns.append(IFTREE_COL_STATS);
     proxy_model_.setColumns(columns);
     proxy_model_.setStoreOnChange(true);
+    proxy_model_.setSortByActivity(true);
     proxy_model_.setSourceModel(&source_model_);
 
     info_model_.setSourceModel(&proxy_model_);
-    info_model_.setColumn(columns.indexOf(IFTREE_COL_STATS));
+    info_model_.setColumn(static_cast<int>(columns.indexOf(IFTREE_COL_STATS)));
 
     ui->interfaceTree->setModel(&info_model_);
+    ui->interfaceTree->setSortingEnabled(true);
 
     ui->interfaceTree->setItemDelegateForColumn(proxy_model_.mapSourceToColumn(IFTREE_COL_STATS), new SparkLineDelegate(this));
 
     ui->interfaceTree->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(ui->interfaceTree, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
 
-    connect(wsApp, SIGNAL(appInitialized()), this, SLOT(interfaceListChanged()));
-    connect(wsApp, SIGNAL(localInterfaceListChanged()), this, SLOT(interfaceListChanged()));
+    connect(mainApp, SIGNAL(appInitialized()), this, SLOT(interfaceListChanged()));
+    connect(mainApp, SIGNAL(localInterfaceListChanged()), this, SLOT(interfaceListChanged()));
 
     connect(ui->interfaceTree->selectionModel(), SIGNAL(selectionChanged(const QItemSelection &, const QItemSelection &)),
             this, SLOT(interfaceTreeSelectionChanged(const QItemSelection &, const QItemSelection &)));
@@ -155,21 +149,18 @@ QMenu * InterfaceFrame::getSelectionMenu()
     {
         QAction * toggleRemoteAction = new QAction(tr("Remote interfaces"), this);
         toggleRemoteAction->setCheckable(true);
-        toggleRemoteAction->setChecked(! proxy_model_.remoteDisplay());
+        toggleRemoteAction->setChecked(proxy_model_.remoteDisplay());
         connect(toggleRemoteAction, SIGNAL(triggered()), this, SLOT(toggleRemoteInterfaces()));
         contextMenu->addAction(toggleRemoteAction);
     }
 #endif
 
-#if 0
-    // Disabled until bug 13354 is fixed
     contextMenu->addSeparator();
     QAction * toggleHideAction = new QAction(tr("Show hidden interfaces"), this);
     toggleHideAction->setCheckable(true);
-    toggleHideAction->setChecked(! proxy_model_->filterHidden());
+    toggleHideAction->setChecked(! proxy_model_.filterHidden());
     connect(toggleHideAction, SIGNAL(triggered()), this, SLOT(toggleHiddenInterfaces()));
     contextMenu->addAction(toggleHideAction);
-#endif
 
     return contextMenu;
 }
@@ -260,6 +251,7 @@ void InterfaceFrame::interfaceListChanged()
 
 void InterfaceFrame::toggleHiddenInterfaces()
 {
+    source_model_.interfaceListChanged();
     proxy_model_.toggleFilterHidden();
 
     emit typeSelectionChanged();
@@ -278,6 +270,16 @@ void InterfaceFrame::resetInterfaceTreeDisplay()
     ui->warningLabel->hide();
     ui->warningLabel->clear();
 
+    ui->warningLabel->setStyleSheet(QString(
+                "QLabel {"
+                "  border-radius: 0.5em;"
+                "  padding: 0.33em;"
+                "  margin-bottom: 0.25em;"
+                // We might want to transition this to normal colors this after a timeout.
+                "  background-color: %2;"
+                "}"
+                ).arg(ColorUtils::warningBackground().name()));
+
 #ifdef HAVE_LIBPCAP
 #ifdef Q_OS_WIN
     if (!has_wpcap) {
@@ -285,8 +287,7 @@ void InterfaceFrame::resetInterfaceTreeDisplay()
             "<p>"
             "Local interfaces are unavailable because no packet capture driver is installed."
             "</p><p>"
-            "You can fix this by installing <a href=\"https://nmap.org/npcap/\">Npcap</a>"
-            " or <a href=\"https://www.winpcap.org/install/default.htm\">WinPcap</a>."
+            "You can fix this by installing <a href=\"https://npcap.com/\">Npcap</a>."
             "</p>"));
     } else if (!npf_sys_is_running()) {
         ui->warningLabel->setText(tr(
@@ -303,7 +304,13 @@ void InterfaceFrame::resetInterfaceTreeDisplay()
     if (!haveLocalCapturePermissions())
     {
 #ifdef Q_OS_MAC
-        QString install_chmodbpf_path = wsApp->applicationDirPath() + "/../Resources/Extras/Install ChmodBPF.pkg";
+        //
+        // NOTE: if you change this text, you must also change the
+        // definition of PLATFORM_PERMISSIONS_SUGGESTION that is
+        // used if __APPLE__ is defined, so that it reflects the
+        // new message text.
+        //
+        QString install_chmodbpf_path = mainApp->applicationDirPath() + "/../Resources/Extras/Install ChmodBPF.pkg";
         ui->warningLabel->setText(tr(
             "<p>"
             "You don't have permission to capture on local interfaces."
@@ -312,6 +319,11 @@ void InterfaceFrame::resetInterfaceTreeDisplay()
             "</p>")
             .arg(install_chmodbpf_path));
 #else
+        //
+        // XXX - should this give similar platform-dependent recommendations,
+        // just as dumpcap gives platform-dependent recommendations in its
+        // PLATFORM_PERMISSIONS_SUGGESTION #define?
+        //
         ui->warningLabel->setText(tr("You don't have permission to capture on local interfaces."));
 #endif
     }
@@ -351,7 +363,7 @@ void InterfaceFrame::resetInterfaceTreeDisplay()
     }
 }
 
-// XXX Should this be in caputils/capture-pcap-util.[ch]?
+// XXX Should this be in capture/capture-pcap-util.[ch]?
 bool InterfaceFrame::haveLocalCapturePermissions() const
 {
 #ifdef Q_OS_MAC
@@ -400,24 +412,32 @@ void InterfaceFrame::on_interfaceTree_doubleClicked(const QModelIndex &index)
     if (! realIndex.isValid())
         return;
 
+    QStringList interfaces;
+
 #ifdef HAVE_LIBPCAP
 
     QString device_name = source_model_.getColumnContent(realIndex.row(), IFTREE_COL_NAME).toString();
     QString extcap_string = source_model_.getColumnContent(realIndex.row(), IFTREE_COL_EXTCAP_PATH).toString();
+
+    interfaces << device_name;
 
     /* We trust the string here. If this interface is really extcap, the string is
      * being checked immediatly before the dialog is being generated */
     if (extcap_string.length() > 0)
     {
         /* this checks if configuration is required and not yet provided or saved via prefs */
-        if (extcap_has_configuration((const char *)(device_name.toStdString().c_str()), TRUE))
+        if (extcap_requires_configuration((const char *)(device_name.toStdString().c_str())))
         {
-            emit showExtcapOptions(device_name);
+            emit showExtcapOptions(device_name, true);
             return;
         }
     }
 #endif
-    emit startCapture();
+
+    // Start capture for all columns except the first one with extcap
+    if (IFTREE_COL_EXTCAP != realIndex.column()) {
+        startCapture(interfaces);
+    }
 }
 
 #ifdef HAVE_LIBPCAP
@@ -438,9 +458,9 @@ void InterfaceFrame::on_interfaceTree_clicked(const QModelIndex &index)
         if (extcap_string.length() > 0)
         {
             /* this checks if configuration is required and not yet provided or saved via prefs */
-            if (extcap_has_configuration((const char *)(device_name.toStdString().c_str()), FALSE))
+            if (extcap_has_configuration((const char *)(device_name.toStdString().c_str())))
             {
-                emit showExtcapOptions(device_name);
+                emit showExtcapOptions(device_name, false);
                 return;
             }
         }
@@ -455,7 +475,7 @@ void InterfaceFrame::updateStatistics(void)
 
 #ifdef HAVE_LIBPCAP
 
-    for (int idx = 0; idx < proxy_model_.rowCount(); idx++)
+    for (int idx = 0; idx < source_model_.rowCount(); idx++)
     {
         QModelIndex selectIndex = info_model_.mapFromSource(proxy_model_.mapFromSource(source_model_.index(idx, 0)));
 
@@ -463,14 +483,7 @@ void InterfaceFrame::updateStatistics(void)
         if (selectIndex.isValid())
             source_model_.updateStatistic(idx);
     }
-
 #endif
-}
-
-/* Proxy Method so we do not need to expose the source model */
-void InterfaceFrame::getPoints(int idx, PointList * pts)
-{
-    source_model_.getPoints(idx, pts);
 }
 
 void InterfaceFrame::showRunOnFile(void)
@@ -480,10 +493,40 @@ void InterfaceFrame::showRunOnFile(void)
 
 void InterfaceFrame::showContextMenu(QPoint pos)
 {
-    QMenu ctx_menu;
+    QMenu * ctx_menu = new QMenu(this);
+    ctx_menu->setAttribute(Qt::WA_DeleteOnClose);
 
-    ctx_menu.addAction(tr("Start capture"), this, SIGNAL(startCapture()));
-    ctx_menu.exec(ui->interfaceTree->mapToGlobal(pos));
+    ctx_menu->addAction(tr("Start capture"), this, [=] () {
+        QStringList ifaces;
+        QModelIndexList selIndices = ui->interfaceTree->selectionModel()->selectedIndexes();
+        foreach(QModelIndex idx, selIndices)
+        {
+            QModelIndex realIndex = proxy_model_.mapToSource(info_model_.mapToSource(idx));
+            if (realIndex.column() != IFTREE_COL_NAME)
+                realIndex = realIndex.sibling(realIndex.row(), IFTREE_COL_NAME);
+            QString name = realIndex.data(Qt::DisplayRole).toString();
+            if (! ifaces.contains(name))
+                ifaces << name;
+        }
+
+        startCapture(ifaces);
+    });
+
+    ctx_menu->addSeparator();
+
+    QModelIndex actIndex = ui->interfaceTree->indexAt(pos);
+    QModelIndex realIndex = proxy_model_.mapToSource(info_model_.mapToSource(actIndex));
+    bool isHidden = realIndex.sibling(realIndex.row(), IFTREE_COL_HIDDEN).data(Qt::UserRole).toBool();
+    QAction * hideAction = ctx_menu->addAction(tr("Hide Interface"), this, [=] () {
+        /* Attention! Only realIndex.row is a 1:1 correlation to all_ifaces */
+        interface_t *device = &g_array_index(global_capture_opts.all_ifaces, interface_t, realIndex.row());
+        device->hidden = ! device->hidden;
+        mainApp->emitAppSignal(MainApplication::LocalInterfacesChanged);
+    });
+    hideAction->setCheckable(true);
+    hideAction->setChecked(isHidden);
+
+    ctx_menu->popup(ui->interfaceTree->mapToGlobal(pos));
 }
 
 void InterfaceFrame::on_warningLabel_linkActivated(const QString &link)
@@ -495,16 +538,3 @@ void InterfaceFrame::on_warningLabel_linkActivated(const QString &link)
         QDesktopServices::openUrl(QUrl(link));
     }
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

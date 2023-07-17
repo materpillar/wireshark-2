@@ -28,7 +28,7 @@
 #include <epan/eap.h>
 #include <wsutil/filesystem.h>
 #include <wsutil/report_message.h>
-#include <wsutil/ws_printf.h> /* ws_debug_printf */
+#include <epan/ws_printf.h>
 
 #include "wimaxasncp_dict.h"
 
@@ -42,7 +42,7 @@ static int hf_wimaxasncp_version                = -1;
 static int hf_wimaxasncp_flags                  = -1;
 static int hf_wimaxasncp_function_type          = -1;
 static int hf_wimaxasncp_op_id                  = -1;
-/* static int hf_wimaxasncp_message_type           = -1; */
+static int hf_wimaxasncp_message_type           = -1;
 /* static int hf_wimaxasncp_qos_msg                = -1; */
 /* static int hf_wimaxasncp_ho_control_msg         = -1; */
 /* static int hf_wimaxasncp_data_path_control_msg  = -1; */
@@ -95,6 +95,7 @@ static gint ett_wimaxasncp_port_range                            = -1;
 static expert_field ei_wimaxasncp_tlv_type = EI_INIT;
 static expert_field ei_wimaxasncp_function_type = EI_INIT;
 static expert_field ei_wimaxasncp_op_id = EI_INIT;
+static expert_field ei_wimaxasncp_message_type = EI_INIT;
 static expert_field ei_wimaxasncp_length_bad = EI_INIT;
 
 /* Header size, up to, but not including, the TLV fields. */
@@ -388,9 +389,9 @@ static const ver_value_string wimaxasncp_ms_state_msg_vals[] =
     {WIMAXASNCP_NWGVER_R10_V120, { 7,  "Key_Change_Directive"}},
     {WIMAXASNCP_NWGVER_R10_V120, { 8,  "Key_Change_Cnf"}},
     {WIMAXASNCP_NWGVER_R10_V120, { 9,  "Key_Change_Ack"}},
-    {WIMAXASNCP_NWGVER_R10_V120, { 10, "Relocation_Conplete_Req"}},
-    {WIMAXASNCP_NWGVER_R10_V120, { 11, "Relocation_Conplete_Rsp"}},
-    {WIMAXASNCP_NWGVER_R10_V120, { 12, "Relocation_Conplete_Ack"}},
+    {WIMAXASNCP_NWGVER_R10_V120, { 10, "Relocation_Complete_Req"}},
+    {WIMAXASNCP_NWGVER_R10_V120, { 11, "Relocation_Complete_Rsp"}},
+    {WIMAXASNCP_NWGVER_R10_V120, { 12, "Relocation_Complete_Ack"}},
     {WIMAXASNCP_NWGVER_R10_V120, { 13, "Relocation_Notify"}},
     {WIMAXASNCP_NWGVER_R10_V120, { 14, "Relocation_Req"}},
     {WIMAXASNCP_NWGVER_R10_V120, { 15, "Relocation_Rsp"}},
@@ -519,7 +520,7 @@ static const gchar *wimaxasncp_get_enum_name(
 {
     if (tlv_info->enum_vs)
     {
-        return val_to_str(code, tlv_info->enum_vs, "Unknown");
+        return val_to_str_const(code, tlv_info->enum_vs, "Unknown");
     }
     else
     {
@@ -563,6 +564,7 @@ static const value_string wimaxasncp_decode_type_vals[] =
 /* ========================================================================= */
 
 static void wimaxasncp_proto_tree_add_tlv_ipv4_value(
+    packet_info *pinfo,
     tvbuff_t   *tvb,
     proto_tree *tree,
     proto_item *tlv_item,
@@ -583,7 +585,7 @@ static void wimaxasncp_proto_tree_add_tlv_ipv4_value(
     }
 
     ip = tvb_get_ipv4(tvb, offset);
-    addr_res = tvb_address_with_resolution_to_str(wmem_packet_scope(), tvb, AT_IPv4, offset);
+    addr_res = tvb_address_with_resolution_to_str(pinfo->pool, tvb, AT_IPv4, offset);
 
     proto_tree_add_ipv4_format(
         tree, hf_value,
@@ -597,6 +599,7 @@ static void wimaxasncp_proto_tree_add_tlv_ipv4_value(
 /* ========================================================================= */
 
 static void wimaxasncp_proto_tree_add_tlv_ipv6_value(
+    packet_info *pinfo,
     tvbuff_t   *tvb,
     proto_tree *tree,
     proto_item *tlv_item,
@@ -617,7 +620,7 @@ static void wimaxasncp_proto_tree_add_tlv_ipv6_value(
     }
 
     tvb_get_ipv6(tvb, offset, &ip);
-    addr_res = tvb_address_with_resolution_to_str(wmem_packet_scope(), tvb, AT_IPv6, offset);
+    addr_res = tvb_address_with_resolution_to_str(pinfo->pool, tvb, AT_IPv6, offset);
 
     proto_tree_add_ipv6_format(
         tree, hf_value,
@@ -631,6 +634,7 @@ static void wimaxasncp_proto_tree_add_tlv_ipv6_value(
 /* ========================================================================= */
 
 static void wimaxasncp_proto_tree_add_ether_value(
+    packet_info *pinfo,
     tvbuff_t   *tvb,
     proto_tree *tree,
     proto_item *tlv_item,
@@ -652,7 +656,7 @@ static void wimaxasncp_proto_tree_add_ether_value(
     }
 
     p = tvb_get_ptr(tvb, offset, length);
-    ether_name = tvb_address_with_resolution_to_str(wmem_packet_scope(), tvb, AT_ETHER, offset);
+    ether_name = tvb_address_with_resolution_to_str(pinfo->pool, tvb, AT_ETHER, offset);
 
     proto_tree_add_ether_format(
         tree, hf_value,
@@ -669,7 +673,7 @@ static void wimaxasncp_proto_tree_add_ether_value(
 
 static void wimaxasncp_dissect_tlv_value(
     tvbuff_t           *tvb,
-    packet_info *pinfo  _U_,
+    packet_info        *pinfo,
     proto_tree         *tree,
     proto_item         *tlv_item,
     const wimaxasncp_dict_tlv_t *tlv_info)
@@ -802,7 +806,7 @@ static void wimaxasncp_dissect_tlv_value(
         if (tree)
         {
             wimaxasncp_proto_tree_add_ether_value(
-                tvb, tree, tlv_item, offset, length, tlv_info);
+                pinfo, tvb, tree, tlv_item, offset, length, tlv_info);
         }
 
         return;
@@ -811,7 +815,7 @@ static void wimaxasncp_dissect_tlv_value(
     {
         if (tree)
         {
-            const gchar  *s = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, length, ENC_ASCII);
+            const gchar  *s = tvb_get_string_enc(pinfo->pool, tvb, offset, length, ENC_ASCII);
 
             proto_tree_add_string_format(
                 tree, tlv_info->hf_value,
@@ -1005,7 +1009,7 @@ static void wimaxasncp_dissect_tlv_value(
             if (tree)
             {
                 wimaxasncp_proto_tree_add_tlv_ipv4_value(
-                    tvb, tree, tlv_item, offset, tlv_info);
+                    pinfo, tvb, tree, tlv_item, offset, tlv_info);
             }
 
             return;
@@ -1015,7 +1019,7 @@ static void wimaxasncp_dissect_tlv_value(
             if (tree)
             {
                 wimaxasncp_proto_tree_add_ether_value(
-                    tvb, tree, tlv_item, offset, length, tlv_info);
+                    pinfo, tvb, tree, tlv_item, offset, length, tlv_info);
             }
 
             return;
@@ -1025,7 +1029,7 @@ static void wimaxasncp_dissect_tlv_value(
             if (tree)
             {
                 wimaxasncp_proto_tree_add_tlv_ipv6_value(
-                    tvb, tree, tlv_item, offset, tlv_info);
+                    pinfo, tvb, tree, tlv_item, offset, tlv_info);
             }
 
             return;
@@ -1040,29 +1044,28 @@ static void wimaxasncp_dissect_tlv_value(
     {
         if (tree)
         {
-            const gchar  *format1;
-            const gchar  *format2;
-            const guint8 *p = tvb_get_ptr(tvb, offset, length);
-            const gchar  *s = bytestring_to_str(wmem_packet_scope(), p, MIN(length, max_show_bytes), 0);
-
-            if (length <= max_show_bytes)
-            {
-                format1 = "Value: %s";
-                format2 = " - %s";
-            }
-            else
-            {
-                format1 = "Value: %s...";
-                format2 = " - %s...";
-            }
-
-            proto_tree_add_bytes_format(
+            proto_tree_add_item(
                 tree, tlv_info->hf_value,
-                tvb, offset, length, p,
-                format1, s);
+                tvb, offset, length, ENC_NA);
 
-            proto_item_append_text(
-                tlv_item, format2, s);
+            if (length) {
+                const gchar* format;
+                if (length <= max_show_bytes)
+                {
+                    format = " - %s";
+                }
+                else
+                {
+                    format = " - %s...";
+                }
+                const gchar* s = tvb_bytes_to_str_punct(
+                    pinfo->pool, tvb, offset, MIN(length, max_show_bytes), 0);
+
+                proto_item_append_text(
+                    tlv_item, format, s);
+            } else {
+                proto_item_append_text(tlv_item, " - <MISSING>");
+            }
         }
 
         return;
@@ -1221,23 +1224,26 @@ static void wimaxasncp_dissect_tlv_value(
 
         if (tree)
         {
-            const gchar  *format;
-            const guint8 *p = tvb_get_ptr(tvb, offset, length);
-            const gchar  *s = bytestring_to_str(wmem_packet_scope(), p, MIN(length, max_show_bytes), 0);
+            if (length) {
+                const char *format;
+                const char *s = tvb_bytes_to_str_punct(
+                    pinfo->pool, tvb, offset, length, 0);
 
-            if (length <= max_show_bytes)
-            {
-                format = "Value: %s %s";
-            }
-            else
-            {
-                format = "Value: %s %s...";
-            }
+                if (length <= max_show_bytes) {
+                    format = "%s %s";
+                } else {
+                    format = "%s %s...";
+                }
 
-            proto_tree_add_bytes_format(
-                tree, tlv_info->hf_value,
-                tvb, offset, length, p,
-                format, hex_note, s);
+                proto_tree_add_bytes_format_value(
+                    tree, tlv_info->hf_value,
+                    tvb, offset, length, NULL, format, hex_note, s);
+
+            } else {
+                proto_tree_add_bytes_format_value(
+                    tree, tlv_info->hf_value,
+                    tvb, offset, length, NULL, "%s", "<MISSING>");
+            }
 
             proto_item_append_text(tlv_item, " - TBD");
         }
@@ -1251,7 +1257,7 @@ static void wimaxasncp_dissect_tlv_value(
             if (tree)
             {
                 wimaxasncp_proto_tree_add_tlv_ipv4_value(
-                    tvb, tree, tlv_item, offset, tlv_info);
+                    pinfo, tvb, tree, tlv_item, offset, tlv_info);
             }
 
             return;
@@ -1261,7 +1267,7 @@ static void wimaxasncp_dissect_tlv_value(
             if (tree)
             {
                 wimaxasncp_proto_tree_add_tlv_ipv6_value(
-                    tvb, tree, tlv_item, offset, tlv_info);
+                    pinfo, tvb, tree, tlv_item, offset, tlv_info);
             }
 
             return;
@@ -1283,7 +1289,7 @@ static void wimaxasncp_dissect_tlv_value(
         if (tree)
         {
             wimaxasncp_proto_tree_add_tlv_ipv4_value(
-                tvb, tree, tlv_item, offset, tlv_info);
+                pinfo, tvb, tree, tlv_item, offset, tlv_info);
         }
 
         return;
@@ -1534,7 +1540,7 @@ static void wimaxasncp_dissect_tlv_value(
 
                     proto_item_append_text(
                         item, " - %s (%s)",
-                        get_hostname(ip), tvb_ip_to_str(tvb, offset));
+                        get_hostname(ip), tvb_ip_to_str(pinfo->pool, tvb, offset));
 
                     offset += 4;
 
@@ -1543,7 +1549,7 @@ static void wimaxasncp_dissect_tlv_value(
                      * --------------------------------------------------------
                      */
 
-                    s = tvb_ip_to_str(tvb, offset);
+                    s = tvb_ip_to_str(pinfo->pool, tvb, offset);
 
                     proto_tree_add_item(
                         ip_address_mask_tree,
@@ -1708,30 +1714,37 @@ static void wimaxasncp_dissect_tlv_value(
     {
         if (tree)
         {
-            const gchar *format1;
-            const gchar *format2;
-            const guint8 *p = tvb_get_ptr(tvb, offset, length);
-            const gchar *s =
-                bytestring_to_str(wmem_packet_scope(), p, MIN(length, max_show_bytes), 0);
+            const char* s;
+            if (length) {
+                const char* format1;
+                const char* format2;
+                if (length <= max_show_bytes)
+                {
+                    format1 = "%s %s";
+                    format2 = " - %s %s";
+                }
+                else
+                {
+                    format1 = "%s %s...";
+                    format2 = " - %s %s...";
+                }
+                s = tvb_bytes_to_str_punct(
+                    pinfo->pool, tvb, offset, MIN(length, max_show_bytes), 0);
 
-            if (length <= max_show_bytes)
-            {
-                format1 = "Value: %s %s";
-                format2 = " - %s %s";
+                proto_tree_add_bytes_format_value(
+                    tree, tlv_info->hf_value,
+                    tvb, offset, length, NULL, format1, hex_note, s);
+
+                proto_item_append_text(
+                    tlv_item, format2, hex_note, s);
             }
-            else
-            {
-                format1 = "Value: %s %s...";
-                format2 = " - %s %s...";
+            else {
+                proto_tree_add_bytes_format_value(
+                    tree, tlv_info->hf_value,
+                    tvb, offset, length, NULL, "%s", "<MISSING>");
+
+                proto_item_append_text(tlv_item, " - <MISSING>");
             }
-
-            proto_tree_add_bytes_format(
-                tree, tlv_info->hf_value,
-                tvb, offset, length, p,
-                format1, hex_note, s);
-
-            proto_item_append_text(
-                tlv_item, format2, hex_note, s);
 
         }
 
@@ -1750,23 +1763,27 @@ static void wimaxasncp_dissect_tlv_value(
 
     if (tree)
     {
-        const gchar *format;
-        const guint8 *p = tvb_get_ptr(tvb, offset, length);
-        const gchar *s = bytestring_to_str(wmem_packet_scope(), p, MIN(length, max_show_bytes), 0);
+        if (length) {
+            const char* format;
+            const char *s = tvb_bytes_to_str_punct(
+                pinfo->pool, tvb, offset, MIN(length, max_show_bytes), 0);
 
-        if (length <= max_show_bytes)
-        {
-            format = "Value: %s %s";
-        }
-        else
-        {
-            format = "Value: %s %s...";
-        }
+            if (length <= max_show_bytes) {
+                format = "%s %s";
+            } else {
+                format = "%s %s...";
+            }
 
-        proto_tree_add_bytes_format(
-            tree, hf_wimaxasncp_tlv_value_bytes,
-            tvb, offset, length, p,
-            format, hex_note, s);
+            proto_tree_add_bytes_format_value(
+                tree, hf_wimaxasncp_tlv_value_bytes,
+                tvb, offset, length, NULL,
+                format, hex_note, s);
+        } else {
+            proto_tree_add_bytes_format_value(
+                tree, hf_wimaxasncp_tlv_value_bytes,
+                tvb, offset, length, NULL,
+                "%s", "<MISSING>");
+        }
     }
 }
 
@@ -1936,7 +1953,7 @@ static guint dissect_wimaxasncp_backend(
             tree, hf_wimaxasncp_msid,
             tvb, offset, 6, ENC_NA);
     }
-    pmsid = tvb_ether_to_str(tvb, offset);
+    pmsid = tvb_ether_to_str(pinfo->pool, tvb, offset);
 
     offset += 6;
 
@@ -2319,7 +2336,7 @@ dissect_wimaxasncp(
     }
 
     item = proto_tree_add_uint_format(
-        wimaxasncp_tree, hf_wimaxasncp_op_id,
+        wimaxasncp_tree, hf_wimaxasncp_message_type,
         tvb, offset, 1, ui8,
         "Message Type: %s", message_name);
 
@@ -2328,8 +2345,8 @@ dissect_wimaxasncp(
     /* Add expert item if not matched */
     if (strcmp(message_name, unknown) == 0)
     {
-        expert_add_info_format(pinfo, item, &ei_wimaxasncp_op_id,
-                               "Unknown message op (%u)",
+        expert_add_info_format(pinfo, item, &ei_wimaxasncp_message_type,
+                               "Unknown message type (%u)",
                                0x1f & ui8);
     }
 
@@ -2820,7 +2837,6 @@ register_wimaxasncp_fields(const char* unused _U_)
                     HFILL
                 }
             },
-#if 0
             {
                 &hf_wimaxasncp_message_type,
                 {
@@ -2834,7 +2850,6 @@ register_wimaxasncp_fields(const char* unused _U_)
                     HFILL
                 }
             },
-#endif
 #if 0
             {
                 &hf_wimaxasncp_qos_msg,
@@ -3215,6 +3230,7 @@ register_wimaxasncp_fields(const char* unused _U_)
         { &ei_wimaxasncp_tlv_type, { "wimaxasncp.tlv.type.unknown", PI_UNDECODED, PI_WARN, "Unknown tlv", EXPFILL }},
         { &ei_wimaxasncp_function_type, { "wimaxasncp.function_type.unknown", PI_UNDECODED, PI_WARN, "Unknown function type", EXPFILL }},
         { &ei_wimaxasncp_op_id, { "wimaxasncp.opid.unknown", PI_UNDECODED, PI_WARN, "Unknown message op", EXPFILL }},
+        { &ei_wimaxasncp_message_type, { "wimaxasncp.message_type.unknown", PI_UNDECODED, PI_WARN, "Unknown message type", EXPFILL }},
         { &ei_wimaxasncp_length_bad, { "wimaxasncp.length.bad", PI_MALFORMED, PI_ERROR, "Bad length", EXPFILL }},
     };
 
@@ -3228,7 +3244,7 @@ register_wimaxasncp_fields(const char* unused _U_)
     debug_parser = getenv("WIRESHARK_DEBUG_WIMAXASNCP_DICT_PARSER") != NULL;
     dump_dict    = getenv("WIRESHARK_DUMP_WIMAXASNCP_DICT") != NULL;
 
-    dir = g_strdup_printf(
+    dir = ws_strdup_printf(
         "%s" G_DIR_SEPARATOR_S "wimaxasncp",
         get_datafile_dir());
 

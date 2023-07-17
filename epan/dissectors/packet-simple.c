@@ -315,9 +315,9 @@ static void dissect_simple_status(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
     proto_tree_add_item(tree, hf_simple_status_word_count, tvb, offset, 1, ENC_NA);
     offset++;
 
-    name = tvb_get_stringzpad(wmem_packet_scope(), tvb, offset, SIMPLE_STATUS_NAME_LEN, ENC_ASCII|ENC_NA);
+    name = tvb_get_stringzpad(pinfo->pool, tvb, offset, SIMPLE_STATUS_NAME_LEN, ENC_ASCII|ENC_NA);
     col_append_fstr(pinfo->cinfo, COL_INFO, ", Name: %s", name);
-    proto_tree_add_item(tree, hf_simple_status_name, tvb, offset, SIMPLE_STATUS_NAME_LEN, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(tree, hf_simple_status_name, tvb, offset, SIMPLE_STATUS_NAME_LEN, ENC_ASCII);
     offset += SIMPLE_STATUS_NAME_LEN;
 
     proto_tree_add_item(tree, hf_simple_status_time_hours, tvb, offset, 1, ENC_NA);
@@ -344,7 +344,7 @@ static void dissect_simple_status(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
     proto_tree_add_bitmask_text(tree, tvb, offset, 2, "Data Extraction Flags", NULL, ett_simple_status_dx_flag, simple_status_dx_flag_fields, ENC_LITTLE_ENDIAN, 0);
     offset += 2;
 
-    proto_tree_add_item(tree, hf_simple_status_dx_file_id, tvb, offset, 8, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(tree, hf_simple_status_dx_file_id, tvb, offset, 8, ENC_ASCII);
     offset += 8;
 
     proto_tree_add_item(tree, hf_simple_status_spare_1, tvb, offset, 2, ENC_NA);
@@ -464,7 +464,7 @@ static int dissect_simple(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
     proto_tree_add_item(simple_tree, hf_simple_transit_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
     offset += 2;
 
-    packet_type_string = val_to_str(packet_type, PacketType_Strings, "Unknown");
+    packet_type_string = val_to_str_const(packet_type, PacketType_Strings, "Unknown");
     col_add_fstr(pinfo->cinfo, COL_INFO, "%s", packet_type_string);
     packet_tree = proto_tree_add_subtree_format(simple_tree, tvb, offset, packet_size, ett_packet, NULL, "%s Packet", packet_type_string);
 
@@ -576,25 +576,25 @@ void proto_register_simple(void)
           { "Relay Hop", "simple.status.relay_hop", FT_BYTES, BASE_NONE, NULL, 0x0,
             NULL, HFILL }},
         { &hf_simple_status_dx_flag_system_messages,
-          { "DX System Messages", "simple.status.dx_flag.system_messages", FT_BOOLEAN, 16, NULL, 0x1,
+          { "DX System Messages", "simple.status.dx_flag.system_messages", FT_BOOLEAN, 16, NULL, 0x0001,
             NULL, HFILL }},
         { &hf_simple_status_dx_flag_common_tims_bims,
-          { "DX Common TIMS/BIMS", "simple.status.dx_flag.common_tims_bims", FT_BOOLEAN, 16, NULL, 0x2,
+          { "DX Common TIMS/BIMS", "simple.status.dx_flag.common_tims_bims", FT_BOOLEAN, 16, NULL, 0x0002,
             NULL, HFILL }},
         { &hf_simple_status_dx_flag_common_toms_boms,
-          { "DX Common TOMS/BOMS", "simple.status.dx_flag.common_toms_boms", FT_BOOLEAN, 16, NULL, 0x4,
+          { "DX Common TOMS/BOMS", "simple.status.dx_flag.common_toms_boms", FT_BOOLEAN, 16, NULL, 0x0004,
             NULL, HFILL }},
         { &hf_simple_status_dx_flag_simple_receive,
           { "DX SIMPLE Receive", "simple.status.dx_flag.simple_receive", FT_BOOLEAN, 16, NULL, 0x8,
             NULL, HFILL }},
         { &hf_simple_status_dx_flag_simple_transmit,
-          { "DX SIMPLE Transmit", "simple.status.dx_flag.simple_transmit", FT_BOOLEAN, 16, NULL, 0x10,
+          { "DX SIMPLE Transmit", "simple.status.dx_flag.simple_transmit", FT_BOOLEAN, 16, NULL, 0x0010,
             NULL, HFILL }},
         { &hf_simple_status_dx_flag_all_tims_bims,
-          { "DX All TIMS/BIMS", "simple.status.dx_flag.all_tims_bims", FT_BOOLEAN, 16, NULL, 0x20,
+          { "DX All TIMS/BIMS", "simple.status.dx_flag.all_tims_bims", FT_BOOLEAN, 16, NULL, 0x0020,
             NULL, HFILL }},
         { &hf_simple_status_dx_flag_all_toms_boms,
-          { "DX All TOMS/BOMS", "simple.status.dx_flag.all_toms_boms", FT_BOOLEAN, 16, NULL, 0x40,
+          { "DX All TOMS/BOMS", "simple.status.dx_flag.all_toms_boms", FT_BOOLEAN, 16, NULL, 0x0040,
             NULL, HFILL }},
         { &hf_simple_status_dx_file_id,
           { "DX File Id", "simple.status.dx_file_id", FT_STRING, BASE_NONE, NULL, 0x0,

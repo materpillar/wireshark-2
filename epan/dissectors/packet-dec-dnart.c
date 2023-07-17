@@ -81,6 +81,8 @@ typedef enum {
 void proto_register_dec_rt(void);
 void proto_reg_handoff_dec_rt(void);
 
+static dissector_handle_t dec_rt_handle;
+
 static int proto_dec_rt = -1;
 
 static int hf_dec_routing_flags = -1;
@@ -320,11 +322,11 @@ handle_disc_init_contents(
     guint offset);
 
 static char *
-dnet_ntoa(const guint8 *data)
+dnet_ntoa(wmem_allocator_t *pool, const guint8 *data)
 {
     if (data[0] == 0xAA && data[1] == 0x00 && data[2] == 0x04 && data[3] == 0x00) {
         guint16 dnet_addr = data[4] | (data[5] << 8);
-        return wmem_strdup_printf(wmem_packet_scope(), "%d.%d", dnet_addr >> 10, dnet_addr & 0x03FF);
+        return wmem_strdup_printf(pool, "%d.%d", dnet_addr >> 10, dnet_addr & 0x03FF);
     }
     return NULL;
 }
@@ -333,7 +335,7 @@ static void
 set_dnet_address(packet_info *pinfo, address *paddr_src, address *paddr_tgt)
 {
     if (paddr_tgt->type != AT_STRINGZ && paddr_src->type == AT_ETHER) {
-        char *addr = dnet_ntoa((const guint8 *)paddr_src->data);
+        char *addr = dnet_ntoa(pinfo->pool, (const guint8 *)paddr_src->data);
         if (addr != NULL)
             set_address(paddr_tgt, AT_STRINGZ, 1,
                     wmem_strdup(pinfo->pool, addr));
@@ -441,7 +443,7 @@ dissect_dec_rt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _
         offset += 3;
         ti = proto_tree_add_item(rt_tree, hf_dec_rt_dst_addr, tvb,
                 offset, 6, ENC_NA);
-        addr = dnet_ntoa((const guint8 *)tvb_memdup(wmem_packet_scope(), tvb, offset, 6));
+        addr = dnet_ntoa(pinfo->pool, (const guint8 *)tvb_memdup(pinfo->pool, tvb, offset, 6));
         if (addr != NULL) {
             proto_item_append_text(ti, " (%s)", addr);
         }
@@ -452,7 +454,7 @@ dissect_dec_rt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _
         offset += 8;
         ti = proto_tree_add_item(rt_tree, hf_dec_rt_src_addr, tvb,
             offset, 6, ENC_NA);
-        addr = dnet_ntoa((const guint8 *)tvb_memdup(wmem_packet_scope(), tvb, offset, 6));
+        addr = dnet_ntoa(pinfo->pool, (const guint8 *)tvb_memdup(pinfo->pool, tvb, offset, 6));
         if (addr != NULL) {
             proto_item_append_text(ti, " (%s)", addr);
         }
@@ -697,7 +699,7 @@ do_hello_msg(
     my_offset +=3;
     ti = proto_tree_add_item(tree, hf_dec_rt_id, tvb,
         my_offset, 6, ENC_NA);
-    addr = dnet_ntoa((const guint8 *)tvb_memdup(wmem_packet_scope(), tvb, my_offset, 6));
+    addr = dnet_ntoa(pinfo->pool, (const guint8 *)tvb_memdup(pinfo->pool, tvb, my_offset, 6));
     if (addr != NULL) {
         proto_item_append_text(ti, " (%s)", addr);
     }
@@ -727,7 +729,7 @@ do_hello_msg(
         my_offset += 8;
         ti = proto_tree_add_item(tree, hf_dec_rt_neighbor, tvb,
                 my_offset, 6, ENC_NA);
-        addr = dnet_ntoa((const guint8 *)tvb_memdup(wmem_packet_scope(), tvb, my_offset, 6));
+        addr = dnet_ntoa(pinfo->pool, (const guint8 *)tvb_memdup(pinfo->pool, tvb, my_offset, 6));
         if (addr != NULL) {
             proto_item_append_text(ti, " (%s)", addr);
         }
@@ -776,7 +778,7 @@ do_hello_msg(
 
                 ti_localb = proto_tree_add_item(list_ether, hf_dec_rt_router_id,
                     tvb, my_offset, 6, ENC_NA);
-                addr = dnet_ntoa((const guint8 *)tvb_memdup(wmem_packet_scope(), tvb, my_offset, 6));
+                addr = dnet_ntoa(pinfo->pool, (const guint8 *)tvb_memdup(pinfo->pool, tvb, my_offset, 6));
                 if (addr != NULL) {
                     proto_item_append_text(ti_localb, " (%s)", addr);
                 }
@@ -1094,7 +1096,7 @@ handle_connect_contents(
         /* The name field for formats 1 and 2 */
         image_len = tvb_get_guint8(tvb, my_offset);
         my_offset++;
-        proto_tree_add_item(contents_tree, hf_dec_sess_dst_name, tvb, my_offset, image_len, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(contents_tree, hf_dec_sess_dst_name, tvb, my_offset, image_len, ENC_ASCII);
         my_offset += image_len;
     }
     /* The source end user */
@@ -1115,7 +1117,7 @@ handle_connect_contents(
         image_len = tvb_get_guint8(tvb, my_offset);
         my_offset++;
         proto_tree_add_item(contents_tree, hf_dec_sess_src_name,
-            tvb, my_offset, image_len, ENC_ASCII|ENC_NA);
+            tvb, my_offset, image_len, ENC_ASCII);
         my_offset += image_len;
     }
     /* Now the MENUVER field */
@@ -1130,17 +1132,17 @@ handle_connect_contents(
             image_len = tvb_get_guint8(tvb, my_offset);
             my_offset++;
             proto_tree_add_item(contents_tree, hf_dec_sess_rqstr_id,
-                tvb, my_offset, image_len, ENC_ASCII|ENC_NA);
+                tvb, my_offset, image_len, ENC_ASCII);
             my_offset += image_len;
             image_len = tvb_get_guint8(tvb, my_offset);
             my_offset++;
             proto_tree_add_item(contents_tree, hf_dec_sess_rqstr_id,
-                tvb, my_offset, image_len, ENC_ASCII|ENC_NA);
+                tvb, my_offset, image_len, ENC_ASCII);
             my_offset += image_len;
             image_len = tvb_get_guint8(tvb, my_offset);
             my_offset++;
             proto_tree_add_item(contents_tree, hf_dec_sess_rqstr_id,
-                tvb, my_offset, image_len, ENC_ASCII|ENC_NA);
+                tvb, my_offset, image_len, ENC_ASCII);
             my_offset += image_len;
 
 
@@ -1258,14 +1260,14 @@ proto_register_dec_rt(void)
             NULL, HFILL }},
         { &hf_dec_rt_segnum,
           { "Message number",        "dec_dna.nsp.segnum",
-            FT_UINT16,    BASE_DEC,    NULL,   0xfff,
+            FT_UINT16,    BASE_DEC,    NULL,   0x0fff,
             "Segment number", HFILL }},
         { &hf_dec_rt_delay,
           { "Delayed ACK allowed",  "dec_dna.nsp.delay",
             FT_BOOLEAN,    16,        TFS(&tfs_yes_no),    0x1000,
             "Delayed ACK allowed?", HFILL }},
         { &hf_dec_rt_visited_nodes,
-          { "Nodes visited ty this package", "dec_dna.vst_node",
+          { "Nodes visited by this package", "dec_dna.vst_node",
             FT_UINT8,    BASE_DEC,    NULL,   0x0,
             "Nodes visited", HFILL }},
         /* Control message items */
@@ -1291,7 +1293,7 @@ proto_register_dec_rt(void)
             NULL, HFILL }},
         { &hf_dec_rt_tiinfo,
           { "Routing information",    "dec_dna.ctl.tiinfo",
-            FT_UINT8,    BASE_HEX,    VALS(rt_tiinfo_vals), 0x0,
+            FT_UINT16,    BASE_HEX,    VALS(rt_tiinfo_vals), 0x0,
             NULL, HFILL }},
         { &hf_dec_rt_blk_size,
           { "Block size",            "dec_dna.ctl.blk_size",
@@ -1457,15 +1459,14 @@ proto_register_dec_rt(void)
     proto_register_subtree_array(ett, array_length(ett));
     expert_dec_rt = expert_register_protocol(proto_dec_rt);
     expert_register_field_array(expert_dec_rt, ei, array_length(ei));
+
+    dec_rt_handle = register_dissector("dec_dna", dissect_dec_rt,
+                                            proto_dec_rt);
 }
 
 void
 proto_reg_handoff_dec_rt(void)
 {
-    dissector_handle_t dec_rt_handle;
-
-    dec_rt_handle = create_dissector_handle(dissect_dec_rt,
-                                            proto_dec_rt);
     dissector_add_uint("ethertype", ETHERTYPE_DNA_RT, dec_rt_handle);
     dissector_add_uint("chdlc.protocol", ETHERTYPE_DNA_RT, dec_rt_handle);
     dissector_add_uint("ppp.protocol", PPP_DEC4, dec_rt_handle);

@@ -51,6 +51,7 @@
 #include <glib.h>
 
 #include <windows.h>
+#include <winsock2.h>
 #include <errno.h>
 #include <wchar.h>
 #include <tchar.h>
@@ -449,14 +450,14 @@ ws_stdio_freopen (const gchar *filename, const gchar *mode, FILE *stream)
 
 /* DLL loading */
 static gboolean
-init_dll_load_paths()
+init_dll_load_paths(void)
 {
     TCHAR path_w[MAX_PATH];
 
     if (program_path && system_path && npcap_path)
         return TRUE;
 
-    /* XXX - Duplicate code in filesystem.c:init_progfile_dir */
+    /* XXX - Duplicate code in filesystem.c:configuration_init */
     if (GetModuleFileName(NULL, path_w, MAX_PATH) == 0 || GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
         return FALSE;
     }
@@ -490,7 +491,7 @@ init_dll_load_paths()
 }
 
 gboolean
-ws_init_dll_search_path()
+ws_init_dll_search_path(void)
 {
     gboolean dll_dir_set = FALSE;
     wchar_t *program_path_w;
@@ -526,7 +527,7 @@ ws_load_library(const gchar *library_name)
         return NULL;
 
     /* First try the program directory */
-    full_path = g_module_build_path(program_path, library_name);
+    full_path = g_strconcat(program_path, G_DIR_SEPARATOR_S, library_name, NULL);
     full_path_w = g_utf8_to_utf16(full_path, -1, NULL, NULL, NULL);
 
     if (full_path && full_path_w) {
@@ -539,7 +540,7 @@ ws_load_library(const gchar *library_name)
     }
 
     /* Next try the system directory */
-    full_path = g_module_build_path(system_path, library_name);
+    full_path = g_strconcat(system_path, G_DIR_SEPARATOR_S, library_name, NULL);
     full_path_w = g_utf8_to_utf16(full_path, -1, NULL, NULL, NULL);
 
     if (full_path && full_path_w) {
@@ -579,16 +580,18 @@ load_npcap_module(const gchar *full_path, GModuleFlags flags)
 }
 
 GModule *
-ws_module_open(gchar *module_name, GModuleFlags flags)
+load_wpcap_module(void)
 {
+    gchar   *module_name = "wpcap.dll";
     gchar   *full_path;
     GModule *mod;
+    GModuleFlags flags = 0;
 
-    if (!init_dll_load_paths() || !module_name)
+    if (!init_dll_load_paths())
         return NULL;
 
     /* First try the program directory */
-    full_path = g_module_build_path(program_path, module_name);
+    full_path = g_strconcat(program_path, G_DIR_SEPARATOR_S, module_name, NULL);
 
     if (full_path) {
         mod = g_module_open(full_path, flags);
@@ -599,7 +602,7 @@ ws_module_open(gchar *module_name, GModuleFlags flags)
     }
 
     /* Next try the Npcap directory */
-    full_path = g_module_build_path(npcap_path, module_name);
+    full_path = g_strconcat(npcap_path, G_DIR_SEPARATOR_S, module_name, NULL);
 
     if (full_path) {
         mod = load_npcap_module(full_path, flags);
@@ -610,7 +613,7 @@ ws_module_open(gchar *module_name, GModuleFlags flags)
     }
 
     /* At last try the system directory */
-    full_path = g_module_build_path(system_path, module_name);
+    full_path = g_strconcat(system_path, G_DIR_SEPARATOR_S, module_name, NULL);
 
     if (full_path) {
         mod = g_module_open(full_path, flags);
@@ -630,7 +633,7 @@ ws_module_open(gchar *module_name, GModuleFlags flags)
 static HANDLE local_running_mutex = NULL;
 static HANDLE global_running_mutex = NULL;
 
-void create_app_running_mutex() {
+void create_app_running_mutex(void) {
     SECURITY_DESCRIPTOR sec_descriptor;
     SECURITY_ATTRIBUTES sec_attributes;
     SECURITY_ATTRIBUTES *sa;
@@ -657,7 +660,7 @@ void create_app_running_mutex() {
     global_running_mutex = CreateMutex(sa, FALSE, _T("Global\\Wireshark-is-running-{") _T(WIRESHARK_IS_RUNNING_UUID) _T("}"));
 }
 
-void close_app_running_mutex() {
+void close_app_running_mutex(void) {
     if (local_running_mutex) {
         CloseHandle(local_running_mutex);
         local_running_mutex = NULL;
@@ -666,6 +669,21 @@ void close_app_running_mutex() {
         CloseHandle(global_running_mutex);
         global_running_mutex = NULL;
     }
+}
+
+int ws_close_if_possible(int fd) {
+    fd_set rfds;
+    struct timeval tv = { 0, 1 };
+    int retval;
+
+    FD_ZERO(&rfds);
+    FD_SET(fd, &rfds);
+
+    retval = select(1, &rfds, NULL, NULL, &tv);
+    if (retval > -1)
+        return _close(fd);
+
+    return -1;
 }
 
 /*

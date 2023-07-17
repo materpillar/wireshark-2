@@ -43,6 +43,8 @@ static const value_string gdb_ack[] = {
 void proto_register_gdb(void);
 void proto_reg_handoff_gdb(void);
 
+static dissector_handle_t gdb_handle;
+
 static int proto_gdb = -1;
 
 static gint ett_gdb = -1;
@@ -75,7 +77,7 @@ dissect_gdb_token(void *tvbparse_data, const void *wanted_data, tvbparse_elem_t 
             break;
         case GDB_TOK_START:
             proto_tree_add_item(tree, hf_gdb_start,
-                    tok->tvb, tok->offset, tok->len, ENC_ASCII|ENC_NA);
+                    tok->tvb, tok->offset, tok->len, ENC_ASCII);
             break;
         case GDB_TOK_PAYLOAD:
             proto_tree_add_item(tree, hf_gdb_payload,
@@ -83,11 +85,11 @@ dissect_gdb_token(void *tvbparse_data, const void *wanted_data, tvbparse_elem_t 
             break;
         case GDB_TOK_END:
             proto_tree_add_item(tree, hf_gdb_end,
-                    tok->tvb, tok->offset, tok->len, ENC_ASCII|ENC_NA);
+                    tok->tvb, tok->offset, tok->len, ENC_ASCII);
             break;
         case GDB_TOK_CHKSUM:
             proto_tree_add_item(tree, hf_gdb_chksum,
-                    tok->tvb, tok->offset, tok->len, ENC_ASCII|ENC_NA);
+                    tok->tvb, tok->offset, tok->len, ENC_ASCII);
             break;
         default:
             break;
@@ -133,7 +135,7 @@ dissect_gdb_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     gdb_tree = proto_item_add_subtree(ti, ett_gdb);
 
     /* XXX support multiple sub-trees */
-    tt = tvbparse_init(tvb, 0, -1, (void *)gdb_tree, NULL);
+    tt = tvbparse_init(pinfo->pool, tvb, 0, -1, (void *)gdb_tree, NULL);
 
     while(tvbparse_get(tt, want)) {
         ;
@@ -205,6 +207,7 @@ proto_register_gdb(void)
 
 
     proto_gdb = proto_register_protocol("GDB Remote Serial Protocol", "GDB remote", "gdb");
+    gdb_handle = register_dissector("gdb", dissect_gdb_tcp, proto_gdb);
 
     proto_register_field_array(proto_gdb, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
@@ -216,10 +219,6 @@ proto_register_gdb(void)
 void
 proto_reg_handoff_gdb(void)
 {
-    dissector_handle_t  gdb_handle;
-
-    gdb_handle = create_dissector_handle(dissect_gdb_tcp, proto_gdb);
-
     dissector_add_for_decode_as_with_preference("tcp.port", gdb_handle);
 }
 

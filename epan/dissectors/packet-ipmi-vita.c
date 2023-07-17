@@ -424,7 +424,7 @@ static hf_register_info hf_ipmi_vita[] = {
 		{ "Tier Functionality", "ipmi.vita.ipmc.tier",
 			FT_UINT8, BASE_HEX, VALS(str_vita_ipmc_tiers), 0x3, NULL, HFILL }},
 	{ &hf_vita_layer,
-		{ "Layer Functionality", "ipmi.vita.ipmc.tier",
+		{ "Layer Functionality", "ipmi.vita.ipmc.layer",
 			FT_UINT8, BASE_HEX, VALS(str_vita_ipmc_layers), 0x30, NULL, HFILL }},
 	{ &hf_vita_ipmb,
 		{ "IPMB Capabilities", "ipmi.vita.ipmb",
@@ -840,9 +840,9 @@ cmd01_rs(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 /* Get Chassis Identifier (response), Set Chassis Identifier (request)
 */
 static void
-cmd02_rs(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
+cmd02_rs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	ipmi_add_typelen(tree, hf_vita_chassis_identifier, hf_vita_chassis_identifier_type, hf_vita_chassis_identifier_length, tvb, 0, TRUE);
+	ipmi_add_typelen(pinfo, tree, hf_vita_chassis_identifier, hf_vita_chassis_identifier_type, hf_vita_chassis_identifier_length, tvb, 0, TRUE);
 }
 
 /* FRU Control (request)

@@ -10,6 +10,7 @@
  */
 
 #include "config.h"
+#define WS_LOG_DOMAIN LOG_DOMAIN_EPAN
 
 #include <stdio.h>
 #include <string.h>
@@ -24,6 +25,7 @@
 #include "disabled_protos.h"
 #include <wsutil/file_util.h>
 #include <wsutil/report_message.h>
+#include <wsutil/wslog.h>
 
 #define ENABLED_PROTOCOLS_FILE_NAME     "enabled_protos"
 #define DISABLED_PROTOCOLS_FILE_NAME    "disabled_protos"
@@ -60,7 +62,15 @@ static GList *enabled_protos = NULL;
 static GList *global_disabled_heuristics = NULL;
 static GList *disabled_heuristics = NULL;
 
+static gboolean unsaved_changes = FALSE;
+
 #define INIT_BUF_SIZE   128
+
+gboolean
+enabled_protos_unsaved_changes(void)
+{
+  return unsaved_changes;
+}
 
 static void
 discard_existing_list (GList **flp)
@@ -179,7 +189,7 @@ save_protos_list(char **pref_path_return, int *errno_return, const char* filenam
   /* Write to "XXX.new", and rename if that succeeds.
      That means we don't trash the file if we fail to write it out
      completely. */
-  ff_path_new = g_strdup_printf("%s.new", ff_path);
+  ff_path_new = ws_strdup_printf("%s.new", ff_path);
 
   if ((ff = ws_fopen(ff_path_new, "w")) == NULL) {
     *pref_path_return = ff_path;
@@ -320,7 +330,7 @@ read_protos_list_file(const char *ff_path, FILE *ff, GList **flp)
       if (c != EOF && c != '\n' && c != '#') {
         /* Non-white-space after the protocol name; warn about it,
            in case we come up with a reason to use it. */
-        g_warning("'%s' line %d has extra stuff after the protocol name.",
+        ws_warning("'%s' line %d has extra stuff after the protocol name.",
                   ff_path, line);
       }
     }
@@ -335,7 +345,7 @@ read_protos_list_file(const char *ff_path, FILE *ff, GList **flp)
         goto error;     /* I/O error */
       else {
         /* EOF, not error; no newline seen before EOF */
-        g_warning("'%s' line %d doesn't have a newline.", ff_path,
+        ws_warning("'%s' line %d doesn't have a newline.", ff_path,
                   line);
       }
       break;    /* nothing more to read */
@@ -355,7 +365,7 @@ read_protos_list_file(const char *ff_path, FILE *ff, GList **flp)
     prot_name[prot_name_index] = '\0';
 
     /* Add the new protocol to the list of disabled protocols */
-    prot         = (protocol_def *) g_malloc(sizeof(protocol_def));
+    prot         = g_new(protocol_def, 1);
     prot->name   = g_strdup(prot_name);
     *flp = g_list_append(*flp, prot);
   }
@@ -466,21 +476,31 @@ read_protos_list(char **gpath_return, int *gopen_errno_return,
 /*
  * Disable a particular protocol by name
  */
-void
+gboolean
 proto_disable_proto_by_name(const char *name)
 {
-    protocol_t *protocol;
-    int proto_id;
+  protocol_t *protocol;
+  int proto_id;
 
-    proto_id = proto_get_id_by_filter_name(name);
-    if (proto_id >= 0 ) {
-        protocol = find_protocol_by_id(proto_id);
-        if (proto_is_protocol_enabled(protocol) == TRUE) {
-            if (proto_can_toggle_protocol(proto_id) == TRUE) {
-                proto_set_decoding(proto_id, FALSE);
-            }
-        }
+  proto_id = proto_get_id_by_filter_name(name);
+  if (proto_id >= 0 ) {
+    protocol = find_protocol_by_id(proto_id);
+    if (proto_is_protocol_enabled(protocol) == TRUE) {
+      if (proto_can_toggle_protocol(proto_id) == TRUE) {
+        unsaved_changes = TRUE;
+        proto_set_decoding(proto_id, FALSE);
+      }
     }
+    return TRUE;
+  }
+  else if (!strcmp(name, "ALL")) {
+    unsaved_changes = TRUE;
+    proto_disable_all();
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
 }
 
 static gboolean disable_proto_list_check(protocol_t  *protocol)
@@ -495,7 +515,7 @@ static gboolean disable_proto_list_check(protocol_t  *protocol)
  * Enabling dissectors (that are disabled by default)
  ************************************************************************/
 
-WS_DLL_PUBLIC void
+gboolean
 proto_enable_proto_by_name(const char *name)
 {
   protocol_t *protocol;
@@ -504,12 +524,21 @@ proto_enable_proto_by_name(const char *name)
   proto_id = proto_get_id_by_filter_name(name);
   if (proto_id >= 0 ) {
     protocol = find_protocol_by_id(proto_id);
-    if ((proto_is_protocol_enabled_by_default(protocol) == FALSE) &&
-        (proto_is_protocol_enabled(protocol) == FALSE)) {
+    if ((proto_is_protocol_enabled(protocol) == FALSE)) {
       if (proto_can_toggle_protocol(proto_id) == TRUE) {
+        unsaved_changes = TRUE;
         proto_set_decoding(proto_id, TRUE);
       }
     }
+    return TRUE;
+  }
+  else if (!strcmp(name, "ALL")) {
+    unsaved_changes = TRUE;
+    proto_reenable_all();
+    return TRUE;
+  }
+  else {
+    return FALSE;
   }
 }
 
@@ -641,7 +670,7 @@ read_heur_dissector_list_file(const char *ff_path, FILE *ff, GList **flp)
       if (c != EOF && c != '\n' && c != '#') {
         /* Non-white-space after the protocol name; warn about it,
            in case we come up with a reason to use it. */
-        g_warning("'%s' line %d has extra stuff after the protocol name.",
+        ws_warning("'%s' line %d has extra stuff after the protocol name.",
                   ff_path, line);
       }
     }
@@ -656,7 +685,7 @@ read_heur_dissector_list_file(const char *ff_path, FILE *ff, GList **flp)
         goto error;     /* I/O error */
       else {
         /* EOF, not error; no newline seen before EOF */
-        g_warning("'%s' line %d doesn't have a newline.", ff_path,
+        ws_warning("'%s' line %d doesn't have a newline.", ff_path,
                   line);
       }
       break;    /* nothing more to read */
@@ -671,7 +700,7 @@ read_heur_dissector_list_file(const char *ff_path, FILE *ff, GList **flp)
     heuristic_name[name_index] = '\0';
 
     /* Add the new protocol to the list of protocols */
-    heur         = (heur_protocol_def *) g_malloc(sizeof(heur_protocol_def));
+    heur         = g_new(heur_protocol_def, 1);
     heur->name   = g_strdup(heuristic_name);
     heur->enabled = enabled;
     *flp = g_list_append(*flp, heur);
@@ -807,7 +836,7 @@ save_disabled_heur_dissector_list(char **pref_path_return, int *errno_return)
   /* Write to "XXX.new", and rename if that succeeds.
      That means we don't trash the file if we fail to write it out
      completely. */
-  ff_path_new = g_strdup_printf("%s.new", ff_path);
+  ff_path_new = ws_strdup_printf("%s.new", ff_path);
 
   if ((ff = ws_fopen(ff_path_new, "w")) == NULL) {
     *pref_path_return = ff_path;
@@ -866,16 +895,29 @@ save_disabled_heur_dissector_list(char **pref_path_return, int *errno_return)
   g_free(ff_path);
 }
 
-gboolean
-proto_enable_heuristic_by_name(const char *name, gboolean enable)
+static gboolean
+proto_set_heuristic_by_name(const char *name, gboolean enable)
 {
   heur_dtbl_entry_t* heur = find_heur_dissector_by_unique_short_name(name);
   if (heur != NULL) {
+      unsaved_changes |= (heur->enabled != enable);
       heur->enabled = enable;
       return TRUE;
   } else {
       return FALSE;
   }
+}
+
+gboolean
+proto_enable_heuristic_by_name(const char *name)
+{
+  return proto_set_heuristic_by_name(name, TRUE);
+}
+
+gboolean
+proto_disable_heuristic_by_name(const char *name)
+{
+  return proto_set_heuristic_by_name(name, FALSE);
 }
 
 static void
@@ -998,6 +1040,7 @@ read_enabled_and_disabled_lists(void)
   set_protos_list(disabled_protos, global_disabled_protos, FALSE);
   set_protos_list(enabled_protos, global_enabled_protos, TRUE);
   set_disabled_heur_dissector_list();
+  unsaved_changes = FALSE;
 }
 
 /*
@@ -1010,6 +1053,7 @@ save_enabled_and_disabled_lists(void)
   char *pf_dir_path;
   char *pf_path;
   int pf_save_errno;
+  gboolean ok = TRUE;
 
   /* Create the directory that holds personal configuration files, if
      necessary.  */
@@ -1026,6 +1070,7 @@ save_enabled_and_disabled_lists(void)
     report_failure("Could not save to your disabled protocols file\n\"%s\": %s.",
                    pf_path, g_strerror(pf_save_errno));
     g_free(pf_path);
+    ok = FALSE;
   }
 
   save_protos_list(&pf_path, &pf_save_errno, ENABLED_PROTOCOLS_FILE_NAME,
@@ -1035,6 +1080,7 @@ save_enabled_and_disabled_lists(void)
     report_failure("Could not save to your enabled protocols file\n\"%s\": %s.",
                    pf_path, g_strerror(pf_save_errno));
     g_free(pf_path);
+    ok = FALSE;
   }
 
   save_disabled_heur_dissector_list(&pf_path, &pf_save_errno);
@@ -1042,7 +1088,11 @@ save_enabled_and_disabled_lists(void)
     report_failure("Could not save to your disabled heuristic protocol file\n\"%s\": %s.",
                    pf_path, g_strerror(pf_save_errno));
     g_free(pf_path);
+    ok = FALSE;
   }
+
+  if (ok)
+    unsaved_changes = FALSE;
 }
 
 void

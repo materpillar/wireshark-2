@@ -17,6 +17,8 @@
 void proto_register_iapp(void);
 void proto_reg_handoff_iapp(void);
 
+static dissector_handle_t iapp_handle;
+
 /* Initialize the protocol and registered fields */
 static int proto_iapp = -1;
 static int hf_iapp_version = -1;
@@ -188,7 +190,7 @@ add_authval_str(proto_tree *tree, int type, int len, tvbuff_t *tvb, int offset)
             break;
         case IAPP_AUTH_USERNAME:
         case IAPP_AUTH_PROVNAME:
-            proto_tree_add_item(tree, hf_iapp_auth_string, tvb, offset, 1, ENC_ASCII|ENC_NA);
+            proto_tree_add_item(tree, hf_iapp_auth_string, tvb, offset, 1, ENC_ASCII);
             break;
         case IAPP_AUTH_RXPKTS:
         case IAPP_AUTH_TXPKTS:
@@ -251,7 +253,7 @@ append_pduval_str(proto_tree *tree, int type, int len, tvbuff_t *tvb, int offset
     switch (type)
     {
         case IAPP_PDU_SSID:
-            proto_tree_add_item(tree, hf_iapp_pdu_ssid, tvb, offset, len, ENC_ASCII|ENC_NA);
+            proto_tree_add_item(tree, hf_iapp_pdu_ssid, tvb, offset, len, ENC_ASCII);
             break;
         case IAPP_PDU_BSSID:
         case IAPP_PDU_OLDBSSID:
@@ -454,6 +456,8 @@ proto_register_iapp(void)
     proto_register_subtree_array(ett, array_length(ett));
     expert_iapp = expert_register_protocol(proto_iapp);
     expert_register_field_array(expert_iapp, ei, array_length(ei));
+
+    iapp_handle = register_dissector("iapp", dissect_iapp, proto_iapp);
 }
 
 
@@ -464,9 +468,6 @@ proto_register_iapp(void)
 void
 proto_reg_handoff_iapp(void)
 {
-    dissector_handle_t iapp_handle;
-
-    iapp_handle = create_dissector_handle(dissect_iapp, proto_iapp);
     dissector_add_uint_with_preference("udp.port", UDP_PORT_IAPP, iapp_handle);
 }
 /*

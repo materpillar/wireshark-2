@@ -237,14 +237,14 @@ typedef enum
   CONFIGITEM_DST_MODE,                    /*   36 - Determines if repeating month/date, repeating month/day, or specific month/date (dstMode_e) */
   CONFIGITEM_DST_FORWARD_MONTH,           /*   37 - Month to skip forward on (1-12) (DSTMODE_REPEATINGDATE, DSTMODE_REPEATINGDOW, DSTMODE_ONETIMEDATE) */
   CONFIGITEM_DST_FORWARD_DOM,             /*   38 - Day of month to skip forward on (1-31) (DSTMODE_REPEATINGDATE, DSTMODE_ONETIMEDATE) */
-  CONFIGITEM_DST_FORWARD_OOD,             /*   39 - Occurence number of CONFIGITEM_DST_FORWARD_DOW to skip forward on (1-5)  (DSTMODE_REPEATINGDOW) */
+  CONFIGITEM_DST_FORWARD_OOD,             /*   39 - Occurrence number of CONFIGITEM_DST_FORWARD_DOW to skip forward on (1-5)  (DSTMODE_REPEATINGDOW) */
   CONFIGITEM_DST_FORWARD_DOW,             /*   40 - Day of week to skip forward on (1-7) (DSTMODE_REPEATINGDOW) */
   CONFIGITEM_DST_FORWARD_HOUR,            /*   41 - Hour of day of month to skip forward on (0-23) (DSTMODE_REPEATINGDATE, DSTMODE_REPEATINGDOW, DSTMODE_ONETIMEDATE) */
   CONFIGITEM_DST_FORWARD_MINUTE,          /*   42 - Hour of day of month to skip forward on (0-23) (DSTMODE_REPEATINGDATE, DSTMODE_REPEATINGDOW, DSTMODE_ONETIMEDATE) */
   CONFIGITEM_DST_FORWARD_ADJUST,          /*   43 - Number of minutes to move forward */
   CONFIGITEM_DST_BACK_MONTH,              /*   44 - Month to fall back on (1-12) (DSTMODE_REPEATINGDATE, DSTMODE_REPEATINGDAY, DSTMODE_ONETIMEDATE) */
   CONFIGITEM_DST_BACK_DOM,                /*   45 - Day of month to fall back on (1-31) (DSTMODE_REPEATINGDATE, DSTMODE_ONETIMEDATE) */
-  CONFIGITEM_DST_BACK_OOD,                /*   46 - Occurence number of CONFIGITEM_DST_BACK_DOW to fall back on (1-5)  (DSTMODE_REPEATINGDOW) */
+  CONFIGITEM_DST_BACK_OOD,                /*   46 - Occurrence number of CONFIGITEM_DST_BACK_DOW to fall back on (1-5)  (DSTMODE_REPEATINGDOW) */
   CONFIGITEM_DST_BACK_DOW,                /*   47 - Day of week to fall back on (1-7) (DSTMODE_REPEATINGDATE, DSTMODE_ONETIMEDATE) */
   CONFIGITEM_DST_BACK_HOUR,               /*   48 - Hour of day of month to fall back on (0-23) (DSTMODE_REPEATINGDATE, DSTMODE_REPEATINGDOW, DSTMODE_ONETIMEDATE) */
   CONFIGITEM_DST_BACK_MINUTE,             /*   49 - Hour of day of month to fall back on (0-23) (DSTMODE_REPEATINGDATE, DSTMODE_REPEATINGDOW, DSTMODE_ONETIMEDATE) */
@@ -3558,23 +3558,23 @@ dissect_serialnumber (tvbuff_t *tvb, guint32 start_offset, guint32 length _U_, p
   sn_item = proto_tree_add_item (tree, hf_index, tvb, start_offset, 16, ENC_ASCII|ENC_NA);
   sn_tree = proto_item_add_subtree (sn_item, ett_r3serialnumber);
 
-  s = tvb_get_string_enc (wmem_packet_scope(), tvb, start_offset +  0, 2, ENC_ASCII|ENC_NA);
+  s = tvb_get_string_enc (pinfo->pool, tvb, start_offset +  0, 2, ENC_ASCII|ENC_NA);
   proto_tree_add_string_format_value(sn_tree, hf_r3_sn_manufacturer, tvb, start_offset +  0, 2, s, "%s (%s)", s, str_to_str (s, r3_snmanufacturernames, "[Unknown]"));
-  s = tvb_get_string_enc (wmem_packet_scope(), tvb, start_offset +  2, 1, ENC_ASCII|ENC_NA);
+  s = tvb_get_string_enc (pinfo->pool, tvb, start_offset +  2, 1, ENC_ASCII|ENC_NA);
   proto_tree_add_string_format_value(sn_tree, hf_r3_sn_year, tvb, start_offset +  2, 1, s, "%s (%s)", s, str_to_str (s, r3_snyearnames, "[Unknown]"));
-  proto_tree_add_item(sn_tree, hf_r3_sn_week, tvb, start_offset +  3, 2, ENC_ASCII|ENC_NA);
-  s = tvb_get_string_enc (wmem_packet_scope(), tvb, start_offset +  5, 1, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(sn_tree, hf_r3_sn_week, tvb, start_offset +  3, 2, ENC_ASCII);
+  s = tvb_get_string_enc (pinfo->pool, tvb, start_offset +  5, 1, ENC_ASCII|ENC_NA);
   proto_tree_add_string_format_value(sn_tree, hf_r3_sn_model, tvb, start_offset +  5, 1, s, "%s (%s)", s, str_to_str (s, r3_snmodelnames, "[Unknown]"));
-  proto_tree_add_item(sn_tree, hf_r3_sn_sequence, tvb, start_offset +  6, 4, ENC_ASCII|ENC_NA);
-  s = tvb_get_string_enc (wmem_packet_scope(), tvb, start_offset + 10, 1, ENC_ASCII|ENC_NA);
+  proto_tree_add_item(sn_tree, hf_r3_sn_sequence, tvb, start_offset +  6, 4, ENC_ASCII);
+  s = tvb_get_string_enc (pinfo->pool, tvb, start_offset + 10, 1, ENC_ASCII|ENC_NA);
   proto_tree_add_string_format_value(sn_tree, hf_r3_sn_group, tvb, start_offset + 10, 1, s, "%s (%s)", s, str_to_str (s, r3_sngroupnames, "[Unknown]"));
-  s = tvb_get_string_enc (wmem_packet_scope(), tvb, start_offset + 11, 1, ENC_ASCII|ENC_NA);
+  s = tvb_get_string_enc (pinfo->pool, tvb, start_offset + 11, 1, ENC_ASCII|ENC_NA);
   proto_tree_add_string_format_value(sn_tree, hf_r3_sn_nid, tvb, start_offset + 11, 1, s, "%s (%s)", s, str_to_str (s, r3_snnidnames, "[Unknown]"));
-  s = tvb_get_string_enc (wmem_packet_scope(), tvb, start_offset + 12, 2, ENC_ASCII|ENC_NA);
+  s = tvb_get_string_enc (pinfo->pool, tvb, start_offset + 12, 2, ENC_ASCII|ENC_NA);
   proto_tree_add_string_format_value(sn_tree, hf_r3_sn_hid, tvb, start_offset + 12, 2, s, "%s (%s)", s, str_to_str (s, r3_snhidnames, "[Unknown]"));
-  s = tvb_get_string_enc (wmem_packet_scope(), tvb, start_offset + 14, 1, ENC_ASCII|ENC_NA);
+  s = tvb_get_string_enc (pinfo->pool, tvb, start_offset + 14, 1, ENC_ASCII|ENC_NA);
   proto_tree_add_string_format_value(sn_tree, hf_r3_sn_power_supply, tvb, start_offset + 14, 1, s, "%s (%s)", s, str_to_str (s, r3_snpowersupplynames, "[Unknown]"));
-  s = tvb_get_string_enc (wmem_packet_scope(), tvb, start_offset + 15, 1, ENC_ASCII|ENC_NA);
+  s = tvb_get_string_enc (pinfo->pool, tvb, start_offset + 15, 1, ENC_ASCII|ENC_NA);
   proto_tree_add_string_format_value(sn_tree, hf_r3_sn_mortise, tvb, start_offset + 15, 1, s, "%s (%s)", s, str_to_str (s, r3_snmortisenames, "[Unknown]"));
 }
 
@@ -3855,7 +3855,7 @@ dissect_r3_upstreamcommand_debugmsg (tvbuff_t *tvb, guint32 start_offset, guint3
 
   debugmsg_tree = proto_tree_add_subtree(tree, tvb, 0, -1, ett_r3debugmsg, NULL, "Debug message");
 
-  proto_tree_add_item (debugmsg_tree, hf_r3_debugmsg, tvb, 1, -1, ENC_ASCII|ENC_NA);
+  proto_tree_add_item (debugmsg_tree, hf_r3_debugmsg, tvb, 1, -1, ENC_ASCII);
 }
 
 static void
@@ -3994,7 +3994,7 @@ dissect_r3_upstreamcommand_queryconfig (tvbuff_t *tvb, guint32 start_offset, gui
         break;
 
       case CONFIGTYPE_STRING :
-        proto_tree_add_item (upstreamfield_tree, hf_r3_configitemdata_string, tvb, offset + 3, item_length - 3, ENC_ASCII|ENC_NA);
+        proto_tree_add_item (upstreamfield_tree, hf_r3_configitemdata_string, tvb, offset + 3, item_length - 3, ENC_ASCII);
         break;
 
       default :
@@ -4351,25 +4351,25 @@ dissect_r3_upstreammfgfield_cpuregisters (tvbuff_t *tvb, guint32 start_offset, g
 
   cr_tree = proto_tree_add_subtree(tree, tvb, start_offset, -1, ett_r3cpuregisters, NULL, "CPU Registers");
 
-  tmp_tree [ 0] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_intcon,  tvb,  0, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [ 1] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_intcon2, tvb,  1, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [ 2] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_intcon3, tvb,  2, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [ 3] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_pir1,    tvb,  3, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [ 4] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_pir2,    tvb,  4, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [ 5] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_pir3,    tvb,  5, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [ 6] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_pie1,    tvb,  6, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [ 7] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_pie2,    tvb,  7, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [ 8] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_pie3,    tvb,  8, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [ 9] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_ipr1,    tvb,  9, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [10] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_ipr2,    tvb, 10, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [11] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_ipr3,    tvb, 11, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [12] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_rcon,    tvb, 12, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [13] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_osccon,  tvb, 13, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [14] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_rcsta,   tvb, 14, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [15] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_txsta,   tvb, 15, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [16] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_rcsta2,  tvb, 16, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [17] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_txsta2,  tvb, 17, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
-  tmp_tree [18] = proto_item_add_subtree (proto_tree_add_item (cr_tree, hf_r3_cpuregisters_wdtcon,  tvb, 18, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 0] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_intcon,  tvb,  0, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 1] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_intcon2, tvb,  1, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 2] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_intcon3, tvb,  2, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 3] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_pir1,    tvb,  3, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 4] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_pir2,    tvb,  4, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 5] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_pir3,    tvb,  5, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 6] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_pie1,    tvb,  6, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 7] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_pie2,    tvb,  7, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 8] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_pie3,    tvb,  8, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [ 9] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_ipr1,    tvb,  9, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [10] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_ipr2,    tvb, 10, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [11] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_ipr3,    tvb, 11, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [12] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_rcon,    tvb, 12, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [13] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_osccon,  tvb, 13, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [14] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_rcsta,   tvb, 14, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [15] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_txsta,   tvb, 15, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [16] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_rcsta2,  tvb, 16, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [17] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_txsta2,  tvb, 17, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
+  tmp_tree [18] = proto_item_add_subtree (proto_tree_add_item(cr_tree, hf_r3_cpuregisters_wdtcon,  tvb, 18, 1, ENC_LITTLE_ENDIAN), ett_r3cpuregister);
 
   proto_tree_add_item (tmp_tree [ 0], hf_r3_cpuregisters_intcon_rbif,     tvb,  0, 1, ENC_LITTLE_ENDIAN);
   proto_tree_add_item (tmp_tree [ 0], hf_r3_cpuregisters_intcon_int0if,   tvb,  0, 1, ENC_LITTLE_ENDIAN);
@@ -5000,7 +5000,7 @@ dissect_r3_upstreammfgfield_magcard (tvbuff_t *tvb, guint32 start_offset, guint3
 {
   DISSECTOR_ASSERT(start_offset == 0);
 
-  proto_tree_add_item (tree, hf_r3_testmagcard, tvb, 0, -1, ENC_ASCII|ENC_NA);
+  proto_tree_add_item (tree, hf_r3_testmagcard, tvb, 0, -1, ENC_ASCII);
 }
 
 static void
@@ -5008,7 +5008,7 @@ dissect_r3_upstreammfgfield_proxcard (tvbuff_t *tvb, guint32 start_offset, guint
 {
   DISSECTOR_ASSERT(start_offset == 0);
 
-  proto_tree_add_item (tree, hf_r3_testproxcard, tvb, 0, -1, ENC_ASCII|ENC_NA);
+  proto_tree_add_item (tree, hf_r3_testproxcard, tvb, 0, -1, ENC_ASCII);
 }
 
 /*
@@ -5260,7 +5260,7 @@ dissect_r3_cmd_setconfig (tvbuff_t *tvb, guint32 start_offset, guint32 length _U
 
         case CONFIGTYPE_STRING :
           proto_tree_add_item (sc_tree, hf_r3_configitemdata_string, payload_tvb, offset + 2,
-                               item_length - 2, ENC_ASCII|ENC_NA);
+                               item_length - 2, ENC_ASCII);
           break;
 
         default :
@@ -6593,7 +6593,7 @@ dissect_r3_packet (tvbuff_t *tvb, packet_info *pinfo, proto_tree *r3_tree)
   if (tvb_strneql (tvb, 0, "~~~ds", 5) == 0)
   {
     if (r3_tree)
-      proto_tree_add_item (r3_tree, hf_r3_tildex3ds, tvb, 0, -1, ENC_ASCII|ENC_NA);
+      proto_tree_add_item (r3_tree, hf_r3_tildex3ds, tvb, 0, -1, ENC_ASCII);
 
     return 5;
   }
@@ -7618,37 +7618,37 @@ void proto_register_r3 (void)
       },
       { &hf_r3_definetimezone_daymap0,
         { "Sunday", "r3.definetimezone.daymap.sunday",
-          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x00000001,
+          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x01,
           NULL, HFILL }
       },
       { &hf_r3_definetimezone_daymap1,
         { "Monday", "r3.definetimezone.daymap.monday",
-          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x00000002,
+          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x02,
           NULL, HFILL }
       },
       { &hf_r3_definetimezone_daymap2,
         { "Tuesday", "r3.definetimezone.daymap.tuesday",
-          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x00000004,
+          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x04,
           NULL, HFILL }
       },
       { &hf_r3_definetimezone_daymap3,
         { "Wednesday", "r3.definetimezone.daymap.wednesday",
-          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x00000008,
+          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x08,
           NULL, HFILL }
       },
       { &hf_r3_definetimezone_daymap4,
         { "Thursday", "r3.definetimezone.daymap.thursday",
-          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x00000010,
+          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x10,
           NULL, HFILL }
       },
       { &hf_r3_definetimezone_daymap5,
         { "Friday", "r3.definetimezone.daymap.friday",
-          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x00000020,
+          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x20,
           NULL, HFILL }
       },
       { &hf_r3_definetimezone_daymap6,
         { "Saturday", "r3.definetimezone.daymap.saturday",
-          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x00000040,
+          FT_BOOLEAN, 8, TFS (&tfs_enabled_disabled), 0x40,
           NULL, HFILL }
       },
       { &hf_r3_definetimezone_exceptiongroup,
@@ -7843,82 +7843,82 @@ void proto_register_r3 (void)
       },
       { &hf_r3_nvramclearoptions0,
         { "NVRAMCLEAROPTIONS_CFGINSTALLER", "r3.nvramclear.cfginstaller",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000001,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0001,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions1,
         { "NVRAMCLEAROPTIONS_CFGADMIN", "r3.nvramclear.cfgadmin",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000002,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0002,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions2,
         { "NVRAMCLEAROPTIONS_EXCEPTIONS", "r3.nvramclear.exceptions",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000004,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0004,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions3,
         { "NVRAMCLEAROPTIONS_EXCEPTIONGROUPS", "r3.nvramclear.exceptiongroups",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000008,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0008,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions4,
         { "NVRAMCLEAROPTIONS_CALENDARS", "r3.nvramclear.calendars",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000010,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0010,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions5,
         { "NVRAMCLEAROPTIONS_TIMEZONES", "r3.nvramclear.timezones",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000020,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0020,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions6,
         { "NVRAMCLEAROPTIONS_FILTERS", "r3.nvramclear.filters",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000040,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0040,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions7,
         { "NVRAMCLEAROPTIONS_EVENTLOG", "r3.nvramclear.eventlog",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000080,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0080,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions8,
         { "NVRAMCLEAROPTIONS_USERDATA", "r3.nvramclear.userdata",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000100,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0100,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions9,
         { "NVRAMCLEAROPTIONS_DECLINEDLOG", "r3.nvramclear.declinedlog",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000200,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0200,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions10,
         { "NVRAMCLEAROPTIONS_ALARMLOG", "r3.nvramclear.alarmlog",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000400,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0400,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions11,
         { "NVRAMCLEAROPTIONS_LRUCACHE", "r3.nvramclear.lrucache",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00000800,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x0800,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions12,
         { "NVRAMCLEAROPTIONS_DBHASH", "r3.nvramclear.dbhash",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00001000,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x1000,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions13,
         { "NVRAMCLEAROPTIONS_CFGSYSTEM", "r3.nvramclear.cfgsystem",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00002000,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x2000,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions14,
         { "NVRAMCLEAROPTIONS_UNUSED", "r3.nvramclear.unused",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00004000,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x4000,
           NULL, HFILL }
       },
       { &hf_r3_nvramclearoptions15,
         { "NVRAMCLEAROPTIONS_USEBACKUP", "r3.nvramclear.usebackup",
-          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x00008000,
+          FT_BOOLEAN, 16, TFS (&tfs_enabled_disabled), 0x8000,
           NULL, HFILL }
       },
 
@@ -8171,22 +8171,22 @@ void proto_register_r3 (void)
 
       { &hf_r3_mortisepins_s1,
         { "Mortise Pin S1", "r3.mortisepins.s1",
-          FT_BOOLEAN, 8, TFS (&tfs_high_low), 0x00000001,
+          FT_BOOLEAN, 8, TFS (&tfs_high_low), 0x01,
           NULL, HFILL }
       },
       { &hf_r3_mortisepins_s2,
         { "Mortise Pin S2", "r3.mortisepins.s2",
-          FT_BOOLEAN, 8, TFS (&tfs_high_low), 0x00000002,
+          FT_BOOLEAN, 8, TFS (&tfs_high_low), 0x02,
           NULL, HFILL }
       },
       { &hf_r3_mortisepins_s3,
         { "Mortise Pin S3", "r3.mortisepins.s3",
-          FT_BOOLEAN, 8, TFS (&tfs_high_low), 0x00000004,
+          FT_BOOLEAN, 8, TFS (&tfs_high_low), 0x04,
           NULL, HFILL }
       },
       { &hf_r3_mortisepins_s4,
         { "Mortise Pin S4", "r3.mortisepins.s4",
-          FT_BOOLEAN, 8, TFS (&tfs_high_low), 0x00000008,
+          FT_BOOLEAN, 8, TFS (&tfs_high_low), 0x08,
           NULL, HFILL }
       },
 
@@ -8285,7 +8285,7 @@ void proto_register_r3 (void)
 
       { &hf_r3_firmwaredownload_length,
         { "Length", "r3.firmwaredownload.length",
-          FT_UINT8, BASE_HEX_DEC, NULL, 0x0,
+          FT_UINT16, BASE_HEX_DEC, NULL, 0x0,
           NULL, HFILL }
       },
       { &hf_r3_firmwaredownload_record,
@@ -8374,112 +8374,112 @@ void proto_register_r3 (void)
 
       { &hf_r3_lockstate_passage,
         { "Passage", "r3.lockstate.passage",
-          FT_BOOLEAN, 24, NULL, 0x00000001,
+          FT_BOOLEAN, 24, NULL, 0x000001,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_panic,
         { "Panic", "r3.lockstate.panic",
-          FT_BOOLEAN, 24, NULL, 0x00000002,
+          FT_BOOLEAN, 24, NULL, 0x000002,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_lockout,
         { "Lockout", "r3.lockstate.lockout",
-          FT_BOOLEAN, 24, NULL, 0x00000004,
+          FT_BOOLEAN, 24, NULL, 0x000004,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_relock,
         { "Relock", "r3.lockstate.relock",
-          FT_BOOLEAN, 24, NULL, 0x00000008,
+          FT_BOOLEAN, 24, NULL, 0x000008,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_autoopen,
         { "Auto Open", "r3.lockstate.autoopen",
-          FT_BOOLEAN, 24, NULL, 0x00000010,
+          FT_BOOLEAN, 24, NULL, 0x000010,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_nextauto,
         { "Next Auto", "r3.lockstate.nextauto",
-          FT_BOOLEAN, 24, NULL, 0x00000020,
+          FT_BOOLEAN, 24, NULL, 0x000020,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_lockstate,
         { "Lock State", "r3.lockstate.lockstate",
-          FT_BOOLEAN, 24, NULL, 0x00000040,
+          FT_BOOLEAN, 24, NULL, 0x000040,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_wantstate,
         { "Want State", "r3.lockstate.wantstate",
-          FT_BOOLEAN, 24, NULL, 0x00000080,
+          FT_BOOLEAN, 24, NULL, 0x000080,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_remote,
         { "Remote", "r3.lockstate.remote",
-          FT_BOOLEAN, 24, NULL, 0x00000100,
+          FT_BOOLEAN, 24, NULL, 0x000100,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_update,
         { "Update", "r3.lockstate.update",
-          FT_BOOLEAN, 24, NULL, 0x00000200,
+          FT_BOOLEAN, 24, NULL, 0x000200,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_exceptionspresent,
         { "Exceptions Present", "r3.lockstate.exceptionspresent",
-          FT_BOOLEAN, 24, NULL, 0x00000400,
+          FT_BOOLEAN, 24, NULL, 0x000400,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_exceptionsactive,
         { "Exceptions Active", "r3.lockstate.exceptionsactive",
-          FT_BOOLEAN, 24, NULL, 0x00000800,
+          FT_BOOLEAN, 24, NULL, 0x000800,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_timezonespresent,
         { "Timezones Presents", "r3.lockstate.timezonespresent",
-          FT_BOOLEAN, 24, NULL, 0x00001000,
+          FT_BOOLEAN, 24, NULL, 0x001000,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_timezonesactive,
         { "Timezones Active", "r3.lockstate.timezonesactive",
-          FT_BOOLEAN, 24, NULL, 0x00002000,
+          FT_BOOLEAN, 24, NULL, 0x002000,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_autounlockspresent,
         { "Auto Unlocks Present", "r3.lockstate.autounlockspresent",
-          FT_BOOLEAN, 24, NULL, 0x00004000,
+          FT_BOOLEAN, 24, NULL, 0x004000,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_autounlocksactive,
         { "Auto Unlocks Active", "r3.lockstate.autounlocksactive",
-          FT_BOOLEAN, 24, NULL, 0x00008000,
+          FT_BOOLEAN, 24, NULL, 0x008000,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_uapmspresent,
         { "UAPMs Present", "r3.lockstate.uapmspresent",
-          FT_BOOLEAN, 24, NULL, 0x00010000,
+          FT_BOOLEAN, 24, NULL, 0x010000,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_uapmsactive,
         { "UAPMs Active", "r3.lockstate.uapmsactive",
-          FT_BOOLEAN, 24, NULL, 0x00020000,
+          FT_BOOLEAN, 24, NULL, 0x020000,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_uapmrelockspresent,
         { "UAPM Relocks Present", "r3.lockstate.uapmrelockspresent",
-          FT_BOOLEAN, 24, NULL, 0x00040000,
+          FT_BOOLEAN, 24, NULL, 0x040000,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_uapmreslocksactive,
         { "UAPM Relocks Active", "r3.lockstate.uapmreslocksactive",
-          FT_BOOLEAN, 24, NULL, 0x00080000,
+          FT_BOOLEAN, 24, NULL, 0x080000,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_nvramprotect,
         { "NVRAM Protect", "r3.lockstate.nvramprotect",
-          FT_BOOLEAN, 24, NULL, 0x00100000,
+          FT_BOOLEAN, 24, NULL, 0x100000,
           NULL, HFILL }
       },
       { &hf_r3_lockstate_nvramchecksum,
         { "MVRAM Checksum", "r3.lockstate.nvramchecksum",
-          FT_BOOLEAN, 24, NULL, 0x00200000,
+          FT_BOOLEAN, 24, NULL, 0x200000,
           NULL, HFILL }
       },
 

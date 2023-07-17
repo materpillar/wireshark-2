@@ -26,6 +26,9 @@
 void proto_register_netbios(void);
 void proto_reg_handoff_netbios(void);
 
+static dissector_handle_t netbios_handle;
+static capture_dissector_handle_t netbios_cap_handle;
+
 /* Netbios command numbers */
 #define NB_ADD_GROUP		0x00
 #define NB_ADD_NAME		0x01
@@ -237,10 +240,6 @@ static const value_string name_types[] = {
 	{ 0, NULL }
 };
 
-static const true_false_string flags_allowed = {
-	"Allowed",
-	"Not allowed"
-};
 
 static const true_false_string netb_version_str = {
 	"2.00 or higher",
@@ -1336,7 +1335,7 @@ proto_register_netbios(void)
 
 		{ &hf_netb_flags_ack_with_data,
 		  { "Acknowledge with data", "netbios.flags.ack_with_data", FT_BOOLEAN, 8,
-		    TFS( &flags_allowed), 0x04, NULL, HFILL }},
+		    TFS( &tfs_allowed_not_allowed), 0x04, NULL, HFILL }},
 
 		{ &hf_netb_flags_ack_expected,
 		  { "Acknowledge expected", "netbios.flags.ack_expected", FT_BOOLEAN,  8,
@@ -1442,6 +1441,8 @@ proto_register_netbios(void)
 	expert_netbios = expert_register_protocol(proto_netbios);
 	expert_register_field_array(expert_netbios, ei, array_length(ei));
 
+	netbios_handle = register_dissector("netbios", dissect_netbios, proto_netbios);
+	netbios_cap_handle = register_capture_dissector("netbios", capture_netbios, proto_netbios);
 
 	netbios_heur_subdissector_list = register_heur_dissector_list("netbios", proto_netbios);
 
@@ -1458,12 +1459,7 @@ proto_register_netbios(void)
 void
 proto_reg_handoff_netbios(void)
 {
-	dissector_handle_t netbios_handle;
-	capture_dissector_handle_t netbios_cap_handle;
-
-	netbios_handle = create_dissector_handle(dissect_netbios, proto_netbios);
 	dissector_add_uint("llc.dsap", SAP_NETBIOS, netbios_handle);
-	netbios_cap_handle = create_capture_dissector_handle(capture_netbios, proto_netbios);
 	capture_dissector_add_uint("llc.dsap", SAP_NETBIOS, netbios_cap_handle);
 }
 

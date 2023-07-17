@@ -11,9 +11,9 @@
 include( FindWSWinLibs )
 FindWSWinLibs( "snappy-.*" "SNAPPY_HINTS" )
 
-if( NOT WIN32)
-  find_package(PkgConfig)
-  pkg_search_module(SNAPPY libsnappy)
+if( NOT USE_REPOSITORY)
+  find_package(PkgConfig QUIET)
+  pkg_search_module(SNAPPY QUIET libsnappy)
 endif()
 
 find_path(SNAPPY_INCLUDE_DIR
@@ -42,7 +42,7 @@ if( SNAPPY_FOUND )
       CACHE PATH "Path to Snappy DLL"
     )
     file( GLOB _snappy_dll RELATIVE "${SNAPPY_DLL_DIR}"
-      "${SNAPPY_DLL_DIR}/libsnappy-*.dll"
+      "${SNAPPY_DLL_DIR}/snappy*.dll"
     )
     set ( SNAPPY_DLL ${_snappy_dll}
       # We're storing filenames only. Should we use STRING instead?

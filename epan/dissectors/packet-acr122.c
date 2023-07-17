@@ -180,19 +180,19 @@ void proto_reg_handoff_acr122(void);
 
 static void
 duration_base(gchar *buf, guint32 value) {
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%03u s", value * 100 / 1000, value * 100 % 1000);
+        snprintf(buf, ITEM_LABEL_LENGTH, "%u.%03u s", value * 100 / 1000, value * 100 % 1000);
 }
 
 static void
 timeout_base(gchar *buf, guint32 value) {
         if (value == 0x00)
-            g_snprintf(buf, ITEM_LABEL_LENGTH, "No timeout check");
+            snprintf(buf, ITEM_LABEL_LENGTH, "No timeout check");
         else if (value == 0xFF)
-            g_snprintf(buf, ITEM_LABEL_LENGTH, "Wait until the contactless chip responds");
+            snprintf(buf, ITEM_LABEL_LENGTH, "Wait until the contactless chip responds");
         else if (value < 12)
-            g_snprintf(buf, ITEM_LABEL_LENGTH, "%u [s]", value * 5);
+            snprintf(buf, ITEM_LABEL_LENGTH, "%u [s]", value * 5);
         else
-            g_snprintf(buf, ITEM_LABEL_LENGTH, "%u:%02u [mm:ss]", value * 5 / 60, value * 5 % 60);
+            snprintf(buf, ITEM_LABEL_LENGTH, "%u:%02u [mm:ss]", value * 5 / 60, value * 5 % 60);
 }
 
 
@@ -558,7 +558,10 @@ dissect_acr122(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
         if (use_status_word) {
             value = tvb_get_ntohs(tvb, offset);
-            col_append_fstr(pinfo->cinfo, COL_INFO, " - %s%s",  (((value & 0xFF00) != 0x9000) && (value & 0xFF00) != 0x6100) ? "Error: " : "", rval_to_str(value, status_word_rvals, "Unknown error"));
+            col_append_fstr(pinfo->cinfo, COL_INFO, " - %s%s",
+                            (((value & 0xFF00) != 0x9000) && (value & 0xFF00) != 0x6100) ?
+                                    "Error: " : "",
+                            rval_to_str_const(value, status_word_rvals, "Unknown error"));
 
             if ((value & 0xFF00) == 0x6100)
                 col_append_fstr(pinfo->cinfo, COL_INFO, " - Length %u", value & 0x00FF);

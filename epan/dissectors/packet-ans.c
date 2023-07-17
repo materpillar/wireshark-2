@@ -38,6 +38,8 @@
 void proto_register_ans(void);
 void proto_reg_handoff_ans(void);
 
+static dissector_handle_t ans_handle;
+
 /* Initialize the protocol and registered fields */
 static int proto_ans        = -1;
 
@@ -65,7 +67,7 @@ dissect_ans(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 	sender_id = tvb_get_ntohs(tvb, 8);
 
 	col_add_fstr(pinfo->cinfo, COL_INFO, "Sequence: %u, Sender ID %u, Team ID %s",
-		seq_num, sender_id, tvb_ether_to_str(tvb, 10));
+		seq_num, sender_id, tvb_ether_to_str(pinfo->pool, tvb, 10));
 
 	ti = proto_tree_add_item(tree, proto_ans, tvb, 0, -1, ENC_NA);
 	ans_tree = proto_item_add_subtree(ti, ett_ans);
@@ -118,15 +120,14 @@ proto_register_ans(void)
 	proto_ans = proto_register_protocol("Intel ANS probe", "ANS", "ans");
 	proto_register_field_array(proto_ans, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
+
+	ans_handle = register_dissector("ans", dissect_ans, proto_ans);
 }
 
 
 void
 proto_reg_handoff_ans(void)
 {
-	dissector_handle_t ans_handle;
-
-	ans_handle = create_dissector_handle(dissect_ans, proto_ans);
 	dissector_add_uint("ethertype", ETHERTYPE_INTEL_ANS, ans_handle);
 }
 

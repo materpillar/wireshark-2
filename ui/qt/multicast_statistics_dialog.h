@@ -1,4 +1,4 @@
-/* multicast_statistics_dialog.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -23,6 +23,9 @@ public:
     MulticastStatisticsDialog(QWidget &parent, CaptureFile &cf, const char *filter = NULL);
     ~MulticastStatisticsDialog();
 
+protected:
+    void captureFileClosing();
+
 private:
     struct _mcaststream_tapinfo *tapinfo_;
     SyntaxLineEdit *burst_measurement_interval_le_;
@@ -36,6 +39,8 @@ private:
     static void tapReset(mcaststream_tapinfo_t *tapinfo);
     static void tapDraw(mcaststream_tapinfo_t *tapinfo);
 
+    void rescan();
+
     virtual QList<QVariant> treeItemData(QTreeWidgetItem *ti) const;
     virtual const QString filterExpression();
 
@@ -43,20 +48,6 @@ private slots:
     void updateWidgets();
     void updateMulticastParameters();
     virtual void fillTree();
-    void captureEvent(CaptureEvent e);
 };
 
 #endif // MULTICASTSTATISTICSDIALOG_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

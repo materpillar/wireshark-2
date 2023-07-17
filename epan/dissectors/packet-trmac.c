@@ -199,7 +199,7 @@ sv_text(tvbuff_t *tvb, int svoff, packet_info *pinfo, proto_tree *tree)
 			}
 			proto_tree_add_item(sv_tree, hf_trmac_naun, tvb, svoff+2, sv_length-2, ENC_NA);
 			proto_item_append_text(sv_item, ": %s",
-					tvb_ether_to_str(tvb, svoff+2));
+					tvb_ether_to_str(pinfo->pool, tvb, svoff+2));
 			break;
 
 		case 0x03: /* Local Ring Number */
@@ -280,7 +280,7 @@ sv_text(tvbuff_t *tvb, int svoff, packet_info *pinfo, proto_tree *tree)
 			proto_tree_add_item(sv_tree, hf_trmac_sa_of_last_amp_or_smp_frame, tvb, svoff+2, sv_length-2, ENC_NA);
 			proto_item_append_text(sv_item,
 				": %s",
-				tvb_ether_to_str(tvb, svoff+2));
+				tvb_ether_to_str(pinfo->pool, tvb, svoff+2));
 			break;
 
 		case 0x0B: /* Physical Drop Number */
@@ -359,7 +359,7 @@ sv_text(tvbuff_t *tvb, int svoff, packet_info *pinfo, proto_tree *tree)
 			proto_tree_add_item(sv_tree, hf_trmac_station_identifier, tvb, svoff+2, sv_length-2, ENC_NA);
 			proto_item_append_text(sv_item,
 				": %s",
-				tvb_ether_to_str(tvb, svoff+2));
+				tvb_ether_to_str(pinfo->pool, tvb, svoff+2));
 			break;
 
 		case 0x29: /* Ring Station Status */
@@ -391,7 +391,7 @@ sv_text(tvbuff_t *tvb, int svoff, packet_info *pinfo, proto_tree *tree)
 				proto_tree_add_item(sv_tree, hf_trmac_group_address_ether, tvb, svoff+2, sv_length-2, ENC_NA);
 				proto_item_append_text(sv_item,
 					": %s",
-					tvb_ether_to_str(tvb, svoff+2));
+					tvb_ether_to_str(pinfo->pool, tvb, svoff+2));
 			}
 			break;
 
@@ -513,7 +513,7 @@ proto_register_trmac(void)
 			NULL, HFILL }},
 
 		{ &hf_trmac_length,
-		{ "Total Length",			"trmac.length", FT_UINT8, BASE_DEC|BASE_UNIT_STRING, &units_byte_bytes, 0x0,
+		{ "Total Length",			"trmac.length", FT_UINT16, BASE_DEC|BASE_UNIT_STRING, &units_byte_bytes, 0x0,
 			NULL, HFILL }},
 
 		{ &hf_trmac_srcclass,

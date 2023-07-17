@@ -28,6 +28,8 @@
 void proto_register_ntp(void);
 void proto_reg_handoff_ntp(void);
 
+static dissector_handle_t ntp_handle;
+
 /*
  * Dissecting NTP packets version 3 and 4 (RFC5905, RFC2030, RFC1769, RFC1361,
  * RFC1305).
@@ -173,7 +175,35 @@ static const value_string info_mode_types[] = {
 	{ 0,		NULL}
 };
 
-/* According to rfc, primary (stratum-0 and stratum-1) servers should set
+/* According to rfc, unspecified or invalid (stratum-0) servers should
+ * set their Reference ID (4bytes field) according to following table:
+ * https://www.iana.org/assignments/ntp-parameters/ntp-parameters.xhtml#ntp-parameters-2
+ */
+static const struct {
+	const char *id;
+	const char *data;
+} kod_messages[] = {
+	/* IANA / RFC 5905 */
+	{ "ACST",	"The association belongs to a unicast server" },
+	{ "AUTH",	"Server authentication failed" },
+	{ "AUTO",	"Autokey sequence failed" },
+	{ "BCST",	"The association belongs to a broadcast server" },
+	{ "CRYP",	"Cryptographic authentication or identification failed" },
+	{ "DENY",	"Access denied by remote server" },
+	{ "DROP",	"Lost peer in symmetric mode" },
+	{ "RSTR",	"Access denied due to local policy" },
+	{ "INIT",	"The association has not yet synchronized for the first time" },
+	{ "MCST",	"The association belongs to a dynamically discovered server" },
+	{ "NKEY",	"No key found. Either the key was never installed or is not trusted" },
+	{ "NTSN",	"Network Time Security (NTS) negative-acknowledgment (NAK)" },
+	{ "RATE",	"Rate exceeded. The server has temporarily denied access because the client exceeded the rate threshold" },
+	{ "RMOT",	"Alteration of association from a remote host running ntpdc." },
+	{ "STEP",	"A step change in system time has occurred, but the association has not yet resynchronized" },
+	{ "\0\0\0\0",	"NULL" },
+	{ NULL,		NULL}
+};
+
+/* According to rfc 4330, primary (stratum-1) servers should set
  * their Reference ID (4bytes field) according to following table:
  */
 static const struct {
@@ -213,16 +243,11 @@ static const struct {
 	{ "VLF\0",	"VLF radio (OMEGA,, etc.)" },
 	{ "1PPS",	"External 1 PPS input" },
 	{ "FREE",	"(Internal clock)" },
-	{ "INIT",	"(Initialization)" },
+	// { "INIT",	"(Initialization)" },
 	{ "\0\0\0\0",	"NULL" },
 	{ NULL,		NULL}
 };
 
-static const value_string ext_r_types[] = {
-	{ 0,		"Request" },
-	{ 1,		"Response" },
-	{ 0,		NULL}
-};
 
 #define NTPCTRL_R_MASK 0x80
 
@@ -324,7 +349,7 @@ static const value_string ctrl_peer_status_selection_types[] = {
 	{ 1,		"passed sanity checks (tests 1 through 8 in Section 3.4.3)" },
 	{ 2,		"passed correctness checks (intersection algorithm in Section 4.2.1)" },
 	{ 3,		"passed candidate checks (if limit check implemented)" },
-	{ 4,		"passed outlyer checks (clustering algorithm in Section 4.2.2)" },
+	{ 4,		"passed outlier checks (clustering algorithm in Section 4.2.2)" },
 	{ 5,		"current synchronization source; max distance exceeded (if limit check implemented)" },
 	{ 6,		"current synchronization source; max distance okay" },
 	{ 7,		"reserved" },
@@ -393,8 +418,6 @@ static const value_string err_values_types[] = {
 };
 
 #define NTPPRIV_R_MASK 0x80
-
-#define priv_r_types ext_r_types
 
 #define NTPPRIV_MORE_MASK 0x40
 
@@ -533,13 +556,13 @@ static value_string_ext priv_rc_types_ext = VALUE_STRING_EXT_INIT(priv_rc_types)
 #define PRIV_SYS_FLAG_AUTH       0x40
 #define PRIV_SYS_FLAG_CAL        0x80
 
-#define PRIV_RESET_FLAG_ALLPEERS 0x01
-#define PRIV_RESET_FLAG_IO       0x02
-#define PRIV_RESET_FLAG_SYS      0x04
-#define PRIV_RESET_FLAG_MEM      0x08
-#define PRIV_RESET_FLAG_TIMER    0x10
-#define PRIV_RESET_FLAG_AUTH     0x20
-#define PRIV_RESET_FLAG_CTL      0x40
+#define PRIV_RESET_FLAG_ALLPEERS 0x00000001
+#define PRIV_RESET_FLAG_IO       0x00000002
+#define PRIV_RESET_FLAG_SYS      0x00000004
+#define PRIV_RESET_FLAG_MEM      0x00000008
+#define PRIV_RESET_FLAG_TIMER    0x00000010
+#define PRIV_RESET_FLAG_AUTH     0x00000020
+#define PRIV_RESET_FLAG_CTL      0x00000040
 
 static const range_string stratum_rvals[] = {
 	{ 0,	0, "unspecified or invalid" },
@@ -1029,7 +1052,7 @@ static tvbparse_wanted_t *want_ignore;
  */
 #define NTP_BASETIME EPOCH_DELTA_1900_01_01_00_00_00_UTC
 #define NTP_FLOAT_DENOM 4294967296.0
-#define NTP_TS_SIZE 100
+#define NTP_TS_SIZE 110
 
 /* tvb_ntp_fmt_ts_sec - converts an NTP timestamps second part (32bits) to an human readable string.
 * TVB and an offset (IN).
@@ -1060,7 +1083,7 @@ tvb_ntp_fmt_ts_sec(tvbuff_t *tvb, gint offset)
 	}
 
 	buff = (char *)wmem_alloc(wmem_packet_scope(), NTP_TS_SIZE);
-	g_snprintf(buff, NTP_TS_SIZE,
+	snprintf(buff, NTP_TS_SIZE,
 		"%s %2d, %d %02d:%02d:%02d UTC",
 		mon_names[bd->tm_mon],
 		bd->tm_mday,
@@ -1137,7 +1160,7 @@ static void
 dissect_ntp_std(tvbuff_t *tvb, packet_info *pinfo, proto_tree *ntp_tree, ntp_conv_info_t *ntp_conv)
 {
 	guint8 stratum;
-	guint8 ppoll;
+	gint8 ppoll;
 	gint8 precision;
 	guint32 rootdelay;
 	double rootdelay_double;
@@ -1211,21 +1234,17 @@ dissect_ntp_std(tvbuff_t *tvb, packet_info *pinfo, proto_tree *ntp_tree, ntp_con
 	 * between successive messages, in seconds to the nearest
 	 * power of two.
 	 */
-	ppoll = tvb_get_guint8(tvb, 2);
-	if ((ppoll >= 4) && (ppoll <= 17)) {
-		proto_tree_add_uint_format_value(ntp_tree, hf_ntp_ppoll, tvb, 2, 1,
-			ppoll, "%u (%u seconds)", ppoll, 1 << ppoll);
-	} else {
-		proto_tree_add_uint_format_value(ntp_tree, hf_ntp_ppoll, tvb, 2, 1,
-			ppoll, "invalid (%u)", ppoll);
-	}
+	ppoll = tvb_get_gint8(tvb, 2);
+	proto_tree_add_int_format_value(ntp_tree, hf_ntp_ppoll, tvb, 2, 1,
+		ppoll, ppoll >= 0 ? "%d (%.0f seconds)" : "%d (%5.3f seconds)",
+		ppoll, pow(2, ppoll));
 
 	/* Precision, 1 byte field indicating the precision of the
 	 * local clock, in seconds to the nearest power of two.
 	 */
-	precision = tvb_get_guint8(tvb, 3);
-	proto_tree_add_uint_format_value(ntp_tree, hf_ntp_precision, tvb, 3, 1,
-		(guint8)precision, "%8.6f seconds", pow(2, precision));
+	precision = tvb_get_gint8(tvb, 3);
+	proto_tree_add_int_format_value(ntp_tree, hf_ntp_precision, tvb, 3, 1,
+		precision, "%d (%11.9f seconds)", precision, pow(2, precision));
 
 	/* Root Delay is a 32-bit signed fixed-point number indicating
 	 * the total roundtrip delay to the primary reference source,
@@ -1253,12 +1272,22 @@ dissect_ntp_std(tvbuff_t *tvb, packet_info *pinfo, proto_tree *ntp_tree, ntp_con
 	 * higher level server. My decision was to resolve this address.
 	 */
 	buff = (gchar *)wmem_alloc(wmem_packet_scope(), NTP_TS_SIZE);
-	if (stratum <= 1) {
-		g_snprintf (buff, NTP_TS_SIZE, "Unidentified reference source '%.4s'",
+	if (stratum == 0) {
+		snprintf (buff, NTP_TS_SIZE, "Unidentified Kiss-o\'-Death message '%s'",
+			tvb_get_string_enc(wmem_packet_scope(), tvb, 12, 4, ENC_ASCII));
+		for (i = 0; kod_messages[i].id; i++) {
+			if (tvb_memeql(tvb, 12, kod_messages[i].id, 4) == 0) {
+				snprintf(buff, NTP_TS_SIZE, "%s",
+					kod_messages[i].data);
+				break;
+			}
+		}
+	} else if (stratum == 1) {
+		snprintf (buff, NTP_TS_SIZE, "Unidentified reference source '%s'",
 			tvb_get_string_enc(wmem_packet_scope(), tvb, 12, 4, ENC_ASCII));
 		for (i = 0; primary_sources[i].id; i++) {
-			if (tvb_memeql(tvb, 12, primary_sources[i].id, 4) == 0) {
-				g_snprintf(buff, NTP_TS_SIZE, "%s",
+			if (tvb_memeql(tvb, 12, (const guint8*)primary_sources[i].id, 4) == 0) {
+				snprintf(buff, NTP_TS_SIZE, "%s",
 					primary_sources[i].data);
 				break;
 			}
@@ -1266,7 +1295,7 @@ dissect_ntp_std(tvbuff_t *tvb, packet_info *pinfo, proto_tree *ntp_tree, ntp_con
 	} else {
 		int buffpos;
 		refid_addr = tvb_get_ipv4(tvb, 12);
-		buffpos = g_snprintf(buff, NTP_TS_SIZE, "%s", get_hostname (refid_addr));
+		buffpos = snprintf(buff, NTP_TS_SIZE, "%s", get_hostname (refid_addr));
 		if (buffpos >= NTP_TS_SIZE) {
 			buff[NTP_TS_SIZE-4]='.';
 			buff[NTP_TS_SIZE-3]='.';
@@ -1551,29 +1580,29 @@ dissect_ntp_ctrl(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *ntp_tree, nt
 		case NTPCTRL_OP_WRITEVAR:
 		case NTPCTRL_OP_READCLOCK:
 		case NTPCTRL_OP_WRITECLOCK:
-			tt = tvbparse_init(tvb, data_offset, datalen, NULL, want_ignore);
+			tt = tvbparse_init(pinfo->pool, tvb, data_offset, datalen, NULL, want_ignore);
 			while( (element = tvbparse_get(tt, want)) != NULL ) {
 				tvbparse_tree_add_elem(data_tree, element);
 			}
 			break;
 		case NTPCTRL_OP_ASYNCMSG:
-			proto_tree_add_item(data_tree, hf_ntpctrl_trapmsg, tvb, data_offset, datalen, ENC_ASCII|ENC_NA);
+			proto_tree_add_item(data_tree, hf_ntpctrl_trapmsg, tvb, data_offset, datalen, ENC_ASCII);
 			break;
 		case NTPCTRL_OP_CONFIGURE:
 		case NTPCTRL_OP_SAVECONFIG:
-			proto_tree_add_item(data_tree, hf_ntpctrl_configuration, tvb, data_offset, datalen, ENC_ASCII|ENC_NA);
+			proto_tree_add_item(data_tree, hf_ntpctrl_configuration, tvb, data_offset, datalen, ENC_ASCII);
 			auth_diss = TRUE;
 			break;
 		case NTPCTRL_OP_READ_MRU:
-			proto_tree_add_item(data_tree, hf_ntpctrl_mru, tvb, data_offset, datalen, ENC_ASCII|ENC_NA);
+			proto_tree_add_item(data_tree, hf_ntpctrl_mru, tvb, data_offset, datalen, ENC_ASCII);
 			auth_diss = TRUE;
 			break;
 		case NTPCTRL_OP_READ_ORDLIST_A:
-			proto_tree_add_item(data_tree, hf_ntpctrl_ordlist, tvb, data_offset, datalen, ENC_ASCII|ENC_NA);
+			proto_tree_add_item(data_tree, hf_ntpctrl_ordlist, tvb, data_offset, datalen, ENC_ASCII);
 			auth_diss = TRUE;
 			break;
 		case NTPCTRL_OP_REQ_NONCE:
-			proto_tree_add_item(data_tree, hf_ntpctrl_nonce, tvb, data_offset, datalen, ENC_ASCII|ENC_NA);
+			proto_tree_add_item(data_tree, hf_ntpctrl_nonce, tvb, data_offset, datalen, ENC_ASCII);
 			auth_diss = TRUE;
 			break;
 		/* these opcodes doesn't carry any data: NTPCTRL_OP_SETTRAP, NTPCTRL_OP_UNSETTRAP, NTPCTRL_OP_UNSPEC */
@@ -1777,7 +1806,7 @@ dissect_ntp_priv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *ntp_tree, nt
 
 				mode7_item = proto_tree_add_string_format(ntp_tree, hf_ntppriv_mode7_item, tvb, offset,
 					(gint)itemsize, "Monlist Item", "Monlist item: address: %s:%u",
-					tvb_ip_to_str(tvb, offset + 16), tvb_get_ntohs(tvb, offset + ((reqcode == PRIV_RC_MON_GETLIST_1) ? 28 : 20)));
+					tvb_ip_to_str(pinfo->pool, tvb, offset + 16), tvb_get_ntohs(tvb, offset + ((reqcode == PRIV_RC_MON_GETLIST_1) ? 28 : 20)));
 				mode7_item_tree = proto_item_add_subtree(mode7_item, ett_mode7_item);
 
 				proto_tree_add_item(mode7_item_tree, hf_ntppriv_avgint, tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -2210,7 +2239,7 @@ dissect_ntp_priv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *ntp_tree, nt
 				offset += 2;
 				proto_tree_add_item(mode7_item_tree, hf_ntp_keyid, tvb, offset, 4, ENC_NA);
 				offset += 4;
-				proto_tree_add_item(mode7_item_tree, hf_ntppriv_mode7_key_file, tvb, offset, 128, ENC_ASCII|ENC_NA);
+				proto_tree_add_item(mode7_item_tree, hf_ntppriv_mode7_key_file, tvb, offset, 128, ENC_ASCII);
 				offset += 128;
 				proto_tree_add_item(mode7_item_tree, hf_ntppriv_mode7_v6_flag, tvb, offset, 4, ENC_BIG_ENDIAN);
 				offset += 4;
@@ -2521,7 +2550,7 @@ dissect_ntp_priv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *ntp_tree, nt
 				}
 				proto_tree_add_item(mode7_item_tree, hf_ntppriv_mode7_v6_flag, tvb, offset, 4, ENC_BIG_ENDIAN);
 				offset += 4;
-				proto_tree_add_item(mode7_item_tree, hf_ntppriv_mode7_int_name, tvb, offset, 32, ENC_ASCII|ENC_NA);
+				proto_tree_add_item(mode7_item_tree, hf_ntppriv_mode7_int_name, tvb, offset, 32, ENC_ASCII);
 				offset += 32;
 				proto_tree_add_item(mode7_item_tree, hf_ntppriv_mode7_int_flags, tvb, offset, 4, ENC_BIG_ENDIAN);
 				offset += 4;
@@ -2646,10 +2675,10 @@ proto_register_ntp(void)
 			"Peer Clock Stratum", "ntp.stratum", FT_UINT8, BASE_DEC|BASE_RANGE_STRING,
 			RVALS(stratum_rvals), 0, NULL, HFILL }},
 		{ &hf_ntp_ppoll, {
-			"Peer Polling Interval", "ntp.ppoll", FT_UINT8, BASE_DEC,
+			"Peer Polling Interval", "ntp.ppoll", FT_INT8, BASE_DEC,
 			NULL, 0, "Maximum interval between successive messages", HFILL }},
 		{ &hf_ntp_precision, {
-			"Peer Clock Precision", "ntp.precision", FT_UINT8, BASE_DEC,
+			"Peer Clock Precision", "ntp.precision", FT_INT8, BASE_DEC,
 			NULL, 0, "The precision of the system clock", HFILL }},
 		{ &hf_ntp_rootdelay, {
 			"Root Delay", "ntp.rootdelay", FT_UINT32, BASE_DEC,
@@ -2717,8 +2746,8 @@ proto_register_ntp(void)
 			"Flags 2", "ntp.ctrl.flags2", FT_UINT8, BASE_HEX,
 			NULL, 0, "Flags (Response/Error/More/Opcode)", HFILL }},
 		{ &hf_ntpctrl_flags2_r, {
-			"Response bit", "ntp.ctrl.flags2.r", FT_UINT8, BASE_DEC,
-			VALS(ctrl_r_types), NTPCTRL_R_MASK, NULL, HFILL }},
+			"Response bit", "ntp.ctrl.flags2.r", FT_BOOLEAN, 8,
+			TFS(&tfs_response_request), NTPCTRL_R_MASK, NULL, HFILL }},
 		{ &hf_ntpctrl_flags2_error, {
 			"Error bit", "ntp.ctrl.flags2.error", FT_UINT8, BASE_DEC,
 			NULL, NTPCTRL_ERROR_MASK, NULL, HFILL }},
@@ -2811,8 +2840,8 @@ proto_register_ntp(void)
 			NULL, 0, NULL, HFILL }},
 
 		{ &hf_ntppriv_flags_r, {
-			"Response bit", "ntp.priv.flags.r", FT_UINT8, BASE_DEC,
-			VALS(priv_r_types), NTPPRIV_R_MASK, NULL, HFILL }},
+			"Response bit", "ntp.priv.flags.r", FT_BOOLEAN, 8,
+			TFS(&tfs_response_request), NTPPRIV_R_MASK, NULL, HFILL }},
 		{ &hf_ntppriv_flags_more, {
 			"More bit", "ntp.priv.flags.more", FT_UINT8, BASE_DEC,
 			NULL, NTPPRIV_MORE_MASK, NULL, HFILL }},
@@ -3545,15 +3574,14 @@ proto_register_ntp(void)
 	expert_ntp = expert_register_protocol(proto_ntp);
 	expert_register_field_array(expert_ntp, ei, array_length(ei));
 
+	ntp_handle = register_dissector("ntp", dissect_ntp, proto_ntp);
+
 	init_parser();
 }
 
 void
 proto_reg_handoff_ntp(void)
 {
-	dissector_handle_t ntp_handle;
-
-	ntp_handle = create_dissector_handle(dissect_ntp, proto_ntp);
 	dissector_add_uint_with_preference("udp.port", UDP_PORT_NTP, ntp_handle);
 	dissector_add_uint_with_preference("tcp.port", TCP_PORT_NTP, ntp_handle);
 }

@@ -928,7 +928,7 @@ dissect_cops_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
     conversation_t *conversation;
     cops_conv_info_t *cops_conv_info;
     cops_call_t *cops_call;
-    GPtrArray* pdus_array;
+    wmem_array_t* pdus_array;
     nstime_t delta;
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "COPS");
@@ -1028,9 +1028,9 @@ dissect_cops_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
     if ( is_request ||
         (op_code == COPS_MSG_DEC && is_solicited) ) { /* DEC as response for REQ is considered as request, because it expects RPT|DRQ */
 
-        pdus_array = (GPtrArray *)wmem_map_lookup(cops_conv_info->pdus_tree, GUINT_TO_POINTER(handle_value));
+        pdus_array = (wmem_array_t *)wmem_map_lookup(cops_conv_info->pdus_tree, GUINT_TO_POINTER(handle_value));
         if (pdus_array == NULL) { /* This is the first request we've seen with this handle_value */
-            pdus_array = g_ptr_array_new();
+            pdus_array = wmem_array_new(wmem_file_scope(), sizeof(cops_call_t *));
             wmem_map_insert(cops_conv_info->pdus_tree, GUINT_TO_POINTER(handle_value), pdus_array);
         }
 
@@ -1063,11 +1063,11 @@ dissect_cops_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
             cops_call->req_num = pinfo->num;
             cops_call->rsp_num = 0;
             cops_call->req_time = pinfo->abs_ts;
-            g_ptr_array_add(pdus_array, cops_call);
+            wmem_array_append_one(pdus_array, cops_call);
         }
         else {
-            for (i=0; i < pdus_array->len; i++) {
-                cops_call = (cops_call_t*)g_ptr_array_index(pdus_array, i);
+            for (i=0; i < wmem_array_get_count(pdus_array); i++) {
+                cops_call = *(cops_call_t**)(wmem_array_index(pdus_array, i));
                 if ( cops_call->req_num == pinfo->num
                   && cops_call->rsp_num != 0)  {
                     ti = proto_tree_add_uint_format(cops_tree, hf_cops_response_in, tvb, 0, 0, cops_call->rsp_num,
@@ -1079,14 +1079,14 @@ dissect_cops_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
     }
 
     if (is_response) {
-        pdus_array = (GPtrArray *)wmem_map_lookup(cops_conv_info->pdus_tree, GUINT_TO_POINTER(handle_value));
+        pdus_array = (wmem_array_t *)wmem_map_lookup(cops_conv_info->pdus_tree, GUINT_TO_POINTER(handle_value));
 
         if (pdus_array == NULL) /* There's no request with this handle value */
             return offset;
 
         if (!pinfo->fd->visited) {
-            for (i=0; i < pdus_array->len; i++) {
-                cops_call = (cops_call_t*)g_ptr_array_index(pdus_array, i);
+            for (i=0; i < wmem_array_get_count(pdus_array); i++) {
+                cops_call = *(cops_call_t**)(wmem_array_index(pdus_array, i));
 
                 if (nstime_cmp(&pinfo->abs_ts, &cops_call->req_time) <= 0 || cops_call->rsp_num != 0)
                     continue;
@@ -1112,8 +1112,8 @@ dissect_cops_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
             }
         }
         else {
-            for (i=0; i < pdus_array->len; i++) {
-                cops_call = (cops_call_t*)g_ptr_array_index(pdus_array, i);
+            for (i=0; i < wmem_array_get_count(pdus_array); i++) {
+                cops_call = *(cops_call_t**)(wmem_array_index(pdus_array, i));
                 if ( cops_call->rsp_num == pinfo->num ) {
                     ti = proto_tree_add_uint_format(cops_tree, hf_cops_response_to, tvb, 0, 0, cops_call->req_num,
                                                       "Response to a request in frame %u", cops_call->req_num);
@@ -1349,7 +1349,7 @@ static void dissect_cops_object_data(tvbuff_t *tvb, packet_info *pinfo, guint32 
             ifindex = tvb_get_ntohl(tvb, offset + 4);
             itf_tree = proto_tree_add_subtree_format(tree, tvb, offset, 8, ett_cops_itf, NULL,
                                      "Contents: IPv4 address %s, ifIndex: %u",
-                                     tvb_ip_to_str(tvb, offset), ifindex);
+                                     tvb_ip_to_str(pinfo->pool, tvb, offset), ifindex);
             proto_tree_add_item(itf_tree,
                                 (c_num == COPS_OBJ_IN_INT) ? hf_cops_in_int_ipv4 : hf_cops_out_int_ipv4,
                                 tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -1358,7 +1358,7 @@ static void dissect_cops_object_data(tvbuff_t *tvb, packet_info *pinfo, guint32 
             ifindex = tvb_get_ntohl(tvb, offset + (int)sizeof ipv6addr);
             itf_tree = proto_tree_add_subtree_format(tree, tvb, offset, 20, ett_cops_itf, NULL,
                                      "Contents: IPv6 address %s, ifIndex: %u",
-                                     tvb_ip6_to_str(tvb, offset), ifindex);
+                                     tvb_ip6_to_str(pinfo->pool, tvb, offset), ifindex);
             proto_tree_add_item(itf_tree,
                                 (c_num == COPS_OBJ_IN_INT) ? hf_cops_in_int_ipv6 : hf_cops_out_int_ipv6,
                                 tvb, offset, 16, ENC_NA);
@@ -1463,12 +1463,12 @@ static void dissect_cops_object_data(tvbuff_t *tvb, packet_info *pinfo, guint32 
             break;
 
         if (tvb_strnlen(tvb, offset, len) == -1) {
-            ti = proto_tree_add_item(tree, hf_cops_pepid, tvb, offset, len, ENC_ASCII|ENC_NA);
+            ti = proto_tree_add_item(tree, hf_cops_pepid, tvb, offset, len, ENC_ASCII);
             expert_add_info(pinfo, ti, &ei_cops_pepid_not_null);
         }
         else
             proto_tree_add_item(tree, hf_cops_pepid, tvb, offset,
-                                tvb_strnlen(tvb, offset, len) + 1, ENC_ASCII|ENC_NA);
+                                tvb_strnlen(tvb, offset, len) + 1, ENC_ASCII);
 
         break;
     case COPS_OBJ_REPORT_TYPE:
@@ -1484,7 +1484,7 @@ static void dissect_cops_object_data(tvbuff_t *tvb, packet_info *pinfo, guint32 
             tcp_port = tvb_get_ntohs(tvb, offset + 4 + 2);
             pdp_tree = proto_tree_add_subtree_format(tree, tvb, offset, 8, ett_cops_pdp, NULL,
                                      "Contents: IPv4 address %s, TCP Port Number: %u",
-                                     tvb_ip_to_str(tvb, offset), tcp_port);
+                                     tvb_ip_to_str(pinfo->pool, tvb, offset), tcp_port);
             proto_tree_add_item(pdp_tree,
                                 (c_num == COPS_OBJ_PDPREDIRADDR) ? hf_cops_pdprediraddr_ipv4 : hf_cops_lastpdpaddr_ipv4,
                                 tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -1493,7 +1493,7 @@ static void dissect_cops_object_data(tvbuff_t *tvb, packet_info *pinfo, guint32 
             tcp_port = tvb_get_ntohs(tvb, offset + (int)sizeof ipv6addr + 2);
             pdp_tree = proto_tree_add_subtree_format(tree, tvb, offset, 20, ett_cops_pdp, NULL,
                                      "Contents: IPv6 address %s, TCP Port Number: %u",
-                                     tvb_ip6_to_str(tvb, offset), tcp_port);
+                                     tvb_ip6_to_str(pinfo->pool, tvb, offset), tcp_port);
             proto_tree_add_item(pdp_tree,
                                 (c_num == COPS_OBJ_PDPREDIRADDR) ? hf_cops_pdprediraddr_ipv6 : hf_cops_lastpdpaddr_ipv6,
                                 tvb, offset, 16, ENC_NA);
@@ -1877,12 +1877,12 @@ void proto_register_cops(void)
         },
         { &hf_cops_r_type_flags,
           { "R-Type",           "cops.context.r_type",
-            FT_UINT16, BASE_HEX, VALS(cops_r_type_vals), 0xFFFF,
+            FT_UINT16, BASE_HEX, VALS(cops_r_type_vals), 0x0,
             "R-Type in COPS Context Object", HFILL }
         },
         { &hf_cops_m_type_flags,
           { "M-Type",           "cops.context.m_type",
-            FT_UINT16, BASE_HEX, NULL, 0xFFFF,
+            FT_UINT16, BASE_HEX, NULL, 0x0,
             "M-Type in COPS Context Object", HFILL }
         },
         { &hf_cops_in_int_ipv4,
@@ -2549,47 +2549,47 @@ void proto_register_cops(void)
         },
         { &hf_cops_pcmm_request_transmission_policy_sf_all_cm,
           { "The Service Flow MUST NOT use \"all CMs\" broadcast request opportunities", "cops.pc_mm_rtp.sf.all_cm",
-            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x0001,
+            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x00000001,
             NULL, HFILL }
         },
         { &hf_cops_pcmm_request_transmission_policy_sf_priority,
           { "The Service Flow MUST NOT use Priority Request multicast request opportunities", "cops.pc_mm_rtp.sf.priority",
-            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x0002,
+            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x00000002,
             NULL, HFILL }
         },
         { &hf_cops_pcmm_request_transmission_policy_sf_request_for_request,
           { "The Service Flow MUST NOT use Request/Data opportunities for Requests", "cops.pc_mm_rtp.sf.request_for_request",
-            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x0004,
+            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x00000004,
             NULL, HFILL }
         },
         { &hf_cops_pcmm_request_transmission_policy_sf_data_for_data,
           { "The Service Flow MUST NOT use Request/Data opportunities for Data", "cops.pc_mm_rtp.sf.data_for_data",
-            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x0008,
+            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x00000008,
             NULL, HFILL }
         },
         { &hf_cops_pcmm_request_transmission_policy_sf_piggyback,
           { "The Service Flow MUST NOT piggyback requests with data", "cops.pc_mm_rtp.sf.piggyback",
-            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x0010,
+            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x00000010,
             NULL, HFILL }
         },
         { &hf_cops_pcmm_request_transmission_policy_sf_concatenate,
           { "The Service Flow MUST NOT concatenate data", "cops.pc_mm_rtp.sf.concatenate",
-            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x0020,
+            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x00000020,
             NULL, HFILL }
         },
         { &hf_cops_pcmm_request_transmission_policy_sf_fragment,
           { "The Service Flow MUST NOT fragment data", "cops.pc_mm_rtp.sf.fragment",
-            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x0040,
+            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x00000040,
             NULL, HFILL }
         },
         { &hf_cops_pcmm_request_transmission_policy_sf_suppress,
           { "The Service Flow MUST NOT suppress payload headers", "cops.pc_mm_rtp.sf.suppress",
-            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x0080,
+            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x00000080,
             NULL, HFILL }
         },
         { &hf_cops_pcmm_request_transmission_policy_sf_drop_packets,
           { "The Service Flow MUST drop packets that do not fit in the Unsolicited Grant Size", "cops.pc_mm_rtp.sf.drop_packets",
-            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x0100,
+            FT_BOOLEAN, 32, TFS(&tfs_yes_no), 0x00000100,
             NULL, HFILL }
         },
         { &hf_cops_pcmm_max_sustained_traffic_rate,
@@ -3019,7 +3019,7 @@ info_to_display(tvbuff_t *tvb, proto_item *stt, int offset, int octets, const ch
         } else if (mode==FMT_DEC && octets==8) {
             code64 = tvb_get_ntoh64(tvb, offset);
             pi = proto_tree_add_uint64_format(stt, *hf_proto_parameter, tvb, offset, octets,
-                                              code64, "%-28s : %" G_GINT64_MODIFIER "u", str, code64);
+                                              code64, "%-28s : %" PRIu64, str, code64);
         } else {
             pi = proto_tree_add_uint_format(stt, *hf_proto_parameter,
                                             tvb, offset, octets, code32,"%s",str);
@@ -3062,7 +3062,7 @@ cops_transaction_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *st, guint8 op
                                val_to_str(code16,table_cops_dqos_transaction_id, "Unknown (0x%04x)"),code16);
 
     /* Write the right data into the 'info field' on the Gui */
-    g_snprintf(info,sizeof(info),"COPS %-20s - %s",val_to_str_const(op_code,cops_op_code_vals, "Unknown"),
+    snprintf(info,sizeof(info),"COPS %-20s - %s",val_to_str_const(op_code,cops_op_code_vals, "Unknown"),
                val_to_str_const(code16,table_cops_dqos_transaction_id, "Unknown"));
 
     col_add_str(pinfo->cinfo, COL_INFO,info);
@@ -3260,11 +3260,11 @@ cops_surveillance_parameters(tvbuff_t *tvb, proto_tree *st, guint n, guint32 off
      offset += 4;
 
      /* BCID Element ID */
-     proto_tree_add_item(stt, hf_cops_pc_bcid_id, tvb, offset, 8, ENC_ASCII|ENC_NA);
+     proto_tree_add_item(stt, hf_cops_pc_bcid_id, tvb, offset, 8, ENC_ASCII);
      offset += 8;
 
      /* BCID Time Zone */
-     proto_tree_add_item(stt, hf_cops_pc_bcid_tz, tvb, offset, 8, ENC_ASCII|ENC_NA);
+     proto_tree_add_item(stt, hf_cops_pc_bcid_tz, tvb, offset, 8, ENC_ASCII);
      offset += 8;
 
      /* BCID Event Counter */
@@ -3318,11 +3318,11 @@ cops_event_generation_info(tvbuff_t *tvb, proto_tree *st, guint n, guint32 offse
      offset += 4;
 
      /* BCID Element ID */
-     proto_tree_add_item(stt, hf_cops_pc_bcid_id, tvb, offset, 8, ENC_ASCII|ENC_NA);
+     proto_tree_add_item(stt, hf_cops_pc_bcid_id, tvb, offset, 8, ENC_ASCII);
      offset += 8;
 
      /* BCID Time Zone */
-     proto_tree_add_item(stt, hf_cops_pc_bcid_tz, tvb, offset, 8, ENC_ASCII|ENC_NA);
+     proto_tree_add_item(stt, hf_cops_pc_bcid_tz, tvb, offset, 8, ENC_ASCII);
      offset += 8;
 
      /* BCID Event Counter */
@@ -3448,7 +3448,7 @@ cops_mm_transaction_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *st, guint8
             val_to_str(code16,table_cops_mm_transaction_id, "Unknown (0x%04x)"),code16);
 
      /* Write the right data into the 'info field' on the Gui */
-     g_snprintf(info,sizeof(info),"COPS %-20s - %s",val_to_str_const(op_code,cops_op_code_vals, "Unknown"),
+     snprintf(info,sizeof(info),"COPS %-20s - %s",val_to_str_const(op_code,cops_op_code_vals, "Unknown"),
                 val_to_str_const(code16,table_cops_mm_transaction_id, "Unknown"));
 
      col_add_str(pinfo->cinfo, COL_INFO,info);
@@ -3842,7 +3842,7 @@ cops_docsis_service_class_name(tvbuff_t *tvb, packet_info *pinfo, proto_tree *st
     offset += 3;
 
     if (object_len >= 12) {
-        proto_tree_add_item(stt, hf_cops_pcmm_docsis_scn, tvb, offset, object_len - 8, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(stt, hf_cops_pcmm_docsis_scn, tvb, offset, object_len - 8, ENC_ASCII);
         offset += object_len - 8;
     } else {
         proto_tree_add_expert_format(stt, pinfo, &ei_cops_bad_cops_object_length,
@@ -5676,11 +5676,11 @@ cops_mm_event_generation_info(tvbuff_t *tvb, proto_tree *st, guint n, guint32 of
      offset += 4;
 
      /* BCID Element ID */
-     proto_tree_add_item(stt, hf_cops_pc_bcid_id, tvb, offset, 8, ENC_ASCII|ENC_NA);
+     proto_tree_add_item(stt, hf_cops_pc_bcid_id, tvb, offset, 8, ENC_ASCII);
      offset += 8;
 
      /* BCID Time Zone */
-     proto_tree_add_item(stt, hf_cops_pc_bcid_tz, tvb, offset, 8, ENC_ASCII|ENC_NA);
+     proto_tree_add_item(stt, hf_cops_pc_bcid_tz, tvb, offset, 8, ENC_ASCII);
      offset += 8;
 
      /* BCID Event Counter */

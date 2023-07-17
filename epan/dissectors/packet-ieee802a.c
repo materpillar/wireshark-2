@@ -19,6 +19,8 @@
 void proto_register_ieee802a(void);
 void proto_reg_handoff_ieee802a(void);
 
+static dissector_handle_t ieee802a_handle;
+
 static int proto_ieee802a = -1;
 static int hf_ieee802a_oui = -1;
 static int hf_ieee802a_pid = -1;
@@ -46,7 +48,7 @@ ieee802a_add_oui(guint32 oui, const char *table_name, const char *table_ui_name,
 {
 	oui_info_t *new_info;
 
-	new_info = (oui_info_t *)g_malloc(sizeof (oui_info_t));
+	new_info = g_new(oui_info_t, 1);
 	new_info->table = register_dissector_table(table_name,
 	    table_ui_name, proto, FT_UINT16, BASE_HEX);
 	new_info->field_info = hf_item;
@@ -86,7 +88,7 @@ dissect_ieee802a(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
 	pid = tvb_get_ntohs(tvb, 3);
 
 	col_add_fstr(pinfo->cinfo, COL_INFO, "OUI %s (%s), PID 0x%04X",
-		tvb_bytes_to_str_punct(wmem_packet_scope(), tvb, 0, 3, ':'),
+		tvb_bytes_to_str_punct(pinfo->pool, tvb, 0, 3, ':'),
 		manuf ? manuf : "Unknown", pid);
 
 	/*
@@ -145,6 +147,8 @@ proto_register_ieee802a(void)
 	proto_register_field_array(proto_ieee802a, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
 	register_shutdown_routine(ieee802a_shutdown);
+
+	ieee802a_handle = register_dissector("ieee802a", dissect_ieee802a, proto_ieee802a);
 }
 
 static void
@@ -158,10 +162,6 @@ register_hf(gpointer key _U_, gpointer value, gpointer user_data _U_)
 void
 proto_reg_handoff_ieee802a(void)
 {
-	dissector_handle_t ieee802a_handle;
-
-	ieee802a_handle = create_dissector_handle(dissect_ieee802a,
-	    proto_ieee802a);
 	dissector_add_uint("ethertype", ETHERTYPE_IEEE802_OUI_EXTENDED,
 	    ieee802a_handle);
 

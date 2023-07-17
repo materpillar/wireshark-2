@@ -29,6 +29,9 @@ void proto_register_mtp2(void);
 void proto_reg_handoff_mtp2(void);
 
 static dissector_handle_t mtp2_handle;
+static dissector_handle_t mtp2_with_phdr_handle;
+static dissector_handle_t mtp2_bitstream_handle;
+static dissector_handle_t mtp3_handle;
 
 /* possible packet states */
 enum packet_direction_state_mtp2 {FORWARD, BACKWARD};
@@ -159,8 +162,6 @@ static const fragment_items mtp2_frag_items = {
 static reassembly_table mtp2_reassembly_table;
 
 /* variables needed for property registration to wireshark menu */
-static range_t *mtp2_rtp_payload_types;
-static range_t *pref_mtp2_rtp_payload_types = NULL;
 static gboolean reverse_bit_order_mtp2 = FALSE;
 
 static expert_field ei_mtp2_checksum_error = EI_INIT;
@@ -169,7 +170,6 @@ static expert_field ei_mtp2_li_bad = EI_INIT;
 /* Initialize the subtree pointers */
 static gint ett_mtp2       = -1;
 
-static dissector_handle_t mtp3_handle;
 static gboolean use_extended_sequence_numbers_default = FALSE;
 static gboolean capture_contains_fcs_crc_default = FALSE;
 
@@ -584,8 +584,8 @@ new_byte(char full_byte, guint8 **data, guint8 *data_len)
 /* print debug info to stderr if debug is enabled
  * this function prints the packet bytes as bits separated by new lines
  * and adds extra info to bytes (flag found, frame reset, zeros were skipped, etc. */
-static void
-debug(char *format, ...)
+static void debug(char *format, ...) G_GNUC_PRINTF(1, 2);
+static void debug(char *format, ...)
 {
   guint32 max_buffer_length = 256;
   gchar *buffer = NULL;
@@ -595,7 +595,7 @@ debug(char *format, ...)
   buffer[0] = '\0';
 
   va_start(args,format);
-  g_vsnprintf(buffer,max_buffer_length,format,args);
+  vsnprintf(buffer,max_buffer_length,format,args);
   g_printf("%s",buffer);
   va_end (args);
 }
@@ -942,12 +942,12 @@ dissect_mtp2_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 #endif
 
   /* find conversation related to this packet */
-  conversation = find_conversation(pinfo->fd->num,&pinfo->src, &pinfo->dst,conversation_pt_to_endpoint_type(pinfo->ptype), pinfo->srcport, pinfo->destport, 0);
+  conversation = find_conversation(pinfo->fd->num,&pinfo->src, &pinfo->dst,conversation_pt_to_conversation_type(pinfo->ptype), pinfo->srcport, pinfo->destport, 0);
   /* if there is no conversation or it does not contain the per packet data we need */
   if (conversation == NULL) {
     /* there was no conversation => this packet is the first in a new conversation => let's create it */
     /* here we decide about the direction, every following packet with the same direction as this first one will be a forward packet */
-    conversation = conversation_new(pinfo->fd->num,&pinfo->src, &pinfo->dst,conversation_pt_to_endpoint_type(pinfo->ptype), pinfo->srcport, pinfo->destport, 0);
+    conversation = conversation_new(pinfo->fd->num,&pinfo->src, &pinfo->dst,conversation_pt_to_conversation_type(pinfo->ptype), pinfo->srcport, pinfo->destport, 0);
   }
 
   /* there is no proto data in the conversation */
@@ -984,7 +984,7 @@ dissect_mtp2_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
   /* if there is no per packet data -> create it */
   if (mtp2_ppd == NULL) {
     mtp2_ppd = wmem_new(wmem_file_scope(), mtp2_ppd_t);
-    /* set the the proto_data_fields
+    /* set the proto_data_fields
      * because these are the values which we would like to see
      * if this packet is seen again */
     if (dir_state == FORWARD) {
@@ -1142,7 +1142,7 @@ dissect_mtp2_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
         recognized_packet = wmem_list_frame_next(recognized_packet);
       }
       /* insert how many packets were found */
-      col_info_str = g_strdup_printf("%s: %u Packet%s%s%s",
+      col_info_str = ws_strdup_printf("%s: %u Packet%s%s%s",
           "MTP2",
           wmem_list_count(result->found_packets),
           (wmem_list_count(result->found_packets) > 1
@@ -1150,7 +1150,7 @@ dissect_mtp2_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
               :""
           ),
           (was_unaligned_packet
-              ?g_strdup_printf(" [Unaligned Packet%s]", (wmem_list_count(result->found_packets)>1
+              ?ws_strdup_printf(" [Unaligned Packet%s]", (wmem_list_count(result->found_packets)>1
                   ?"s"
                   :""))
               :""
@@ -1169,7 +1169,7 @@ dissect_mtp2_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
           && frag_msg_before_fh)
       {
         col_add_str(pinfo->cinfo, COL_PROTOCOL, "MTP2");
-        col_info_str = g_strdup_printf("[MTP2 Reassembled in: %u]", frag_msg_before_fh->reassembled_in);
+        col_info_str = ws_strdup_printf("[MTP2 Reassembled in: %u]", frag_msg_before_fh->reassembled_in);
         col_add_str(pinfo->cinfo, COL_INFO, col_info_str);
         g_free(col_info_str);
       } else {
@@ -1270,13 +1270,16 @@ proto_register_mtp2(void)
   proto_mtp2 = proto_register_protocol("Message Transfer Part Level 2", "MTP2", "mtp2");
   mtp2_handle = register_dissector("mtp2", dissect_mtp2, proto_mtp2);
   register_dissector("mtp2_with_crc", dissect_mtp2_with_crc, proto_mtp2);
+  mtp2_with_phdr_handle = register_dissector("mtp2_with_phdr", dissect_mtp2_with_phdr,
+                                                  proto_mtp2);
+  mtp2_bitstream_handle = register_dissector("mtp2_bitstream", dissect_mtp2_bitstream, proto_mtp2);
 
   proto_register_field_array(proto_mtp2, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
   expert_mtp2 = expert_register_protocol(proto_mtp2);
   expert_register_field_array(expert_mtp2, ei, array_length(ei));
 
-  mtp2_module = prefs_register_protocol(proto_mtp2, proto_reg_handoff_mtp2);
+  mtp2_module = prefs_register_protocol(proto_mtp2, NULL);
   prefs_register_bool_preference(mtp2_module,
                                  "use_extended_sequence_numbers",
                                  "Use extended sequence numbers",
@@ -1294,42 +1297,23 @@ proto_register_mtp2(void)
                                  "Reverse bit order inside bytes",
                                  "Reverse the bit order inside bytes specified in Q.703.",
                                  &reverse_bit_order_mtp2);
-  prefs_register_range_preference(mtp2_module, "rtp_payload_type",
-                                 "RTP payload types for embedded packets in RTP stream",
-                                 "RTP payload types for embedded packets in RTP stream"
-                                 "; values must be in the range 1 - 127",
-                                 &pref_mtp2_rtp_payload_types,
-                                 127);
+  prefs_register_obsolete_preference(mtp2_module, "rtp_payload_type");
+
   register_init_routine(&mtp2_init_routine);
 }
 
 void
 proto_reg_handoff_mtp2(void)
 {
-  dissector_handle_t mtp2_with_phdr_handle;
-  static dissector_handle_t mtp2_bitstream_handle;
-  static gboolean init = FALSE;
-
   dissector_add_uint("wtap_encap", WTAP_ENCAP_MTP2, mtp2_handle);
-  mtp2_with_phdr_handle = create_dissector_handle(dissect_mtp2_with_phdr,
-                                                  proto_mtp2);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_MTP2_WITH_PHDR,
                                    mtp2_with_phdr_handle);
 
   mtp3_handle   = find_dissector_add_dependency("mtp3", proto_mtp2);
 
-  if (!init) {
-    mtp2_bitstream_handle = create_dissector_handle(dissect_mtp2_bitstream, proto_mtp2);
-    dissector_add_string("rtp_dyn_payload_type", "MTP2", mtp2_bitstream_handle);
-    init = TRUE;
-  } else {
-    dissector_delete_uint_range("rtp.pt", mtp2_rtp_payload_types, mtp2_bitstream_handle);
-    wmem_free(wmem_epan_scope(), mtp2_rtp_payload_types);
-  }
+  dissector_add_string("rtp_dyn_payload_type", "MTP2", mtp2_bitstream_handle);
 
-  mtp2_rtp_payload_types = range_copy(wmem_epan_scope(), pref_mtp2_rtp_payload_types);
-  range_remove_value(wmem_epan_scope(), &mtp2_rtp_payload_types, 0);
-  dissector_add_uint_range("rtp.pt", mtp2_rtp_payload_types, mtp2_bitstream_handle);
+  dissector_add_uint_range_with_preference("rtp.pt", "", mtp2_bitstream_handle);
 }
 
 /*

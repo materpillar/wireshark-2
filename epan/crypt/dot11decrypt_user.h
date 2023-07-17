@@ -1,4 +1,4 @@
-/* dot11decrypt_user.h
+/** @file
  *
  * Copyright (c) 2006 CACE Technologies, Davis (California)
  * All rights reserved.
@@ -12,7 +12,8 @@
 /******************************************************************************/
 /*	File includes																					*/
 /*																										*/
-#include "dot11decrypt_interop.h"
+#include <glib.h>
+
 #include "ws_symbol_export.h"
 
 /*																										*/
@@ -30,11 +31,13 @@
 #define	DOT11DECRYPT_KEY_TYPE_WPA_PSK	4
 #define	DOT11DECRYPT_KEY_TYPE_WPA_PMK	5
 #define	DOT11DECRYPT_KEY_TYPE_TK		6
-#define	DOT11DECRYPT_KEY_TYPE_TKIP		7
-#define	DOT11DECRYPT_KEY_TYPE_CCMP		8
-#define	DOT11DECRYPT_KEY_TYPE_CCMP_256	9
-#define	DOT11DECRYPT_KEY_TYPE_GCMP		10
-#define	DOT11DECRYPT_KEY_TYPE_GCMP_256	11
+#define DOT11DECRYPT_KEY_TYPE_MSK		7
+
+#define	DOT11DECRYPT_KEY_TYPE_TKIP		100
+#define	DOT11DECRYPT_KEY_TYPE_CCMP		101
+#define	DOT11DECRYPT_KEY_TYPE_CCMP_256	102
+#define	DOT11DECRYPT_KEY_TYPE_GCMP		103
+#define	DOT11DECRYPT_KEY_TYPE_GCMP_256	104
 #define	DOT11DECRYPT_KEY_TYPE_UNKNOWN   -1
 
 /*	Decryption algorithms fields size definition (bytes)								*/
@@ -50,6 +53,8 @@
 #define	DOT11DECRYPT_WPA_PMK_MAX_LEN				48
 #define	DOT11DECRYPT_WPA_PWD_PSK_LEN				32
 #define	DOT11DECRYPT_TK_MAX_LEN					32
+#define DOT11DECRYPT_MSK_MIN_LEN				64
+#define DOT11DECRYPT_MSK_MAX_LEN				128
 /*																										*/
 /*																										*/
 /******************************************************************************/
@@ -69,8 +74,8 @@
 typedef struct {
     GString    *key;
     GByteArray *ssid;
-    guint       bits;
-    guint       type;
+    unsigned    bits;
+    unsigned    type;
 } decryption_key_t;
 
 /**
@@ -85,7 +90,7 @@ typedef struct _DOT11DECRYPT_KEY_ITEM {
 	 * You can use constants DOT11DECRYPT_KEY_TYPE_xxx to indicate the
 	 * key type.
 	 */
-	UINT8 KeyType;
+	uint8_t KeyType;
 
 	/**
 	 * Key data.
@@ -114,7 +119,7 @@ typedef struct _DOT11DECRYPT_KEY_ITEM {
 			 * (10 hex-digits, 5 bytes) for WEP-40 or 104 bits
 			 * (26 hex-digits, 13 bytes) for WEP-104.
 			 */
-			UCHAR WepKey[DOT11DECRYPT_WEP_KEY_MAXLEN];
+			unsigned char WepKey[DOT11DECRYPT_WEP_KEY_MAXLEN];
 			/**
 			 * The length of the WEP key. Acceptable range
 			 * is [DOT11DECRYPT_WEP_KEY_MINLEN;DOT11DECRYPT_WEP_KEY_MAXLEN].
@@ -130,34 +135,39 @@ typedef struct _DOT11DECRYPT_KEY_ITEM {
 		 * calculated.
 		 */
 		struct DOT11DECRYPT_KEY_ITEMDATA_WPA {
-			UCHAR Psk[DOT11DECRYPT_WPA_PMK_MAX_LEN];
-			UCHAR Ptk[DOT11DECRYPT_WPA_PTK_MAX_LEN];
-			UINT8 PskLen;
-			UINT8 PtkLen;
-			UINT8 Akm;
-			UINT8 Cipher;
+			unsigned char Psk[DOT11DECRYPT_WPA_PMK_MAX_LEN];
+			unsigned char Ptk[DOT11DECRYPT_WPA_PTK_MAX_LEN];
+			uint8_t PskLen;
+			uint8_t PtkLen;
+			uint8_t Akm;
+			uint8_t Cipher;
 		} Wpa;
 
 	} KeyData;
 
 	struct DOT11DECRYPT_KEY_ITEMDATA_TK {
-		guint8 Tk[DOT11DECRYPT_TK_MAX_LEN];
-		guint8 Len;
+		uint8_t Tk[DOT11DECRYPT_TK_MAX_LEN];
+		uint8_t Len;
 	} Tk;
+
+	struct DOT11DECRYPT_KEY_ITEMDATA_MSK {
+		uint8_t Msk[DOT11DECRYPT_MSK_MAX_LEN];
+		uint8_t Len;
+	} Msk;
 
         struct DOT11DECRYPT_KEY_ITEMDATA_PWD {
                 /**
                  * The string (null-terminated) value of
                  * the passphrase.
                  */
-                CHAR Passphrase[DOT11DECRYPT_WPA_PASSPHRASE_MAX_LEN+1];
+                char Passphrase[DOT11DECRYPT_WPA_PASSPHRASE_MAX_LEN+1];
                 /**
                  * The value of the SSID (up to
                  * DOT11DECRYPT_WPA_SSID_MAX_LEN octets).
                  * @note
                  * A zero-length SSID indicates broadcast.
                  */
-                CHAR Ssid[DOT11DECRYPT_WPA_SSID_MAX_LEN];
+                char Ssid[DOT11DECRYPT_WPA_SSID_MAX_LEN];
                 /**
                  *The length of the SSID
                  */
@@ -206,7 +216,7 @@ typedef struct _DOT11DECRYPT_KEYS_COLLECTION {
  */
 WS_DLL_PUBLIC
 decryption_key_t*
-parse_key_string(gchar* key_string, guint8 key_type);
+parse_key_string(char* key_string, uint8_t key_type);
 
 /**
  * Releases memory associated with a given decryption_key_t struct.

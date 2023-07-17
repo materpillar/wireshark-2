@@ -1,4 +1,5 @@
-/* decode_as_delegate.h
+/** @file
+ *
  * Delegates for editing various field types in a Decode As record.
  *
  * Wireshark - Network traffic analyzer
@@ -29,16 +30,15 @@ typedef struct _packet_proto_data_t {
 
 class DecodeAsDelegate : public QStyledItemDelegate
 {
-    Q_OBJECT
-
 public:
     DecodeAsDelegate(QObject *parent = 0, capture_file *cf = NULL);
 
     QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option,
-                          const QModelIndex &index) const;
-    void setEditorData(QWidget *editor, const QModelIndex &index) const;
+                          const QModelIndex &index) const override;
+    void destroyEditor(QWidget *editor, const QModelIndex &index) const override;
+    void setEditorData(QWidget *editor, const QModelIndex &index) const override;
     void setModelData(QWidget *editor, QAbstractItemModel *model,
-                      const QModelIndex &index) const;
+                      const QModelIndex &index) const override;
 
 #if 0
     void updateEditorGeometry(QWidget *editor,

@@ -15,7 +15,7 @@
 #include "config.h"
 
 #include <epan/dfilter/dfilter.h>
-#include <epan/ftypes/ftypes-int.h>
+#include <epan/ftypes/ftypes.h>
 
 /* WSLUA_MODULE Field Obtaining Dissection Data */
 
@@ -76,14 +76,14 @@ WSLUA_METAMETHOD FieldInfo__call(lua_State* L) {
        instead of just the *value* bytes. That was a bug, and has been changed in 1.11.4.
        Furthermore, it retrieved an `ftypes.GUID` as a `ByteArray`, which is also incorrect.
 
-       If you wish to still get a `ByteArray` of the `TvbRange`, use `FieldInfo:get_range()`
-       to get the `TvbRange`, and then use `Tvb:bytes()` to convert it to a `ByteArray`.
+       If you wish to still get a `ByteArray` of the `TvbRange`, use `fieldinfo.range`
+       to get the `TvbRange`, and then use `tvbrange:bytes()` to convert it to a `ByteArray`.
        */
     FieldInfo fi = checkFieldInfo(L,1);
 
     switch(fi->ws_fi->hfinfo->type) {
         case FT_BOOLEAN:
-                lua_pushboolean(L,(int)fvalue_get_uinteger64(&(fi->ws_fi->value)));
+                lua_pushboolean(L,(int)fvalue_get_uinteger64(fi->ws_fi->value));
                 return 1;
         case FT_CHAR:
         case FT_UINT8:
@@ -91,24 +91,24 @@ WSLUA_METAMETHOD FieldInfo__call(lua_State* L) {
         case FT_UINT24:
         case FT_UINT32:
         case FT_FRAMENUM:
-                lua_pushnumber(L,(lua_Number)(fvalue_get_uinteger(&(fi->ws_fi->value))));
+                lua_pushnumber(L,(lua_Number)(fvalue_get_uinteger(fi->ws_fi->value)));
                 return 1;
         case FT_INT8:
         case FT_INT16:
         case FT_INT24:
         case FT_INT32:
-                lua_pushnumber(L,(lua_Number)(fvalue_get_sinteger(&(fi->ws_fi->value))));
+                lua_pushnumber(L,(lua_Number)(fvalue_get_sinteger(fi->ws_fi->value)));
                 return 1;
         case FT_FLOAT:
         case FT_DOUBLE:
-                lua_pushnumber(L,(lua_Number)(fvalue_get_floating(&(fi->ws_fi->value))));
+                lua_pushnumber(L,(lua_Number)(fvalue_get_floating(fi->ws_fi->value)));
                 return 1;
         case FT_INT64: {
-                pushInt64(L,(Int64)(fvalue_get_sinteger64(&(fi->ws_fi->value))));
+                pushInt64(L,(Int64)(fvalue_get_sinteger64(fi->ws_fi->value)));
                 return 1;
             }
         case FT_UINT64: {
-                pushUInt64(L,fvalue_get_uinteger64(&(fi->ws_fi->value)));
+                pushUInt64(L,fvalue_get_uinteger64(fi->ws_fi->value));
                 return 1;
             }
         case FT_ETHER: {
@@ -144,13 +144,14 @@ WSLUA_METAMETHOD FieldInfo__call(lua_State* L) {
         case FT_ABSOLUTE_TIME:
         case FT_RELATIVE_TIME: {
                 NSTime nstime = (NSTime)g_malloc(sizeof(nstime_t));
-                *nstime = *(NSTime)fvalue_get(&(fi->ws_fi->value));
+                *nstime = *fvalue_get_time(fi->ws_fi->value);
                 pushNSTime(L,nstime);
                 return 1;
             }
         case FT_STRING:
-        case FT_STRINGZ: {
-                gchar* repr = fvalue_to_string_repr(NULL, &fi->ws_fi->value,FTREPR_DISPLAY,BASE_NONE);
+        case FT_STRINGZ:
+        case FT_STRINGZPAD: {
+                gchar* repr = fvalue_to_string_repr(NULL, fi->ws_fi->value, FTREPR_DISPLAY, BASE_NONE);
                 if (repr)
                 {
                     lua_pushstring(L, repr);
@@ -177,17 +178,22 @@ WSLUA_METAMETHOD FieldInfo__call(lua_State* L) {
         case FT_OID:
             {
                 ByteArray ba = g_byte_array_new();
-                g_byte_array_append(ba, (const guint8 *) fvalue_get(&fi->ws_fi->value),
-                                    fvalue_length(&fi->ws_fi->value));
+                g_byte_array_append(ba, fvalue_get_bytes_data(fi->ws_fi->value),
+                                    (guint)fvalue_length2(fi->ws_fi->value));
                 pushByteArray(L,ba);
                 return 1;
             }
         case FT_PROTOCOL:
             {
                 ByteArray ba = g_byte_array_new();
-                tvbuff_t* tvb = (tvbuff_t *) fvalue_get(&fi->ws_fi->value);
-                g_byte_array_append(ba, (const guint8 *)tvb_memdup(wmem_packet_scope(), tvb, 0,
-                                            tvb_captured_length(tvb)), tvb_captured_length(tvb));
+                tvbuff_t* tvb = fvalue_get_protocol(fi->ws_fi->value);
+                guint8* raw;
+                if (tvb != NULL) {
+                    raw = (guint8 *)tvb_memdup(NULL, tvb, 0, tvb_captured_length(tvb));
+                    g_byte_array_append(ba, raw, tvb_captured_length(tvb));
+                    wmem_free(NULL, raw);
+                }
+
                 pushByteArray(L,ba);
                 return 1;
             }
@@ -204,30 +210,22 @@ WSLUA_METAMETHOD FieldInfo__tostring(lua_State* L) {
     /* The string representation of the field. */
     FieldInfo fi = checkFieldInfo(L,1);
 
-    if (fi->ws_fi->value.ftype->val_to_string_repr) {
-        gchar* repr = NULL;
+    gchar* repr = NULL;
 
-        if (fi->ws_fi->hfinfo->type == FT_PROTOCOL || fi->ws_fi->hfinfo->type == FT_PCRE) {
-            repr = fvalue_to_string_repr(NULL, &fi->ws_fi->value,FTREPR_DFILTER,BASE_NONE);
-        }
-        else {
-            repr = fvalue_to_string_repr(NULL, &fi->ws_fi->value,FTREPR_DISPLAY,fi->ws_fi->hfinfo->display);
-        }
-
-        if (repr) {
-            lua_pushstring(L,repr);
-            /* fvalue_to_string_repr() wmem_alloc's the string's buffer */
-            wmem_free(NULL, repr);
-        }
-        else {
-            lua_pushstring(L,"(unknown)");
-        }
-    }
-    else if (fi->ws_fi->hfinfo->type == FT_NONE) {
-        lua_pushstring(L, "(none)");
+    if (fi->ws_fi->hfinfo->type == FT_PROTOCOL) {
+        repr = fvalue_to_string_repr(NULL, fi->ws_fi->value,FTREPR_DFILTER,BASE_NONE);
     }
     else {
-        lua_pushstring(L,"(n/a)");
+        repr = fvalue_to_string_repr(NULL, fi->ws_fi->value,FTREPR_DISPLAY,fi->ws_fi->hfinfo->display);
+    }
+
+    if (repr) {
+        lua_pushstring(L,repr);
+        /* fvalue_to_string_repr() wmem_alloc's the string's buffer */
+        wmem_free(NULL, repr);
+    }
+    else {
+        lua_pushstring(L,"(unknown)");
     }
 
     return 1;
@@ -297,9 +295,14 @@ static int FieldInfo_get_source(lua_State* L) {
     return 1;
 }
 
-/* WSLUA_ATTRIBUTE FieldInfo_range RO The `TvbRange` covering the bytes of this field in a Tvb. */
+/* WSLUA_ATTRIBUTE FieldInfo_range RO The `TvbRange` covering the bytes of this field in a Tvb or nil if there is none. */
 static int FieldInfo_get_range(lua_State* L) {
     FieldInfo fi = checkFieldInfo(L,1);
+
+    if (!fi->ws_fi->ds_tvb) {
+        lua_pushnil(L);
+        return 1;
+    }
 
     if (push_TvbRange (L, fi->ws_fi->ds_tvb, fi->ws_fi->start, fi->ws_fi->length)) {
         return 1;
@@ -397,7 +400,7 @@ WSLUA_METAMETHOD FieldInfo__le(lua_State* L) {
     if (l->ws_fi->ds_tvb != r->ws_fi->ds_tvb)
         WSLUA_ERROR(FieldInfo__le,"Data source must be the same for both fields");
 
-    if (r->ws_fi->start + r->ws_fi->length <= l->ws_fi->start + l->ws_fi->length) {
+    if (l->ws_fi->start + l->ws_fi->length <= r->ws_fi->start + r->ws_fi->length) {
         lua_pushboolean(L,1);
     } else {
         lua_pushboolean(L,0);
@@ -406,7 +409,7 @@ WSLUA_METAMETHOD FieldInfo__le(lua_State* L) {
 }
 
 WSLUA_METAMETHOD FieldInfo__lt(lua_State* L) {
-    /* Checks whether the end byte of rhs is before the beginning of rhs. */
+    /* Checks whether the end byte of lhs is before the beginning of rhs. */
     FieldInfo l = checkFieldInfo(L,1);
     FieldInfo r = checkFieldInfo(L,2);
 
@@ -415,7 +418,7 @@ WSLUA_METAMETHOD FieldInfo__lt(lua_State* L) {
         return 0;
     }
 
-    if (r->ws_fi->start + r->ws_fi->length < l->ws_fi->start) {
+    if (l->ws_fi->start + l->ws_fi->length <= r->ws_fi->start) {
         lua_pushboolean(L,1);
     } else {
         lua_pushboolean(L,0);
@@ -553,7 +556,7 @@ static gboolean fake_tap = FALSE;
 void lua_prime_all_fields(proto_tree* tree _U_) {
     GString* fake_tap_filter = g_string_new("frame");
     guint i;
-    gchar *err_msg;
+    df_error_t *df_err;
 
     for(i=0; i < wanted_fields->len; i++) {
         Field f = (Field)g_ptr_array_index(wanted_fields,i);
@@ -582,9 +585,9 @@ void lua_prime_all_fields(proto_tree* tree _U_) {
         if (error) {
             report_failure("while registering lua_fake_tap:\n%s",error->str);
             g_string_free(error,TRUE);
-        } else if (!dfilter_compile(fake_tap_filter->str, &wslua_dfilter, &err_msg)) {
-            report_failure("while compiling dfilter \"%s\" for wslua: %s", fake_tap_filter->str, err_msg);
-            g_free(err_msg);
+        } else if (!dfilter_compile(fake_tap_filter->str, &wslua_dfilter, &df_err)) {
+            report_failure("while compiling dfilter \"%s\" for wslua: %s", fake_tap_filter->str, df_err->msg);
+            df_error_free(&df_err);
         }
     }
     g_string_free(fake_tap_filter, TRUE);

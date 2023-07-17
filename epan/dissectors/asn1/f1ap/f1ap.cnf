@@ -31,6 +31,7 @@ ProtocolIE-ID
 Presence
 ProtocolIE-ContainerPair
 ProtocolIE-FieldPair
+PRS-ID
 #.END
 
 
@@ -109,47 +110,88 @@ ProtocolIE-Field/value ie_field_value
 #.ASSIGN_VALUE_TO_TYPE  # F1AP does not have constants assigned to types, they are pure INTEGER
 # ProcedureCode
 
-id-Reset                             ProcedureCode
-id-F1Setup                           ProcedureCode
-id-ErrorIndication                   ProcedureCode
-id-gNBDUConfigurationUpdate          ProcedureCode
-id-gNBCUConfigurationUpdate          ProcedureCode
-id-UEContextSetup                    ProcedureCode
-id-UEContextRelease                  ProcedureCode
-id-UEContextModification             ProcedureCode
-id-UEContextModificationRequired     ProcedureCode
-id-UEMobilityCommand                 ProcedureCode
-id-UEContextReleaseRequest           ProcedureCode
-id-InitialULRRCMessageTransfer       ProcedureCode
-id-DLRRCMessageTransfer              ProcedureCode
-id-ULRRCMessageTransfer              ProcedureCode
-id-privateMessage                    ProcedureCode
-id-UEInactivityNotification          ProcedureCode
-id-GNBDUResourceCoordination         ProcedureCode
-id-SystemInformationDeliveryCommand  ProcedureCode
-id-Paging                            ProcedureCode
-id-Notify                            ProcedureCode
-id-WriteReplaceWarning               ProcedureCode
-id-PWSCancel                         ProcedureCode
-id-PWSRestartIndication              ProcedureCode
-id-PWSFailureIndication              ProcedureCode
-id-GNBDUStatusIndication             ProcedureCode
-id-RRCDeliveryReport                 ProcedureCode
-id-F1Removal                         ProcedureCode
-id-NetworkAccessRateReduction        ProcedureCode
-id-TraceStart                        ProcedureCode
-id-DeactivateTrace                   ProcedureCode
-id-DUCURadioInformationTransfer      ProcedureCode
-id-CUDURadioInformationTransfer      ProcedureCode
-id-BAPMappingConfiguration           ProcedureCode
-id-GNBDUResourceConfiguration        ProcedureCode
-id-IABTNLAddressAllocation           ProcedureCode
-id-IABUPConfigurationUpdate          ProcedureCode
-id-resourceStatusReportingInitiation ProcedureCode
-id-resourceStatusReporting           ProcedureCode
-id-accessAndMobilityIndication       ProcedureCode
-id-accessSuccess                     ProcedureCode
-id-cellTrafficTrace                  ProcedureCode
+id-Reset                                    ProcedureCode
+id-F1Setup                                  ProcedureCode
+id-ErrorIndication                          ProcedureCode
+id-gNBDUConfigurationUpdate                 ProcedureCode
+id-gNBCUConfigurationUpdate                 ProcedureCode
+id-UEContextSetup                           ProcedureCode
+id-UEContextRelease                         ProcedureCode
+id-UEContextModification                    ProcedureCode
+id-UEContextModificationRequired            ProcedureCode
+id-UEMobilityCommand                        ProcedureCode
+id-UEContextReleaseRequest                  ProcedureCode
+id-InitialULRRCMessageTransfer              ProcedureCode
+id-DLRRCMessageTransfer                     ProcedureCode
+id-ULRRCMessageTransfer                     ProcedureCode
+id-privateMessage                           ProcedureCode
+id-UEInactivityNotification                 ProcedureCode
+id-GNBDUResourceCoordination                ProcedureCode
+id-SystemInformationDeliveryCommand         ProcedureCode
+id-Paging                                   ProcedureCode
+id-Notify                                   ProcedureCode
+id-WriteReplaceWarning                      ProcedureCode
+id-PWSCancel                                ProcedureCode
+id-PWSRestartIndication                     ProcedureCode
+id-PWSFailureIndication                     ProcedureCode
+id-GNBDUStatusIndication                    ProcedureCode
+id-RRCDeliveryReport                        ProcedureCode
+id-F1Removal                                ProcedureCode
+id-NetworkAccessRateReduction               ProcedureCode
+id-TraceStart                               ProcedureCode
+id-DeactivateTrace                          ProcedureCode
+id-DUCURadioInformationTransfer             ProcedureCode
+id-CUDURadioInformationTransfer             ProcedureCode
+id-BAPMappingConfiguration                  ProcedureCode
+id-GNBDUResourceConfiguration               ProcedureCode
+id-IABTNLAddressAllocation                  ProcedureCode
+id-IABUPConfigurationUpdate                 ProcedureCode
+id-resourceStatusReportingInitiation        ProcedureCode
+id-resourceStatusReporting                  ProcedureCode
+id-accessAndMobilityIndication              ProcedureCode
+id-accessSuccess                            ProcedureCode
+id-cellTrafficTrace                         ProcedureCode
+id-PositioningMeasurementExchange           ProcedureCode
+id-PositioningAssistanceInformationControl  ProcedureCode
+id-PositioningAssistanceInformationFeedback ProcedureCode
+id-PositioningMeasurementReport             ProcedureCode
+id-PositioningMeasurementAbort              ProcedureCode
+id-PositioningMeasurementFailureIndication  ProcedureCode
+id-PositioningMeasurementUpdate             ProcedureCode
+id-TRPInformationExchange                   ProcedureCode
+id-PositioningInformationExchange           ProcedureCode
+id-PositioningActivation                    ProcedureCode
+id-PositioningDeactivation                  ProcedureCode
+id-E-CIDMeasurementInitiation               ProcedureCode
+id-E-CIDMeasurementFailureIndication        ProcedureCode
+id-E-CIDMeasurementReport                   ProcedureCode
+id-E-CIDMeasurementTermination              ProcedureCode
+id-PositioningInformationUpdate             ProcedureCode
+id-ReferenceTimeInformationReport           ProcedureCode
+id-ReferenceTimeInformationReportingControl ProcedureCode
+id-BroadcastContextSetup                    ProcedureCode
+id-BroadcastContextRelease                  ProcedureCode
+id-BroadcastContextReleaseRequest           ProcedureCode
+id-BroadcastContextModification             ProcedureCode
+id-MulticastGroupPaging                     ProcedureCode
+id-MulticastContextSetup                    ProcedureCode
+id-MulticastContextRelease                  ProcedureCode
+id-MulticastContextReleaseRequest           ProcedureCode
+id-MulticastContextModification             ProcedureCode
+id-MulticastDistributionSetup               ProcedureCode
+id-MulticastDistributionRelease             ProcedureCode
+id-PDCMeasurementInitiation                 ProcedureCode
+id-PDCMeasurementReport                     ProcedureCode
+id-PDCMeasurementInitiationRequest          ProcedureCode
+id-PDCMeasurementInitiationResponse         ProcedureCode
+id-PDCMeasurementInitiationFailure          ProcedureCode
+id-pRSConfigurationExchange                 ProcedureCode
+id-measurementPreconfiguration              ProcedureCode
+id-measurementActivation                    ProcedureCode
+id-QoEInformationTransfer                   ProcedureCode
+id-PDCMeasurementTerminationCommand         ProcedureCode
+id-PDCMeasurementFailureIndication          ProcedureCode
+id-PosSystemInformationDeliveryCommand      ProcedureCode
 
 # ProtocolIE-ID
 id-Cause                                             ProtocolIE-ID
@@ -483,7 +525,7 @@ id-SLDRBs-ModifiedConf-Item                          ProtocolIE-ID
 id-UEAssistanceInformationEUTRA                      ProtocolIE-ID
 id-PC5LinkAMBR                                       ProtocolIE-ID
 id-SL-PHY-MAC-RLC-Config                             ProtocolIE-ID
-id-SL-ConfigDedicatedEUTRA                           ProtocolIE-ID
+id-SL-ConfigDedicatedEUTRA-Info                      ProtocolIE-ID
 id-AlternativeQoSParaSetList                         ProtocolIE-ID
 id-CurrentQoSParaSetIndex                            ProtocolIE-ID
 id-gNBCUMeasurementID                                ProtocolIE-ID
@@ -508,8 +550,6 @@ id-ExtendedPacketDelayBudget                         ProtocolIE-ID
 id-TSCTrafficCharacteristics                         ProtocolIE-ID
 id-ReportingRequestType                              ProtocolIE-ID
 id-TimeReferenceInformation                          ProtocolIE-ID
-id-ReferenceTimeInformationReport                    ProtocolIE-ID
-id-ReferenceTimeInformationReportingControl          ProtocolIE-ID
 id-CNPacketDelayBudgetUplink                         ProtocolIE-ID
 id-AdditionalPDCPDuplicationTNL-List                 ProtocolIE-ID
 id-RLCDuplicationInformation                         ProtocolIE-ID
@@ -531,6 +571,320 @@ id-AvailableSNPN-ID-List                             ProtocolIE-ID
 id-SIB10-message                                     ProtocolIE-ID
 id-DLCarrierList                                     ProtocolIE-ID
 id-ExtendedTAISliceSupportList                       ProtocolIE-ID
+id-RequestedSRSTransmissionCharacteristics           ProtocolIE-ID
+id-PosAssistance-Information                         ProtocolIE-ID
+id-PosBroadcast                                      ProtocolIE-ID
+id-RoutingID                                         ProtocolIE-ID
+id-PosAssistanceInformationFailureList               ProtocolIE-ID
+id-PosMeasurementQuantities                          ProtocolIE-ID
+id-PosMeasurementResultList                          ProtocolIE-ID
+id-TRPInformationTypeListTRPReq                      ProtocolIE-ID
+id-TRPInformationTypeItem                            ProtocolIE-ID
+id-TRPInformationListTRPResp                         ProtocolIE-ID
+id-TRPInformationItem                                ProtocolIE-ID
+id-LMF-MeasurementID                                 ProtocolIE-ID
+id-SRSType                                           ProtocolIE-ID
+id-ActivationTime                                    ProtocolIE-ID
+id-AbortTransmission                                 ProtocolIE-ID
+id-PositioningBroadcastCells                         ProtocolIE-ID
+id-SRSConfiguration                                  ProtocolIE-ID
+id-PosReportCharacteristics                          ProtocolIE-ID
+id-PosMeasurementPeriodicity                         ProtocolIE-ID
+id-TRPList                                           ProtocolIE-ID
+id-RAN-MeasurementID                                 ProtocolIE-ID
+id-LMF-UE-MeasurementID                              ProtocolIE-ID
+id-RAN-UE-MeasurementID                              ProtocolIE-ID
+id-E-CID-MeasurementQuantities                       ProtocolIE-ID
+id-E-CID-MeasurementQuantities-Item                  ProtocolIE-ID
+id-E-CID-MeasurementPeriodicity                      ProtocolIE-ID
+id-E-CID-MeasurementResult                           ProtocolIE-ID
+id-Cell-Portion-ID                                   ProtocolIE-ID
+id-SFNInitialisationTime                             ProtocolIE-ID
+id-SystemFrameNumber                                 ProtocolIE-ID
+id-SlotNumber                                        ProtocolIE-ID
+id-TRP-MeasurementRequestList                        ProtocolIE-ID
+id-MeasurementBeamInfoRequest                        ProtocolIE-ID
+id-E-CID-ReportCharacteristics                       ProtocolIE-ID
+id-ConfiguredTACIndication                           ProtocolIE-ID
+id-Extended-GNB-CU-Name                              ProtocolIE-ID
+id-Extended-GNB-DU-Name                              ProtocolIE-ID
+id-F1CTransferPath                                   ProtocolIE-ID
+id-SFN-Offset                                        ProtocolIE-ID
+id-TransmissionStopIndicator                         ProtocolIE-ID
+id-SrsFrequency                                      ProtocolIE-ID
+id-SCGIndicator                                      ProtocolIE-ID
+id-EstimatedArrivalProbability                       ProtocolIE-ID
+id-TRPType                                           ProtocolIE-ID
+id-SRSSpatialRelationPerSRSResource                  ProtocolIE-ID
+id-PDCPTerminatingNodeDLTNLAddrInfo                  ProtocolIE-ID
+id-ENBDLTNLAddress                                   ProtocolIE-ID
+id-PosMeasurementPeriodicityExtended                 ProtocolIE-ID
+id-PRS-Resource-ID                                   ProtocolIE-ID
+id-LocationMeasurementInformation                    ProtocolIE-ID
+id-SliceRadioResourceStatus                          ProtocolIE-ID
+id-CompositeAvailableCapacity-SUL                    ProtocolIE-ID
+id-SuccessfulHOReportInformationList                 ProtocolIE-ID
+id-NR-U-Channel-List                                 ProtocolIE-ID
+id-NR-U                                              ProtocolIE-ID
+id-Coverage-Modification-Notification                ProtocolIE-ID
+id-CCO-Assistance-Information                        ProtocolIE-ID
+id-Neighbor-node-CCO-Assistance-Information-List     ProtocolIE-ID
+id-CellsForSON-List                                  ProtocolIE-ID
+id-MIMOPRBusageInformation                           ProtocolIE-ID
+id-gNB-CU-MBS-F1AP-ID                                ProtocolIE-ID
+id-gNB-DU-MBS-F1AP-ID                                ProtocolIE-ID
+id-MBS-Area-Session-ID                               ProtocolIE-ID
+id-MBS-CUtoDURRCInformation                          ProtocolIE-ID
+id-MBS-Session-ID                                    ProtocolIE-ID
+id-SNSSAI                                            ProtocolIE-ID
+id-MBS-Broadcast-NeighbourCellList                   ProtocolIE-ID
+id-BroadcastMRBs-FailedToBeModified-List             ProtocolIE-ID
+id-BroadcastMRBs-FailedToBeModified-Item             ProtocolIE-ID
+id-BroadcastMRBs-FailedToBeSetup-List                ProtocolIE-ID
+id-BroadcastMRBs-FailedToBeSetup-Item                ProtocolIE-ID
+id-BroadcastMRBs-FailedToBeSetupMod-List             ProtocolIE-ID
+id-BroadcastMRBs-FailedToBeSetupMod-Item             ProtocolIE-ID
+id-BroadcastMRBs-Modified-List                       ProtocolIE-ID
+id-BroadcastMRBs-Modified-Item                       ProtocolIE-ID
+id-BroadcastMRBs-Setup-List                          ProtocolIE-ID
+id-BroadcastMRBs-Setup-Item                          ProtocolIE-ID
+id-BroadcastMRBs-SetupMod-List                       ProtocolIE-ID
+id-BroadcastMRBs-SetupMod-Item                       ProtocolIE-ID
+id-BroadcastMRBs-ToBeModified-List                   ProtocolIE-ID
+id-BroadcastMRBs-ToBeModified-Item                   ProtocolIE-ID
+id-BroadcastMRBs-ToBeReleased-List                   ProtocolIE-ID
+id-BroadcastMRBs-ToBeReleased-Item                   ProtocolIE-ID
+id-BroadcastMRBs-ToBeSetup-List                      ProtocolIE-ID
+id-BroadcastMRBs-ToBeSetup-Item                      ProtocolIE-ID
+id-BroadcastMRBs-ToBeSetupMod-List                   ProtocolIE-ID
+id-BroadcastMRBs-ToBeSetupMod-Item                   ProtocolIE-ID
+id-Supported-MBS-FSA-ID-List                         ProtocolIE-ID
+id-UEIdentity-List-For-Paging-List                   ProtocolIE-ID
+id-UEIdentity-List-For-Paging-Item                   ProtocolIE-ID
+id-MBS-ServiceArea                                   ProtocolIE-ID
+id-MulticastMRBs-FailedToBeModified-List             ProtocolIE-ID
+id-MulticastMRBs-FailedToBeModified-Item             ProtocolIE-ID
+id-MulticastMRBs-FailedToBeSetup-List                ProtocolIE-ID
+id-MulticastMRBs-FailedToBeSetup-Item                ProtocolIE-ID
+id-MulticastMRBs-FailedToBeSetupMod-List             ProtocolIE-ID
+id-MulticastMRBs-FailedToBeSetupMod-Item             ProtocolIE-ID
+id-MulticastMRBs-Modified-List                       ProtocolIE-ID
+id-MulticastMRBs-Modified-Item                       ProtocolIE-ID
+id-MulticastMRBs-Setup-List                          ProtocolIE-ID
+id-MulticastMRBs-Setup-Item                          ProtocolIE-ID
+id-MulticastMRBs-SetupMod-List                       ProtocolIE-ID
+id-MulticastMRBs-SetupMod-Item                       ProtocolIE-ID
+id-MulticastMRBs-ToBeModified-List                   ProtocolIE-ID
+id-MulticastMRBs-ToBeModified-Item                   ProtocolIE-ID
+id-MulticastMRBs-ToBeReleased-List                   ProtocolIE-ID
+id-MulticastMRBs-ToBeReleased-Item                   ProtocolIE-ID
+id-MulticastMRBs-ToBeSetup-List                      ProtocolIE-ID
+id-MulticastMRBs-ToBeSetup-Item                      ProtocolIE-ID
+id-MulticastMRBs-ToBeSetupMod-List                   ProtocolIE-ID
+id-MulticastMRBs-ToBeSetupMod-Item                   ProtocolIE-ID
+id-MBSMulticastF1UContextDescriptor                  ProtocolIE-ID
+id-MulticastF1UContext-ToBeSetup-List                ProtocolIE-ID
+id-MulticastF1UContext-ToBeSetup-Item                ProtocolIE-ID
+id-MulticastF1UContext-Setup-List                    ProtocolIE-ID
+id-MulticastF1UContext-Setup-Item                    ProtocolIE-ID
+id-MulticastF1UContext-FailedToBeSetup-List          ProtocolIE-ID
+id-MulticastF1UContext-FailedToBeSetup-Item          ProtocolIE-ID
+id-IABCongestionIndication                           ProtocolIE-ID
+id-IABConditionalRRCMessageDeliveryIndication        ProtocolIE-ID
+id-F1CTransferPathNRDC                               ProtocolIE-ID
+id-BufferSizeThresh                                  ProtocolIE-ID
+id-IAB-TNL-Addresses-Exception                       ProtocolIE-ID
+id-BAP-Header-Rewriting-Added-List                   ProtocolIE-ID
+id-BAP-Header-Rewriting-Added-List-Item              ProtocolIE-ID
+id-Re-routingEnableIndicator                         ProtocolIE-ID
+id-NonF1terminatingTopologyIndicator                 ProtocolIE-ID
+id-EgressNonF1terminatingTopologyIndicator           ProtocolIE-ID
+id-IngressNonF1terminatingTopologyIndicator          ProtocolIE-ID
+id-rBSetConfiguration                                ProtocolIE-ID
+id-frequency-Domain-HSNA-Configuration-List          ProtocolIE-ID
+id-child-IAB-Nodes-NA-Resource-List                  ProtocolIE-ID
+id-Parent-IAB-Nodes-NA-Resource-Configuration-List   ProtocolIE-ID
+id-uL-FreqInfo                                       ProtocolIE-ID
+id-uL-Transmission-Bandwidth                         ProtocolIE-ID
+id-dL-FreqInfo                                       ProtocolIE-ID
+id-dL-Transmission-Bandwidth                         ProtocolIE-ID
+id-uL-NR-Carrier-List                                ProtocolIE-ID
+id-dL-NR-Carrier-List                                ProtocolIE-ID
+id-nRFreqInfo                                        ProtocolIE-ID
+id-transmission-Bandwidth                            ProtocolIE-ID
+id-nR-Carrier-List                                   ProtocolIE-ID
+id-Neighbour-Node-Cells-List                         ProtocolIE-ID
+id-Serving-Cells-List                                ProtocolIE-ID
+id-permutation                                       ProtocolIE-ID
+id-MDTPollutedMeasurementIndicator                   ProtocolIE-ID
+id-M5ReportAmount                                    ProtocolIE-ID
+id-M6ReportAmount                                    ProtocolIE-ID
+id-M7ReportAmount                                    ProtocolIE-ID
+id-SurvivalTime                                      ProtocolIE-ID
+id-PDCMeasurementPeriodicity                         ProtocolIE-ID
+id-PDCMeasurementQuantities                          ProtocolIE-ID
+id-PDCMeasurementQuantities-Item                     ProtocolIE-ID
+id-PDCMeasurementResult                              ProtocolIE-ID
+id-PDCReportType                                     ProtocolIE-ID
+id-RAN-UE-PDC-MeasID                                 ProtocolIE-ID
+id-SCGActivationRequest                              ProtocolIE-ID
+id-SCGActivationStatus                               ProtocolIE-ID
+id-PRSTRPList                                        ProtocolIE-ID
+id-PRSTransmissionTRPList                            ProtocolIE-ID
+id-OnDemandPRS                                       ProtocolIE-ID
+id-AoA-SearchWindow                                  ProtocolIE-ID
+id-TRP-MeasurementUpdateList                         ProtocolIE-ID
+id-ZoAInformation                                    ProtocolIE-ID
+id-ResponseTime                                      ProtocolIE-ID
+id-ARPLocationInfo                                   ProtocolIE-ID
+id-ARP-ID                                            ProtocolIE-ID
+id-MultipleULAoA                                     ProtocolIE-ID
+id-UL-SRS-RSRPP                                      ProtocolIE-ID
+id-SRSResourcetype                                   ProtocolIE-ID
+id-ExtendedAdditionalPathList                        ProtocolIE-ID
+id-LoS-NLoSInformation                               ProtocolIE-ID
+id-NumberOfTRPRxTEG                                  ProtocolIE-ID
+id-NumberOfTRPRxTxTEG                                ProtocolIE-ID
+id-TRPTxTEGAssociation                               ProtocolIE-ID
+id-TRPTEGInformation                                 ProtocolIE-ID
+id-TRPRx-TEGInformation                              ProtocolIE-ID
+id-TRP-PRS-Info-List                                 ProtocolIE-ID
+id-PRS-Measurement-Info-List                         ProtocolIE-ID
+id-PRSConfigRequestType                              ProtocolIE-ID
+id-MeasurementTimeOccasion                           ProtocolIE-ID
+id-MeasurementCharacteristicsRequestIndicator        ProtocolIE-ID
+id-UEReportingInformation                            ProtocolIE-ID
+id-PosConextRevIndication                            ProtocolIE-ID
+id-TRPBeamAntennaInformation                         ProtocolIE-ID
+id-NRRedCapUEIndication                              ProtocolIE-ID
+id-Redcap-Bcast-Information                          ProtocolIE-ID
+id-RANUEPagingDRX                                    ProtocolIE-ID
+id-CNUEPagingDRX                                     ProtocolIE-ID
+id-NRPagingeDRXInformation                           ProtocolIE-ID
+id-NRPagingeDRXInformationforRRCINACTIVE             ProtocolIE-ID
+id-NR-TADV                                           ProtocolIE-ID
+id-QoEInformation                                    ProtocolIE-ID
+id-CG-SDTQueryIndication                             ProtocolIE-ID
+id-SDT-MAC-PHY-CG-Config                             ProtocolIE-ID
+id-CG-SDTKeptIndicator                               ProtocolIE-ID
+id-CG-SDTindicatorSetup                              ProtocolIE-ID
+id-CG-SDTindicatorMod                                ProtocolIE-ID
+id-CG-SDTSessionInfoOld                              ProtocolIE-ID
+id-SDTInformation                                    ProtocolIE-ID
+id-SDTRLCBearerConfiguration                         ProtocolIE-ID
+id-FiveG-ProSeAuthorized                             ProtocolIE-ID
+id-FiveG-ProSeUEPC5AggregateMaximumBitrate           ProtocolIE-ID
+id-FiveG-ProSePC5LinkAMBR                            ProtocolIE-ID
+id-SRBMappingInfo                                    ProtocolIE-ID
+id-DRBMappingInfo                                    ProtocolIE-ID
+id-UuRLCChannelToBeSetupList                         ProtocolIE-ID
+id-UuRLCChannelToBeModifiedList                      ProtocolIE-ID
+id-UuRLCChannelToBeReleasedList                      ProtocolIE-ID
+id-UuRLCChannelSetupList                             ProtocolIE-ID
+id-UuRLCChannelFailedToBeSetupList                   ProtocolIE-ID
+id-UuRLCChannelModifiedList                          ProtocolIE-ID
+id-UuRLCChannelFailedToBeModifiedList                ProtocolIE-ID
+id-UuRLCChannelRequiredToBeModifiedList              ProtocolIE-ID
+id-UuRLCChannelRequiredToBeReleasedList              ProtocolIE-ID
+id-PC5RLCChannelToBeSetupList                        ProtocolIE-ID
+id-PC5RLCChannelToBeModifiedList                     ProtocolIE-ID
+id-PC5RLCChannelToBeReleasedList                     ProtocolIE-ID
+id-PC5RLCChannelSetupList                            ProtocolIE-ID
+id-PC5RLCChannelFailedToBeSetupList                  ProtocolIE-ID
+id-PC5RLCChannelFailedToBeModifiedList               ProtocolIE-ID
+id-PC5RLCChannelRequiredToBeModifiedList             ProtocolIE-ID
+id-PC5RLCChannelRequiredToBeReleasedList             ProtocolIE-ID
+id-PC5RLCChannelModifiedList                         ProtocolIE-ID
+id-SidelinkRelayConfiguration                        ProtocolIE-ID
+id-UpdatedRemoteUELocalID                            ProtocolIE-ID
+id-PathSwitchConfiguration                           ProtocolIE-ID
+id-PagingCause                                       ProtocolIE-ID
+id-MUSIM-GapConfig                                   ProtocolIE-ID
+id-PEIPSAssistanceInfo                               ProtocolIE-ID
+id-UEPagingCapability                                ProtocolIE-ID
+id-LastUsedCellIndication                            ProtocolIE-ID
+id-SIB17-message                                     ProtocolIE-ID
+id-GNBDUUESliceMaximumBitRateList                    ProtocolIE-ID
+id-SIB20-message                                     ProtocolIE-ID
+id-UE-MulticastMRBs-ToBeReleased-List                ProtocolIE-ID
+id-UE-MulticastMRBs-ToBeReleased-Item                ProtocolIE-ID
+id-UE-MulticastMRBs-ToBeSetup-List                   ProtocolIE-ID
+id-UE-MulticastMRBs-ToBeSetup-Item                   ProtocolIE-ID
+id-MulticastMBSSessionSetupList                      ProtocolIE-ID
+id-MulticastMBSSessionRemoveList                     ProtocolIE-ID
+id-PosMeasurementAmount                              ProtocolIE-ID
+id-SDT-Termination-Request                           ProtocolIE-ID
+id-pathPower                                         ProtocolIE-ID
+id-DU-RX-MT-RX-Extend                                ProtocolIE-ID
+id-DU-TX-MT-TX-Extend                                ProtocolIE-ID
+id-DU-RX-MT-TX-Extend                                ProtocolIE-ID
+id-DU-TX-MT-RX-Extend                                ProtocolIE-ID
+id-BAP-Header-Rewriting-Removed-List                 ProtocolIE-ID
+id-BAP-Header-Rewriting-Removed-List-Item            ProtocolIE-ID
+id-SLDRXCycleList                                    ProtocolIE-ID
+id-TAINSAGSupportList                                ProtocolIE-ID
+id-SL-RLC-ChannelToAddModList                        ProtocolIE-ID
+id-BroadcastAreaScope                                ProtocolIE-ID
+id-ManagementBasedMDTPLMNModificationList            ProtocolIE-ID
+id-SIB15-message                                     ProtocolIE-ID
+id-ActivationRequestType                             ProtocolIE-ID
+id-PosMeasGapPreConfigList                           ProtocolIE-ID
+id-InterFrequencyConfig-NoGap                        ProtocolIE-ID
+id-MBSInterestIndication                             ProtocolIE-ID
+id-UE-MulticastMRBs-ConfirmedToBeModified-List       ProtocolIE-ID
+id-UE-MulticastMRBs-ConfirmedToBeModified-Item       ProtocolIE-ID
+id-UE-MulticastMRBs-RequiredToBeModified-List        ProtocolIE-ID
+id-UE-MulticastMRBs-RequiredToBeModified-Item        ProtocolIE-ID
+id-UE-MulticastMRBs-RequiredToBeReleased-List        ProtocolIE-ID
+id-UE-MulticastMRBs-RequiredToBeReleased-Item        ProtocolIE-ID
+id-L571Info                                          ProtocolIE-ID
+id-L1151Info                                         ProtocolIE-ID
+id-SCS-480                                           ProtocolIE-ID
+id-SCS-960                                           ProtocolIE-ID
+id-SRSPortIndex                                      ProtocolIE-ID
+id-PEISubgroupingSupportIndication                   ProtocolIE-ID
+id-NeedForGapsInfoNR                                 ProtocolIE-ID
+id-NeedForGapNCSGInfoNR                              ProtocolIE-ID
+id-NeedForGapNCSGInfoEUTRA                           ProtocolIE-ID
+id-procedure-code-668-not-to-be-used                 ProtocolIE-ID
+id-procedure-code-669-not-to-be-used                 ProtocolIE-ID
+id-procedure-code-670-not-to-be-used                 ProtocolIE-ID
+id-Source-MRB-ID                                     ProtocolIE-ID
+id-PosMeasurementPeriodicityNR-AoA                   ProtocolIE-ID
+id-RedCapIndication                                  ProtocolIE-ID
+id-SRSPosRRCInactiveConfig                           ProtocolIE-ID
+id-SDTBearerConfigurationQueryIndication             ProtocolIE-ID
+id-SDTBearerConfigurationInfo                        ProtocolIE-ID
+id-UL-GapFR2-Config                                  ProtocolIE-ID
+id-ConfigRestrictInfoDAPS                            ProtocolIE-ID
+id-UE-MulticastMRBs-Setup-List                       ProtocolIE-ID
+id-UE-MulticastMRBs-Setup-Item                       ProtocolIE-ID
+id-MulticastF1UContextReferenceCU                    ProtocolIE-ID
+id-PosSItypeList                                     ProtocolIE-ID
+id-DAPS-HO-Status                                    ProtocolIE-ID
+id-UplinkTxDirectCurrentTwoCarrierListInfo           ProtocolIE-ID
+id-UE-MulticastMRBs-ToBeSetup-atModify-List          ProtocolIE-ID
+id-UE-MulticastMRBs-ToBeSetup-atModify-Item          ProtocolIE-ID
+id-MC-PagingCell-List                                ProtocolIE-ID
+id-MC-PagingCell-Item                                ProtocolIE-ID
+id-SRSPosRRCInactiveQueryIndication                  ProtocolIE-ID
+id-UlTxDirectCurrentMoreCarrierInformation           ProtocolIE-ID
+id-CPACMCGInformation                                ProtocolIE-ID
+id-TwoPHRModeMCG                                     ProtocolIE-ID
+id-TwoPHRModeSCG                                     ProtocolIE-ID
+id-ExtendedUEIdentityIndexValue                      ProtocolIE-ID
+id-ServingCellMO-List                                ProtocolIE-ID
+id-ServingCellMO-List-Item                           ProtocolIE-ID
+id-ServingCellMO-encoded-in-CGC-List                 ProtocolIE-ID
+id-HashedUEIdentityIndexValue                        ProtocolIE-ID
+id-UE-MulticastMRBs-Setupnew-List                    ProtocolIE-ID
+id-UE-MulticastMRBs-Setupnew-Item                    ProtocolIE-ID
+id-ncd-SSB-RedCapInitialBWP-SDT                      ProtocolIE-ID
+id-nrofSymbolsExtended                               ProtocolIE-ID
+id-repetitionFactorExtended                          ProtocolIE-ID
+id-startRBHopping                                    ProtocolIE-ID
+id-startRBIndex                                      ProtocolIE-ID
+id-transmissionCombn8                                ProtocolIE-ID
 #.END
 
 #.REGISTER
@@ -826,6 +1180,228 @@ TransportLayerAddress                             N f1ap.ies id-TraceCollectionE
 PrivacyIndicator                                  N f1ap.ies id-PrivacyIndicator
 URI-address                                       N f1ap.ies id-TraceCollectionEntityURI
 NID                                               N f1ap.ies id-ServingNID
+RequestedSRSTransmissionCharacteristics           N f1ap.ies id-RequestedSRSTransmissionCharacteristics
+PosAssistance-Information                         N f1ap.ies id-PosAssistance-Information
+PosBroadcast                                      N f1ap.ies id-PosBroadcast
+RoutingID                                         N f1ap.ies id-RoutingID
+PosAssistanceInformationFailureList               N f1ap.ies id-PosAssistanceInformationFailureList
+PosMeasurementQuantities                          N f1ap.ies id-PosMeasurementQuantities
+PosMeasurementResultList                          N f1ap.ies id-PosMeasurementResultList
+TRPInformationTypeListTRPReq                      N f1ap.ies id-TRPInformationTypeListTRPReq
+TRPInformationTypeItem                            N f1ap.ies id-TRPInformationTypeItem
+TRPInformationListTRPResp                         N f1ap.ies id-TRPInformationListTRPResp
+TRPInformationItem                                N f1ap.ies id-TRPInformationItem
+LMF-MeasurementID                                 N f1ap.ies id-LMF-MeasurementID
+SRSType                                           N f1ap.ies id-SRSType
+RelativeTime1900                                  N f1ap.ies id-ActivationTime
+AbortTransmission                                 N f1ap.ies id-AbortTransmission
+PositioningBroadcastCells                         N f1ap.ies id-PositioningBroadcastCells
+SRSConfiguration                                  N f1ap.ies id-SRSConfiguration
+PosReportCharacteristics                          N f1ap.ies id-PosReportCharacteristics
+MeasurementPeriodicity                            N f1ap.ies id-PosMeasurementPeriodicity
+TRPList                                           N f1ap.ies id-TRPList
+RAN-MeasurementID                                 N f1ap.ies id-RAN-MeasurementID
+LMF-UE-MeasurementID                              N f1ap.ies id-LMF-UE-MeasurementID
+RAN-UE-MeasurementID                              N f1ap.ies id-RAN-UE-MeasurementID
+E-CID-MeasurementQuantities                       N f1ap.ies id-E-CID-MeasurementQuantities
+E-CID-MeasurementQuantities-Item                  N f1ap.ies id-E-CID-MeasurementQuantities-Item
+MeasurementPeriodicity                            N f1ap.ies id-E-CID-MeasurementPeriodicity
+E-CID-MeasurementResult                           N f1ap.ies id-E-CID-MeasurementResult
+Cell-Portion-ID                                   N f1ap.ies id-Cell-Portion-ID
+RelativeTime1900                                  N f1ap.ies id-SFNInitialisationTime
+SystemFrameNumber                                 N f1ap.ies id-SystemFrameNumber
+SlotNumber                                        N f1ap.ies id-SlotNumber
+TRP-MeasurementRequestList                        N f1ap.ies id-TRP-MeasurementRequestList
+MeasurementBeamInfoRequest                        N f1ap.ies id-MeasurementBeamInfoRequest
+E-CID-ReportCharacteristics                       N f1ap.ies id-E-CID-ReportCharacteristics
+Extended-GNB-CU-Name                              N f1ap.ies id-Extended-GNB-CU-Name
+Extended-GNB-DU-Name                              N f1ap.ies id-Extended-GNB-DU-Name
+F1CTransferPath                                   N f1ap.ies id-F1CTransferPath
+SCGIndicator                                      N f1ap.ies id-SCGIndicator
+TRPType                                           N f1ap.ies id-TRPType
+MeasurementPeriodicityExtended                    N f1ap.ies id-PosMeasurementPeriodicityExtended
+SuccessfulHOReportInformationList                 N f1ap.ies id-SuccessfulHOReportInformationList
+CellsForSON-List                                  N f1ap.ies id-CellsForSON-List
+GNB-CU-MBS-F1AP-ID                                N f1ap.ies id-gNB-CU-MBS-F1AP-ID
+GNB-DU-MBS-F1AP-ID                                N f1ap.ies id-gNB-DU-MBS-F1AP-ID
+MBS-CUtoDURRCInformation                          N f1ap.ies id-MBS-CUtoDURRCInformation
+SNSSAI                                            N f1ap.ies id-SNSSAI
+BroadcastMRBs-FailedToBeModified-List             N f1ap.ies id-BroadcastMRBs-FailedToBeModified-List
+BroadcastMRBs-FailedToBeModified-Item             N f1ap.ies id-BroadcastMRBs-FailedToBeModified-Item
+BroadcastMRBs-FailedToBeSetup-List                N f1ap.ies id-BroadcastMRBs-FailedToBeSetup-List
+BroadcastMRBs-FailedToBeSetup-Item                N f1ap.ies id-BroadcastMRBs-FailedToBeSetup-Item
+BroadcastMRBs-FailedToBeSetupMod-List             N f1ap.ies id-BroadcastMRBs-FailedToBeSetupMod-List
+BroadcastMRBs-FailedToBeSetupMod-Item             N f1ap.ies id-BroadcastMRBs-FailedToBeSetupMod-Item
+BroadcastMRBs-Modified-List                       N f1ap.ies id-BroadcastMRBs-Modified-List
+BroadcastMRBs-Modified-Item                       N f1ap.ies id-BroadcastMRBs-Modified-Item
+BroadcastMRBs-Setup-List                          N f1ap.ies id-BroadcastMRBs-Setup-List
+BroadcastMRBs-Setup-Item                          N f1ap.ies id-BroadcastMRBs-Setup-Item
+BroadcastMRBs-SetupMod-List                       N f1ap.ies id-BroadcastMRBs-SetupMod-List
+BroadcastMRBs-SetupMod-Item                       N f1ap.ies id-BroadcastMRBs-SetupMod-Item
+BroadcastMRBs-ToBeModified-List                   N f1ap.ies id-BroadcastMRBs-ToBeModified-List
+BroadcastMRBs-ToBeModified-Item                   N f1ap.ies id-BroadcastMRBs-ToBeModified-Item
+BroadcastMRBs-ToBeReleased-List                   N f1ap.ies id-BroadcastMRBs-ToBeReleased-List
+BroadcastMRBs-ToBeReleased-Item                   N f1ap.ies id-BroadcastMRBs-ToBeReleased-Item
+BroadcastMRBs-ToBeSetup-List                      N f1ap.ies id-BroadcastMRBs-ToBeSetup-List
+BroadcastMRBs-ToBeSetup-Item                      N f1ap.ies id-BroadcastMRBs-ToBeSetup-Item
+BroadcastMRBs-ToBeSetupMod-List                   N f1ap.ies id-BroadcastMRBs-ToBeSetupMod-List
+BroadcastMRBs-ToBeSetupMod-Item                   N f1ap.ies id-BroadcastMRBs-ToBeSetupMod-Item
+UEIdentity-List-For-Paging-List                   N f1ap.ies id-UEIdentity-List-For-Paging-List
+UEIdentity-List-For-Paging-Item                   N f1ap.ies id-UEIdentity-List-For-Paging-Item
+MBS-ServiceArea                                   N f1ap.ies id-MBS-ServiceArea
+MulticastMRBs-FailedToBeModified-List             N f1ap.ies id-MulticastMRBs-FailedToBeModified-List
+MulticastMRBs-FailedToBeModified-Item             N f1ap.ies id-MulticastMRBs-FailedToBeModified-Item
+MulticastMRBs-FailedToBeSetup-List                N f1ap.ies id-MulticastMRBs-FailedToBeSetup-List
+MulticastMRBs-FailedToBeSetup-Item                N f1ap.ies id-MulticastMRBs-FailedToBeSetup-Item
+MulticastMRBs-FailedToBeSetupMod-List             N f1ap.ies id-MulticastMRBs-FailedToBeSetupMod-List
+MulticastMRBs-FailedToBeSetupMod-Item             N f1ap.ies id-MulticastMRBs-FailedToBeSetupMod-Item
+MulticastMRBs-Modified-List                       N f1ap.ies id-MulticastMRBs-Modified-List
+MulticastMRBs-Modified-Item                       N f1ap.ies id-MulticastMRBs-Modified-Item
+MulticastMRBs-Setup-List                          N f1ap.ies id-MulticastMRBs-Setup-List
+MulticastMRBs-Setup-Item                          N f1ap.ies id-MulticastMRBs-Setup-Item
+MulticastMRBs-SetupMod-List                       N f1ap.ies id-MulticastMRBs-SetupMod-List
+MulticastMRBs-SetupMod-Item                       N f1ap.ies id-MulticastMRBs-SetupMod-Item
+MulticastMRBs-ToBeModified-List                   N f1ap.ies id-MulticastMRBs-ToBeModified-List
+MulticastMRBs-ToBeModified-Item                   N f1ap.ies id-MulticastMRBs-ToBeModified-Item
+MulticastMRBs-ToBeReleased-List                   N f1ap.ies id-MulticastMRBs-ToBeReleased-List
+MulticastMRBs-ToBeReleased-Item                   N f1ap.ies id-MulticastMRBs-ToBeReleased-Item
+MulticastMRBs-ToBeSetup-List                      N f1ap.ies id-MulticastMRBs-ToBeSetup-List
+MulticastMRBs-ToBeSetup-Item                      N f1ap.ies id-MulticastMRBs-ToBeSetup-Item
+MulticastMRBs-ToBeSetupMod-List                   N f1ap.ies id-MulticastMRBs-ToBeSetupMod-List
+MulticastMRBs-ToBeSetupMod-Item                   N f1ap.ies id-MulticastMRBs-ToBeSetupMod-Item
+MBSMulticastF1UContextDescriptor                  N f1ap.ies id-MBSMulticastF1UContextDescriptor
+MulticastF1UContext-ToBeSetup-List                N f1ap.ies id-MulticastF1UContext-ToBeSetup-List
+MulticastF1UContext-ToBeSetup-Item                N f1ap.ies id-MulticastF1UContext-ToBeSetup-Item
+MulticastF1UContext-Setup-List                    N f1ap.ies id-MulticastF1UContext-Setup-List
+MulticastF1UContext-Setup-Item                    N f1ap.ies id-MulticastF1UContext-Setup-Item
+MulticastF1UContext-FailedToBeSetup-List          N f1ap.ies id-MulticastF1UContext-FailedToBeSetup-List
+MulticastF1UContext-FailedToBeSetup-Item          N f1ap.ies id-MulticastF1UContext-FailedToBeSetup-Item
+IABCongestionIndication                           N f1ap.ies id-IABCongestionIndication
+IABConditionalRRCMessageDeliveryIndication        N f1ap.ies id-IABConditionalRRCMessageDeliveryIndication
+F1CTransferPathNRDC                               N f1ap.ies id-F1CTransferPathNRDC
+BufferSizeThresh                                  N f1ap.ies id-BufferSizeThresh
+IAB-TNL-Addresses-Exception                       N f1ap.ies id-IAB-TNL-Addresses-Exception
+BAP-Header-Rewriting-Added-List                   N f1ap.ies id-BAP-Header-Rewriting-Added-List
+BAP-Header-Rewriting-Added-List-Item              N f1ap.ies id-BAP-Header-Rewriting-Added-List-Item
+Re-routingEnableIndicator                         N f1ap.ies id-Re-routingEnableIndicator
+Neighbour-Node-Cells-List                         N f1ap.ies id-Neighbour-Node-Cells-List
+Serving-Cells-List                                N f1ap.ies id-Serving-Cells-List
+MDTPollutedMeasurementIndicator                   N f1ap.ies id-MDTPollutedMeasurementIndicator
+PDCMeasurementPeriodicity                         N f1ap.ies id-PDCMeasurementPeriodicity
+PDCMeasurementQuantities                          N f1ap.ies id-PDCMeasurementQuantities
+PDCMeasurementQuantities-Item                     N f1ap.ies id-PDCMeasurementQuantities-Item
+PDCMeasurementResult                              N f1ap.ies id-PDCMeasurementResult
+PDCReportType                                     N f1ap.ies id-PDCReportType
+RAN-UE-PDC-MeasID                                 N f1ap.ies id-RAN-UE-PDC-MeasID
+SCGActivationRequest                              N f1ap.ies id-SCGActivationRequest
+SCGActivationStatus                               N f1ap.ies id-SCGActivationStatus
+PRSTRPList                                        N f1ap.ies id-PRSTRPList
+PRSTransmissionTRPList                            N f1ap.ies id-PRSTransmissionTRPList
+OnDemandPRS-Info                                  N f1ap.ies id-OnDemandPRS
+TRP-MeasurementUpdateList                         N f1ap.ies id-TRP-MeasurementUpdateList
+ZoAInformation                                    N f1ap.ies id-ZoAInformation
+ResponseTime                                      N f1ap.ies id-ResponseTime
+MultipleULAoA                                     N f1ap.ies id-MultipleULAoA
+UL-SRS-RSRPP                                      N f1ap.ies id-UL-SRS-RSRPP
+ExtendedAdditionalPathList                        N f1ap.ies id-ExtendedAdditionalPathList
+TRPTxTEGAssociation                               N f1ap.ies id-TRPTxTEGAssociation
+TRP-Rx-TEGInformation                             N f1ap.ies id-TRPRx-TEGInformation
+TRP-PRS-Info-List                                 N f1ap.ies id-TRP-PRS-Info-List
+PRS-Measurement-Info-List                         N f1ap.ies id-PRS-Measurement-Info-List
+PRSConfigRequestType                              N f1ap.ies id-PRSConfigRequestType
+MeasurementTimeOccasion                           N f1ap.ies id-MeasurementTimeOccasion
+MeasurementCharacteristicsRequestIndicator        N f1ap.ies id-MeasurementCharacteristicsRequestIndicator
+UEReportingInformation                            N f1ap.ies id-UEReportingInformation
+PosConextRevIndication                            N f1ap.ies id-PosConextRevIndication
+TRPBeamAntennaInformation                         N f1ap.ies id-TRPBeamAntennaInformation
+NRRedCapUEIndication                              N f1ap.ies id-NRRedCapUEIndication
+PagingDRX                                         N f1ap.ies id-RANUEPagingDRX
+PagingDRX                                         N f1ap.ies id-CNUEPagingDRX
+NRPagingeDRXInformation                           N f1ap.ies id-NRPagingeDRXInformation
+NRPagingeDRXInformationforRRCINACTIVE             N f1ap.ies id-NRPagingeDRXInformationforRRCINACTIVE
+NR-TADV                                           N f1ap.ies id-NR-TADV
+QoEInformation                                    N f1ap.ies id-QoEInformation
+CG-SDTQueryIndication                             N f1ap.ies id-CG-SDTQueryIndication
+CG-SDTKeptIndicator                               N f1ap.ies id-CG-SDTKeptIndicator
+CG-SDTSessionInfo                                 N f1ap.ies id-CG-SDTSessionInfoOld
+SDTInformation                                    N f1ap.ies id-SDTInformation
+FiveG-ProSeAuthorized                             N f1ap.ies id-FiveG-ProSeAuthorized
+NRUESidelinkAggregateMaximumBitrate               N f1ap.ies id-FiveG-ProSeUEPC5AggregateMaximumBitrate
+BitRate                                           N f1ap.ies id-FiveG-ProSePC5LinkAMBR
+UuRLCChannelToBeSetupList                         N f1ap.ies id-UuRLCChannelToBeSetupList
+UuRLCChannelToBeModifiedList                      N f1ap.ies id-UuRLCChannelToBeModifiedList
+UuRLCChannelToBeReleasedList                      N f1ap.ies id-UuRLCChannelToBeReleasedList
+UuRLCChannelSetupList                             N f1ap.ies id-UuRLCChannelSetupList
+UuRLCChannelFailedToBeSetupList                   N f1ap.ies id-UuRLCChannelFailedToBeSetupList
+UuRLCChannelModifiedList                          N f1ap.ies id-UuRLCChannelModifiedList
+UuRLCChannelFailedToBeModifiedList                N f1ap.ies id-UuRLCChannelFailedToBeModifiedList
+UuRLCChannelRequiredToBeModifiedList              N f1ap.ies id-UuRLCChannelRequiredToBeModifiedList
+UuRLCChannelRequiredToBeReleasedList              N f1ap.ies id-UuRLCChannelRequiredToBeReleasedList
+PC5RLCChannelToBeSetupList                        N f1ap.ies id-PC5RLCChannelToBeSetupList
+PC5RLCChannelToBeModifiedList                     N f1ap.ies id-PC5RLCChannelToBeModifiedList
+PC5RLCChannelToBeReleasedList                     N f1ap.ies id-PC5RLCChannelToBeReleasedList
+PC5RLCChannelSetupList                            N f1ap.ies id-PC5RLCChannelSetupList
+PC5RLCChannelFailedToBeSetupList                  N f1ap.ies id-PC5RLCChannelFailedToBeSetupList
+PC5RLCChannelFailedToBeModifiedList               N f1ap.ies id-PC5RLCChannelFailedToBeModifiedList
+PC5RLCChannelRequiredToBeModifiedList             N f1ap.ies id-PC5RLCChannelRequiredToBeModifiedList
+PC5RLCChannelRequiredToBeReleasedList             N f1ap.ies id-PC5RLCChannelRequiredToBeReleasedList
+PC5RLCChannelModifiedList                         N f1ap.ies id-PC5RLCChannelModifiedList
+SidelinkRelayConfiguration                        N f1ap.ies id-SidelinkRelayConfiguration
+RemoteUELocalID                                   N f1ap.ies id-UpdatedRemoteUELocalID
+PathSwitchConfiguration                           N f1ap.ies id-PathSwitchConfiguration
+PagingCause                                       N f1ap.ies id-PagingCause
+PEIPSAssistanceInfo                               N f1ap.ies id-PEIPSAssistanceInfo
+UEPagingCapability                                N f1ap.ies id-UEPagingCapability
+GNBDUUESliceMaximumBitRateList                    N f1ap.ies id-GNBDUUESliceMaximumBitRateList
+UE-MulticastMRBs-ToBeReleased-List                N f1ap.ies id-UE-MulticastMRBs-ToBeReleased-List
+UE-MulticastMRBs-ToBeReleased-Item                N f1ap.ies id-UE-MulticastMRBs-ToBeReleased-Item
+UE-MulticastMRBs-ToBeSetup-List                   N f1ap.ies id-UE-MulticastMRBs-ToBeSetup-List
+UE-MulticastMRBs-ToBeSetup-Item                   N f1ap.ies id-UE-MulticastMRBs-ToBeSetup-Item
+MulticastMBSSessionList                           N f1ap.ies id-MulticastMBSSessionSetupList
+MulticastMBSSessionList                           N f1ap.ies id-MulticastMBSSessionRemoveList
+PosMeasurementAmount                              N f1ap.ies id-PosMeasurementAmount
+SDT-Termination-Request                           N f1ap.ies id-SDT-Termination-Request
+BAP-Header-Rewriting-Removed-List                 N f1ap.ies id-BAP-Header-Rewriting-Removed-List
+BAP-Header-Rewriting-Removed-List-Item            N f1ap.ies id-BAP-Header-Rewriting-Removed-List-Item
+SLDRXCycleList                                    N f1ap.ies id-SLDRXCycleList
+BroadcastAreaScope                                N f1ap.ies id-BroadcastAreaScope
+MDTPLMNModificationList                           N f1ap.ies id-ManagementBasedMDTPLMNModificationList
+ActivationRequestType                             N f1ap.ies id-ActivationRequestType
+PosMeasGapPreConfigList                           N f1ap.ies id-PosMeasGapPreConfigList
+UE-MulticastMRBs-ConfirmedToBeModified-List       N f1ap.ies id-UE-MulticastMRBs-ConfirmedToBeModified-List
+UE-MulticastMRBs-ConfirmedToBeModified-Item       N f1ap.ies id-UE-MulticastMRBs-ConfirmedToBeModified-Item
+UE-MulticastMRBs-RequiredToBeModified-List        N f1ap.ies id-UE-MulticastMRBs-RequiredToBeModified-List
+UE-MulticastMRBs-RequiredToBeModified-Item        N f1ap.ies id-UE-MulticastMRBs-RequiredToBeModified-Item
+UE-MulticastMRBs-RequiredToBeReleased-List        N f1ap.ies id-UE-MulticastMRBs-RequiredToBeReleased-List
+UE-MulticastMRBs-RequiredToBeReleased-Item        N f1ap.ies id-UE-MulticastMRBs-RequiredToBeReleased-Item
+L571Info                                          N f1ap.ies id-L571Info
+L1151Info                                         N f1ap.ies id-L1151Info
+SCS-480                                           N f1ap.ies id-SCS-480
+SCS-960                                           N f1ap.ies id-SCS-960
+SRSPosRRCInactiveConfig                           N f1ap.ies id-SRSPosRRCInactiveConfig
+SDTBearerConfigurationQueryIndication             N f1ap.ies id-SDTBearerConfigurationQueryIndication
+SDTBearerConfigurationInfo                        N f1ap.ies id-SDTBearerConfigurationInfo
+UE-MulticastMRBs-Setup-List                       N f1ap.ies id-UE-MulticastMRBs-Setup-List
+UE-MulticastMRBs-Setup-Item                       N f1ap.ies id-UE-MulticastMRBs-Setup-Item
+MulticastF1UContextReferenceCU                    N f1ap.ies id-MulticastF1UContextReferenceCU
+PosSItypeList                                     N f1ap.ies id-PosSItypeList
+DAPS-HO-Status                                    N f1ap.ies id-DAPS-HO-Status
+UplinkTxDirectCurrentTwoCarrierListInfo           N f1ap.ies id-UplinkTxDirectCurrentTwoCarrierListInfo
+UE-MulticastMRBs-ToBeSetup-atModify-List          N f1ap.ies id-UE-MulticastMRBs-ToBeSetup-atModify-List
+UE-MulticastMRBs-ToBeSetup-atModify-Item          N f1ap.ies id-UE-MulticastMRBs-ToBeSetup-atModify-Item
+MC-PagingCell-list                                N f1ap.ies id-MC-PagingCell-List
+MC-PagingCell-Item                                N f1ap.ies id-MC-PagingCell-Item
+SRSPosRRCInactiveQueryIndication                  N f1ap.ies id-SRSPosRRCInactiveQueryIndication
+UlTxDirectCurrentMoreCarrierInformation           N f1ap.ies id-UlTxDirectCurrentMoreCarrierInformation
+CPACMCGInformation                                N f1ap.ies id-CPACMCGInformation
+ExtendedUEIdentityIndexValue                      N f1ap.ies id-ExtendedUEIdentityIndexValue
+ServingCellMO-List                                N f1ap.ies id-ServingCellMO-List
+ServingCellMO-List-Item                           N f1ap.ies id-ServingCellMO-List-Item
+ServingCellMO-encoded-in-CGC-List                 N f1ap.ies id-ServingCellMO-encoded-in-CGC-List
+HashedUEIdentityIndexValue                        N f1ap.ies id-HashedUEIdentityIndexValue
+UE-MulticastMRBs-Setupnew-List                    N f1ap.ies id-UE-MulticastMRBs-Setupnew-List
+UE-MulticastMRBs-Setupnew-Item                    N f1ap.ies id-UE-MulticastMRBs-Setupnew-Item
+TransmissionCombn8                                N f1ap.ies id-transmissionCombn8
 
 #F1AP-PROTOCOL-EXTENSION
 GNB-CUSystemInformation                           N f1ap.extension id-gNB-CUSystemInformation
@@ -888,7 +1464,7 @@ SIB13-message                                     N f1ap.extension id-SIB13-mess
 SIB14-message                                     N f1ap.extension id-SIB14-message
 UEAssistanceInformationEUTRA                      N f1ap.extension id-UEAssistanceInformationEUTRA
 SL-PHY-MAC-RLC-Config                             N f1ap.extension id-SL-PHY-MAC-RLC-Config
-SL-ConfigDedicatedEUTRA                           N f1ap.extension id-SL-ConfigDedicatedEUTRA
+SL-ConfigDedicatedEUTRA-Info                      N f1ap.extension id-SL-ConfigDedicatedEUTRA-Info
 AlternativeQoSParaSetList                         N f1ap.extension id-AlternativeQoSParaSetList
 QoSParaSetNotifyIndex                             N f1ap.extension id-CurrentQoSParaSetIndex
 NRCarrierList                                     N f1ap.extension id-CarrierList
@@ -913,6 +1489,96 @@ AvailableSNPN-ID-List                             N f1ap.extension id-AvailableS
 SIB10-message                                     N f1ap.extension id-SIB10-message
 NRCarrierList                                     N f1ap.extension id-DLCarrierList
 ExtendedSliceSupportList                          N f1ap.extension id-ExtendedTAISliceSupportList
+ConfiguredTACIndication                           N f1ap.extension id-ConfiguredTACIndication
+NRCGI                                             N f1ap.extension id-NRCGI
+SFN-Offset                                        N f1ap.extension id-SFN-Offset
+TransmissionStopIndicator                         N f1ap.extension id-TransmissionStopIndicator
+SrsFrequency                                      N f1ap.extension id-SrsFrequency
+CHO-Probability                                   N f1ap.extension id-EstimatedArrivalProbability
+SpatialRelationPerSRSResource                     N f1ap.extension id-SRSSpatialRelationPerSRSResource
+TransportLayerAddress                             N f1ap.extension id-PDCPTerminatingNodeDLTNLAddrInfo
+TransportLayerAddress                             N f1ap.extension id-ENBDLTNLAddress
+PRS-Resource-ID                                   N f1ap.extension id-PRS-Resource-ID
+LocationMeasurementInformation                    N f1ap.extension id-LocationMeasurementInformation
+SliceRadioResourceStatus                          N f1ap.extension id-SliceRadioResourceStatus
+CompositeAvailableCapacity                        N f1ap.extension id-CompositeAvailableCapacity-SUL
+NR-U-Channel-List                                 N f1ap.extension id-NR-U-Channel-List
+NR-U-Channel-Info-List                            N f1ap.extension id-NR-U
+Coverage-Modification-Notification                N f1ap.extension id-Coverage-Modification-Notification
+CCO-Assistance-Information                        N f1ap.extension id-CCO-Assistance-Information
+MIMOPRBusageInformation                           N f1ap.extension id-MIMOPRBusageInformation
+MBS-Broadcast-NeighbourCellList                   N f1ap.extension id-MBS-Broadcast-NeighbourCellList
+Supported-MBS-FSA-ID-List                         N f1ap.extension id-Supported-MBS-FSA-ID-List
+NonF1terminatingTopologyIndicator                 N f1ap.extension id-NonF1terminatingTopologyIndicator
+EgressNonF1terminatingTopologyIndicator           N f1ap.extension id-EgressNonF1terminatingTopologyIndicator
+IngressNonF1terminatingTopologyIndicator          N f1ap.extension id-IngressNonF1terminatingTopologyIndicator
+RBSetConfiguration                                N f1ap.extension id-rBSetConfiguration
+Frequency-Domain-HSNA-Configuration-List          N f1ap.extension id-frequency-Domain-HSNA-Configuration-List
+Child-IAB-Nodes-NA-Resource-List                  N f1ap.extension id-child-IAB-Nodes-NA-Resource-List
+Parent-IAB-Nodes-NA-Resource-Configuration-List   N f1ap.extension id-Parent-IAB-Nodes-NA-Resource-Configuration-List
+NRFreqInfo                                        N f1ap.extension id-uL-FreqInfo
+Transmission-Bandwidth                            N f1ap.extension id-uL-Transmission-Bandwidth
+NRFreqInfo                                        N f1ap.extension id-dL-FreqInfo
+Transmission-Bandwidth                            N f1ap.extension id-dL-Transmission-Bandwidth
+NRCarrierList                                     N f1ap.extension id-uL-NR-Carrier-List
+NRCarrierList                                     N f1ap.extension id-dL-NR-Carrier-List
+NRFreqInfo                                        N f1ap.extension id-nRFreqInfo
+Transmission-Bandwidth                            N f1ap.extension id-transmission-Bandwidth
+NRCarrierList                                     N f1ap.extension id-nR-Carrier-List
+Permutation                                       N f1ap.extension id-permutation
+M5ReportAmount                                    N f1ap.extension id-M5ReportAmount
+M6ReportAmount                                    N f1ap.extension id-M6ReportAmount
+M7ReportAmount                                    N f1ap.extension id-M7ReportAmount
+SurvivalTime                                      N f1ap.extension id-SurvivalTime
+AoA-AssistanceInfo                                N f1ap.extension id-AoA-SearchWindow
+ARPLocationInformation                            N f1ap.extension id-ARPLocationInfo
+ARP-ID                                            N f1ap.extension id-ARP-ID
+MultipleULAoA                                     N f1ap.extension id-MultipleULAoA
+SRSResourcetype                                   N f1ap.extension id-SRSResourcetype
+ExtendedAdditionalPathList                        N f1ap.extension id-ExtendedAdditionalPathList
+LoS-NLoSInformation                               N f1ap.extension id-LoS-NLoSInformation
+NumberOfTRPRxTEG                                  N f1ap.extension id-NumberOfTRPRxTEG
+NumberOfTRPRxTxTEG                                N f1ap.extension id-NumberOfTRPRxTxTEG
+TRPTEGInformation                                 N f1ap.extension id-TRPTEGInformation
+Redcap-Bcast-Information                          N f1ap.extension id-Redcap-Bcast-Information
+SDT-MAC-PHY-CG-Config                             N f1ap.extension id-SDT-MAC-PHY-CG-Config
+CG-SDTindicatorSetup                              N f1ap.extension id-CG-SDTindicatorSetup
+CG-SDTindicatorMod                                N f1ap.extension id-CG-SDTindicatorMod
+SDTRLCBearerConfiguration                         N f1ap.extension id-SDTRLCBearerConfiguration
+UuRLCChannelID                                    N f1ap.extension id-SRBMappingInfo
+UuRLCChannelID                                    N f1ap.extension id-DRBMappingInfo
+MUSIM-GapConfig                                   N f1ap.extension id-MUSIM-GapConfig
+LastUsedCellIndication                            N f1ap.extension id-LastUsedCellIndication
+SIB17-message                                     N f1ap.extension id-SIB17-message
+SIB20-message                                     N f1ap.extension id-SIB20-message
+UL-SRS-RSRPP                                      N f1ap.extension id-pathPower
+DU-RX-MT-RX-Extend                                N f1ap.extension id-DU-RX-MT-RX-Extend
+DU-TX-MT-TX-Extend                                N f1ap.extension id-DU-TX-MT-TX-Extend
+DU-RX-MT-TX-Extend                                N f1ap.extension id-DU-RX-MT-TX-Extend
+DU-TX-MT-RX-Extend                                N f1ap.extension id-DU-TX-MT-RX-Extend
+NSAGSupportList                                   N f1ap.extension id-TAINSAGSupportList
+SL-RLC-ChannelToAddModList                        N f1ap.extension id-SL-RLC-ChannelToAddModList
+SIB15-message                                     N f1ap.extension id-SIB15-message
+InterFrequencyConfig-NoGap                        N f1ap.extension id-InterFrequencyConfig-NoGap
+MBSInterestIndication                             N f1ap.extension id-MBSInterestIndication
+SRSPortIndex                                      N f1ap.extension id-SRSPortIndex
+PEISubgroupingSupportIndication                   N f1ap.extension id-PEISubgroupingSupportIndication
+NeedForGapsInfoNR                                 N f1ap.extension id-NeedForGapsInfoNR
+NeedForGapNCSGInfoNR                              N f1ap.extension id-NeedForGapNCSGInfoNR
+NeedForGapNCSGInfoEUTRA                           N f1ap.extension id-NeedForGapNCSGInfoEUTRA
+MRB-ID                                            N f1ap.extension id-Source-MRB-ID
+PosMeasurementPeriodicityNR-AoA                   N f1ap.extension id-PosMeasurementPeriodicityNR-AoA
+RedCapIndication                                  N f1ap.extension id-RedCapIndication
+UL-GapFR2-Config                                  N f1ap.extension id-UL-GapFR2-Config
+ConfigRestrictInfoDAPS                            N f1ap.extension id-ConfigRestrictInfoDAPS
+MulticastF1UContextReferenceCU                    N f1ap.extension id-MulticastF1UContextReferenceCU
+TwoPHRModeMCG                                     N f1ap.extension id-TwoPHRModeMCG
+TwoPHRModeSCG                                     N f1ap.extension id-TwoPHRModeSCG
+Ncd-SSB-RedCapInitialBWP-SDT                      N f1ap.extension id-ncd-SSB-RedCapInitialBWP-SDT
+NrofSymbolsExtended                               N f1ap.extension id-nrofSymbolsExtended
+RepetitionFactorExtended                          N f1ap.extension id-repetitionFactorExtended
+StartRBHopping                                    N f1ap.extension id-startRBHopping
+StartRBIndex                                      N f1ap.extension id-startRBIndex
 
 #F1AP-ELEMENTARY-PROCEDURE
 Reset                                    N f1ap.proc.imsg id-Reset
@@ -998,12 +1664,15 @@ CUDURadioInformationTransfer             N f1ap.proc.imsg id-CUDURadioInformatio
 
 BAPMappingConfiguration                  N f1ap.proc.imsg id-BAPMappingConfiguration
 BAPMappingConfigurationAcknowledge       N f1ap.proc.sout id-BAPMappingConfiguration
+BAPMappingConfigurationFailure           N f1ap.proc.uout id-BAPMappingConfiguration
 
 GNBDUResourceConfiguration               N f1ap.proc.imsg id-GNBDUResourceConfiguration
 GNBDUResourceConfigurationAcknowledge    N f1ap.proc.sout id-GNBDUResourceConfiguration
+GNBDUResourceConfigurationFailure        N f1ap.proc.uout id-GNBDUResourceConfiguration
 
 IABTNLAddressRequest                     N f1ap.proc.imsg id-IABTNLAddressAllocation
 IABTNLAddressResponse                    N f1ap.proc.sout id-IABTNLAddressAllocation
+IABTNLAddressFailure                     N f1ap.proc.uout id-IABTNLAddressAllocation
 
 IABUPConfigurationUpdateRequest          N f1ap.proc.imsg id-IABUPConfigurationUpdate
 IABUPConfigurationUpdateResponse         N f1ap.proc.sout id-IABUPConfigurationUpdate
@@ -1024,6 +1693,107 @@ ReferenceTimeInformationReport           N f1ap.proc.imsg id-ReferenceTimeInform
 AccessSuccess                            N f1ap.proc.imsg id-accessSuccess
 
 CellTrafficTrace                         N f1ap.proc.imsg id-cellTrafficTrace
+
+PositioningAssistanceInformationControl  N f1ap.proc.imsg id-PositioningAssistanceInformationControl
+
+PositioningAssistanceInformationFeedback N f1ap.proc.imsg id-PositioningAssistanceInformationFeedback
+
+PositioningMeasurementRequest            N f1ap.proc.imsg id-PositioningMeasurementExchange
+PositioningMeasurementResponse           N f1ap.proc.sout id-PositioningMeasurementExchange
+PositioningMeasurementFailure            N f1ap.proc.uout id-PositioningMeasurementExchange
+
+PositioningMeasurementReport             N f1ap.proc.imsg id-PositioningMeasurementReport
+
+PositioningMeasurementAbort              N f1ap.proc.imsg id-PositioningMeasurementAbort
+
+PositioningMeasurementFailureIndication  N f1ap.proc.imsg id-PositioningMeasurementFailureIndication
+
+PositioningMeasurementUpdate             N f1ap.proc.imsg id-PositioningMeasurementUpdate
+
+TRPInformationRequest                    N f1ap.proc.imsg id-TRPInformationExchange
+TRPInformationResponse                   N f1ap.proc.sout id-TRPInformationExchange
+TRPInformationFailure                    N f1ap.proc.uout id-TRPInformationExchange
+
+PositioningInformationRequest            N f1ap.proc.imsg id-PositioningInformationExchange
+PositioningInformationResponse           N f1ap.proc.sout id-PositioningInformationExchange
+PositioningInformationFailure            N f1ap.proc.uout id-PositioningInformationExchange
+
+PositioningActivationRequest             N f1ap.proc.imsg id-PositioningActivation
+PositioningActivationResponse            N f1ap.proc.sout id-PositioningActivation
+PositioningActivationFailure             N f1ap.proc.uout id-PositioningActivation
+
+PositioningDeactivation                  N f1ap.proc.imsg id-PositioningDeactivation
+
+E-CIDMeasurementInitiationRequest        N f1ap.proc.imsg id-E-CIDMeasurementInitiation
+E-CIDMeasurementInitiationResponse       N f1ap.proc.sout id-E-CIDMeasurementInitiation
+E-CIDMeasurementInitiationFailure        N f1ap.proc.uout id-E-CIDMeasurementInitiation
+
+E-CIDMeasurementFailureIndication        N f1ap.proc.imsg id-E-CIDMeasurementFailureIndication
+
+E-CIDMeasurementReport                   N f1ap.proc.imsg id-E-CIDMeasurementReport
+
+E-CIDMeasurementTerminationCommand       N f1ap.proc.imsg id-E-CIDMeasurementTermination
+
+PositioningInformationUpdate             N f1ap.proc.imsg id-PositioningInformationUpdate
+
+BroadcastContextSetupRequest             N f1ap.proc.imsg id-BroadcastContextSetup
+BroadcastContextSetupResponse            N f1ap.proc.sout id-BroadcastContextSetup
+BroadcastContextSetupFailure             N f1ap.proc.uout id-BroadcastContextSetup
+
+BroadcastContextReleaseCommand           N f1ap.proc.imsg id-BroadcastContextRelease
+BroadcastContextReleaseComplete          N f1ap.proc.sout id-BroadcastContextRelease
+
+BroadcastContextReleaseRequest           N f1ap.proc.imsg id-BroadcastContextReleaseRequest
+
+BroadcastContextModificationRequest      N f1ap.proc.imsg id-BroadcastContextModification
+BroadcastContextModificationResponse     N f1ap.proc.sout id-BroadcastContextModification
+BroadcastContextModificationFailure      N f1ap.proc.uout id-BroadcastContextModification
+
+MulticastGroupPaging                     N f1ap.proc.imsg id-MulticastGroupPaging
+
+MulticastContextSetupRequest             N f1ap.proc.imsg id-MulticastContextSetup
+MulticastContextSetupResponse            N f1ap.proc.sout id-MulticastContextSetup
+MulticastContextSetupFailure             N f1ap.proc.uout id-MulticastContextSetup
+
+MulticastContextReleaseCommand           N f1ap.proc.imsg id-MulticastContextRelease
+MulticastContextReleaseComplete          N f1ap.proc.sout id-MulticastContextRelease
+
+MulticastContextReleaseRequest           N f1ap.proc.imsg id-MulticastContextReleaseRequest
+
+MulticastContextModificationRequest      N f1ap.proc.imsg id-MulticastContextModification
+MulticastContextModificationResponse     N f1ap.proc.sout id-MulticastContextModification
+MulticastContextModificationFailure      N f1ap.proc.uout id-MulticastContextModification
+
+MulticastDistributionSetupRequest        N f1ap.proc.imsg id-MulticastDistributionSetup
+MulticastDistributionSetupResponse       N f1ap.proc.sout id-MulticastDistributionSetup
+MulticastDistributionSetupFailure        N f1ap.proc.uout id-MulticastDistributionSetup
+
+MulticastDistributionReleaseCommand      N f1ap.proc.imsg id-MulticastDistributionRelease
+MulticastDistributionReleaseComplete     N f1ap.proc.sout id-MulticastDistributionRelease
+
+PDCMeasurementInitiationRequest          N f1ap.proc.imsg id-PDCMeasurementInitiation
+PDCMeasurementInitiationResponse         N f1ap.proc.sout id-PDCMeasurementInitiation
+PDCMeasurementInitiationFailure          N f1ap.proc.uout id-PDCMeasurementInitiation
+
+PDCMeasurementReport                     N f1ap.proc.imsg id-PDCMeasurementReport
+
+PDCMeasurementTerminationCommand         N f1ap.proc.imsg id-PDCMeasurementTerminationCommand
+
+PDCMeasurementFailureIndication          N f1ap.proc.imsg id-PDCMeasurementFailureIndication
+
+PRSConfigurationRequest                  N f1ap.proc.imsg id-pRSConfigurationExchange
+PRSConfigurationResponse                 N f1ap.proc.sout id-pRSConfigurationExchange
+PRSConfigurationFailure                  N f1ap.proc.uout id-pRSConfigurationExchange
+
+MeasurementPreconfigurationRequired      N f1ap.proc.imsg id-measurementPreconfiguration
+MeasurementPreconfigurationConfirm       N f1ap.proc.sout id-measurementPreconfiguration
+MeasurementPreconfigurationRefuse        N f1ap.proc.uout id-measurementPreconfiguration
+
+MeasurementActivation                    N f1ap.proc.imsg id-measurementActivation
+
+QoEInformationTransfer                   N f1ap.proc.imsg id-QoEInformationTransfer
+
+PosSystemInformationDeliveryCommand      N f1ap.proc.imsg id-PosSystemInformationDeliveryCommand
 
 #.FN_BODY AdditionalSIBMessageList-Item/additionalSIB VAL_PTR = &param_tvb
   tvbuff_t *param_tvb = NULL;
@@ -1116,6 +1886,7 @@ CellTrafficTrace                         N f1ap.proc.imsg id-cellTrafficTrace
       case id_InitialULRRCMessageTransfer:
         col_append_str(actx->pinfo->cinfo, COL_PROTOCOL, "/");
         col_set_fence(actx->pinfo->cinfo, COL_PROTOCOL);
+        col_set_fence(actx->pinfo->cinfo, COL_INFO);
         call_dissector(nr_rrc_ul_ccch_handle, param_tvb, actx->pinfo, subtree);
         break;
       case id_ULRRCMessageTransfer:
@@ -1125,6 +1896,7 @@ CellTrafficTrace                         N f1ap.proc.imsg id-cellTrafficTrace
         case 3:
           col_append_str(actx->pinfo->cinfo, COL_PROTOCOL, "/");
           col_set_fence(actx->pinfo->cinfo, COL_PROTOCOL);
+          col_set_fence(actx->pinfo->cinfo, COL_INFO);
           add_nr_pdcp_meta_data(actx->pinfo, PDCP_NR_DIRECTION_UPLINK, f1ap_data->srb_id);
           call_dissector(nr_pdcp_handle, param_tvb, actx->pinfo, subtree);
           break;
@@ -1138,6 +1910,7 @@ CellTrafficTrace                         N f1ap.proc.imsg id-cellTrafficTrace
         case 0:
           col_append_str(actx->pinfo->cinfo, COL_PROTOCOL, "/");
           col_set_fence(actx->pinfo->cinfo, COL_PROTOCOL);
+          col_set_fence(actx->pinfo->cinfo, COL_INFO);
           call_dissector(nr_rrc_dl_ccch_handle, param_tvb, actx->pinfo, subtree);
           break;
         case 1:
@@ -1145,12 +1918,34 @@ CellTrafficTrace                         N f1ap.proc.imsg id-cellTrafficTrace
         case 3:
           col_append_str(actx->pinfo->cinfo, COL_PROTOCOL, "/");
           col_set_fence(actx->pinfo->cinfo, COL_PROTOCOL);
+          col_set_fence(actx->pinfo->cinfo, COL_INFO);
           add_nr_pdcp_meta_data(actx->pinfo, PDCP_NR_DIRECTION_DOWNLINK, f1ap_data->srb_id);
           call_dissector(nr_pdcp_handle, param_tvb, actx->pinfo, subtree);
           break;
         default:
           break;
         }
+        break;
+      case id_UEContextSetup:
+      case id_UEContextModification:
+        col_append_str(actx->pinfo->cinfo, COL_PROTOCOL, "/");
+        col_set_fence(actx->pinfo->cinfo, COL_PROTOCOL);
+        col_set_fence(actx->pinfo->cinfo, COL_INFO);
+        add_nr_pdcp_meta_data(actx->pinfo, PDCP_NR_DIRECTION_DOWNLINK, 1);
+        call_dissector(nr_pdcp_handle, param_tvb, actx->pinfo, subtree);
+        break;
+      default:
+        break;
+      }
+      break;
+    case SUCCESSFUL_OUTCOME:
+      switch (f1ap_data->procedure_code) {
+      case id_UEContextModificationRequired:
+        col_append_str(actx->pinfo->cinfo, COL_PROTOCOL, "/");
+        col_set_fence(actx->pinfo->cinfo, COL_PROTOCOL);
+        col_set_fence(actx->pinfo->cinfo, COL_INFO);
+        add_nr_pdcp_meta_data(actx->pinfo, PDCP_NR_DIRECTION_DOWNLINK, 1);
+        call_dissector(nr_pdcp_handle, param_tvb, actx->pinfo, subtree);
         break;
       default:
         break;
@@ -1173,6 +1968,7 @@ CellTrafficTrace                         N f1ap.proc.imsg id-cellTrafficTrace
     subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_RRCContainer_RRCSetupComplete);
     col_append_str(actx->pinfo->cinfo, COL_PROTOCOL, "/");
     col_set_fence(actx->pinfo->cinfo, COL_PROTOCOL);
+    col_set_fence(actx->pinfo->cinfo, COL_INFO);
     call_dissector(nr_rrc_ul_dcch_handle, param_tvb, actx->pinfo, subtree);
   }
 
@@ -1194,11 +1990,19 @@ CellTrafficTrace                         N f1ap.proc.imsg id-cellTrafficTrace
 
 #.FN_BODY PLMN-Identity  VAL_PTR = &param_tvb
   tvbuff_t *param_tvb = NULL;
+  f1ap_private_data_t *f1ap_data = f1ap_get_private_data(actx->pinfo);
+  e212_number_type_t number_type = f1ap_data->number_type;
+  f1ap_data->number_type = E212_NONE;
 %(DEFAULT_BODY)s
   if (param_tvb) {
     proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_PLMN_Identity);
-    dissect_e212_mcc_mnc(param_tvb, actx->pinfo, subtree, 0, E212_NONE, FALSE);
+    dissect_e212_mcc_mnc(param_tvb, actx->pinfo, subtree, 0, number_type, FALSE);
   }
+
+#.FN_BODY NRCGI
+  f1ap_private_data_t *f1ap_data = f1ap_get_private_data(actx->pinfo);
+  f1ap_data->number_type = E212_NRCGI;
+%(DEFAULT_BODY)s
 
 #.TYPE_ATTR
 PortNumber TYPE = FT_UINT16 DISPLAY = BASE_DEC
@@ -1228,6 +2032,51 @@ PortNumber TYPE = FT_UINT16 DISPLAY = BASE_DEC
 
 #.TYPE_ATTR
 BitRate DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_bit_sec
+
+#.TYPE_ATTR
+BitRate DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_kbit
+
+#.TYPE_ATTR
+ChannelOccupancyTimePercentage DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+EnergyDetectionThreshold DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_dbm
+
+#.TYPE_ATTR
+MIMOPRBusageInformation/dl-GBR-PRB-usage-for-MIMO DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+MIMOPRBusageInformation/ul-GBR-PRB-usage-for-MIMO DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+MIMOPRBusageInformation/dl-non-GBR-PRB-usage-for-MIMO DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+MIMOPRBusageInformation/ul-non-GBR-PRB-usage-for-MIMO DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+MIMOPRBusageInformation/dl-Total-PRB-usage-for-MIMO DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+MIMOPRBusageInformation/ul-Total-PRB-usage-for-MIMO DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+SNSSAIRadioResourceStatus-Item/sNSSAIdlGBRPRBusage DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+SNSSAIRadioResourceStatus-Item/sNSSAIulGBRPRBusage DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+SNSSAIRadioResourceStatus-Item/sNSSAIdlNonGBRPRBusage DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+SNSSAIRadioResourceStatus-Item/sNSSAIulNonGBRPRBusage DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+SNSSAIRadioResourceStatus-Item/sNSSAIdlTotalPRBallocation DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
+
+#.TYPE_ATTR
+SNSSAIRadioResourceStatus-Item/sNSSAIulTotalPRBallocation DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_percent
 
 #.FN_BODY CG-Config VAL_PTR = &param_tvb
   tvbuff_t *param_tvb = NULL;
@@ -1377,6 +2226,27 @@ Configured-EPS-TAC TYPE = FT_UINT16 DISPLAY = BASE_DEC_HEX
     case 14:
       dissect_nr_rrc_SIB14_r16_PDU(param_tvb, actx->pinfo, subtree, NULL);
       break;
+    case 15:
+      dissect_nr_rrc_SIB15_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+      break;
+    case 16:
+      dissect_nr_rrc_SIB16_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+      break;
+    case 17:
+      dissect_nr_rrc_SIB17_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+      break;
+    case 18:
+      dissect_nr_rrc_SIB18_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+      break;
+    case 19:
+      dissect_nr_rrc_SIB19_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+      break;
+    case 20:
+      dissect_nr_rrc_SIB20_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+      break;
+    case 21:
+      dissect_nr_rrc_SIB21_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+      break;
     default:
       break;
     }
@@ -1433,6 +2303,14 @@ MaximumDataBurstVolume DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_byte_byt
   if (param_tvb) {
     proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_UplinkTxDirectCurrentListInformation);
     dissect_nr_rrc_UplinkTxDirectCurrentList_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY UplinkTxDirectCurrentTwoCarrierListInfo VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_UplinkTxDirectCurrentTwoCarrierListInfo);
+    dissect_nr_rrc_UplinkTxDirectCurrentTwoCarrierList_r16_PDU(param_tvb, actx->pinfo, subtree, NULL);
   }
 
 #.FN_BODY Latest-RRC-Version-Enhanced VAL_PTR = &param_tvb
@@ -1561,7 +2439,23 @@ Requested-PDCCH-BlindDetectionSCG TYPE=FT_UINT8 DISPLAY=BASE_DEC
     dissect_nr_rrc_NZP_CSI_RS_Resource_PDU(param_tvb, actx->pinfo, subtree, NULL);
   }
 
+#.FN_BODY Neighbour-Node-Cells-List-Item/cSI-RS-Configuration VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_cSI_RS_Configuration);
+    dissect_nr_rrc_NZP_CSI_RS_Resource_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
 #.FN_BODY Child-Node-Cells-List-Item/sR-Configuration VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_sR_Configuration);
+    dissect_nr_rrc_SchedulingRequestResourceConfig_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY Neighbour-Node-Cells-List-Item/sR-Configuration VAL_PTR = &param_tvb
   tvbuff_t *param_tvb = NULL;
 %(DEFAULT_BODY)s
   if (param_tvb) {
@@ -1577,7 +2471,23 @@ Requested-PDCCH-BlindDetectionSCG TYPE=FT_UINT8 DISPLAY=BASE_DEC
     dissect_nr_rrc_PDCCH_ConfigSIB1_PDU(param_tvb, actx->pinfo, subtree, NULL);
   }
 
+#.FN_BODY Neighbour-Node-Cells-List-Item/pDCCH-ConfigSIB1 VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_pDCCH_ConfigSIB1);
+    dissect_nr_rrc_PDCCH_ConfigSIB1_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
 #.FN_BODY Child-Node-Cells-List-Item/sCS-Common VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_sCS_Common);
+    dissect_nr_rrc_subCarrierSpacingCommon_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY Neighbour-Node-Cells-List-Item/sCS-Common VAL_PTR = &param_tvb
   tvbuff_t *param_tvb = NULL;
 %(DEFAULT_BODY)s
   if (param_tvb) {
@@ -1745,6 +2655,30 @@ Periodicity DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_microseconds
     dissect_nr_rrc_SIB14_r16_PDU(param_tvb, actx->pinfo, subtree, NULL);
   }
 
+#.FN_BODY SIB15-message VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SIB15_message);
+    dissect_nr_rrc_SIB15_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY SIB17-message VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SIB17_message);
+    dissect_nr_rrc_SIB17_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY SIB20-message VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SIB20_message);
+    dissect_nr_rrc_SIB20_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
 #.FN_BODY SL-PHY-MAC-RLC-Config VAL_PTR = &param_tvb
   tvbuff_t *param_tvb = NULL;
 %(DEFAULT_BODY)s
@@ -1753,13 +2687,21 @@ Periodicity DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_microseconds
     dissect_nr_rrc_SL_PHY_MAC_RLC_Config_r16_PDU(param_tvb, actx->pinfo, subtree, NULL);
   }
 
-#.FN_BODY SL-ConfigDedicatedEUTRA VAL_PTR = &param_tvb
+#.FN_BODY SL-RLC-ChannelToAddModList VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SL_RLC_ChannelToAddModList);
+    dissect_nr_rrc_SL_RLC_ChannelToAddModList_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY SL-ConfigDedicatedEUTRA-Info VAL_PTR = &param_tvb
   tvbuff_t *param_tvb = NULL;
   proto_tree *subtree;
 %(DEFAULT_BODY)s
   if (param_tvb && lte_rrc_conn_reconf_handle) {
-    subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SL_ConfigDedicatedEUTRA);
-    call_dissector(lte_rrc_conn_reconf_handle, param_tvb, actx->pinfo, subtree);
+    subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SL_ConfigDedicatedEUTRA_Info);
+    dissect_nr_rrc_SL_ConfigDedicatedEUTRA_Info_r16_PDU(param_tvb, actx->pinfo, subtree, NULL);
   }
 
 #.FN_BODY TDD-UL-DLConfigCommonNR VAL_PTR = &param_tvb
@@ -1779,167 +2721,679 @@ Periodicity DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_microseconds
     dissect_lte_rrc_UEAssistanceInformation_r11_PDU(param_tvb, actx->pinfo, subtree, NULL);
   }
 
+#.FN_BODY PosAssistance-Information VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_PosAssistance_Information);
+    dissect_nrppa_Assistance_Information_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY PosAssistanceInformationFailureList VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_PosAssistance_Information);
+    dissect_nrppa_Assistance_Information_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY LocationMeasurementInformation VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_LocationMeasurementInformation);
+    dissect_nr_rrc_LocationMeasurementInfo_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY MUSIM-GapConfig VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_MUSIM_GapConfig);
+    dissect_nr_rrc_MUSIM_GapConfig_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY Ncd-SSB-RedCapInitialBWP-SDT VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_Ncd_SSB_RedCapInitialBWP_SDT);
+    dissect_nr_rrc_NonCellDefiningSSB_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY SDT-MAC-PHY-CG-Config VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SDT_MAC_PHY_CG_Config);
+    dissect_nr_rrc_SDT_MAC_PHY_CG_Config_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY SDTRLCBearerConfiguration VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SDTRLCBearerConfiguration);
+    dissect_nr_rrc_RLC_BearerConfig_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY MBSInterestIndication VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_MBSInterestIndication);
+    dissect_nr_rrc_MBSInterestIndication_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY NeedForGapsInfoNR VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_NeedForGapsInfoNR);
+    dissect_nr_rrc_NeedForGapsInfoNR_r16_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY NeedForGapNCSGInfoNR VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_NeedForGapNCSGInfoNR);
+    dissect_nr_rrc_NeedForGapNCSG_InfoNR_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY NeedForGapNCSGInfoEUTRA VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_NeedForGapNCSGInfoEUTRA);
+    dissect_nr_rrc_NeedForGapNCSG_InfoEUTRA_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY ConfigRestrictInfoDAPS VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_ConfigRestrictInfoDAPS);
+    dissect_nr_rrc_ConfigRestrictInfoDAPS_r16_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY MBS-Broadcast-NeighbourCellList VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_MBS_Broadcast_NeighbourCellList);
+    dissect_nr_rrc_MBS_NeighbourCellList_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY MBS-Broadcast-MRB-Item/mRB-PDCP-Config-Broadcast VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_mRB_PDCP_Config_Broadcast);
+    dissect_nr_rrc_MRB_PDCP_ConfigBroadcast_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY PosMeasGapPreConfigList/posMeasGapPreConfigToAddModList VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_posMeasGapPreConfigToAddModList);
+    dissect_nr_rrc_PosMeasGapPreConfigToAddModList_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY PosMeasGapPreConfigList/posMeasGapPreConfigToReleaseList VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_posMeasGapPreConfigToReleaseList);
+    dissect_nr_rrc_PosMeasGapPreConfigToReleaseList_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY SidelinkConfigurationContainer VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SidelinkConfigurationContainer);
+    dissect_nr_rrc_SL_ConfigDedicatedNR_r16_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY SRSPosRRCInactiveConfig VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_SRSPosRRCInactiveConfig);
+    dissect_nr_rrc_SRS_PosRRC_InactiveConfig_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.TYPE_ATTR
+StartTimeAndDuration/duration DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_seconds
+
+#.FN_BODY SuccessfulHOReportInformation-Item/successfulHOReportContainer VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_successfulHOReportContainer);
+    dissect_nr_rrc_SuccessHO_Report_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.TYPE_ATTR
+SurvivalTime DISPLAY=BASE_DEC|BASE_UNIT_STRING STRINGS=&units_microseconds
+
+#.FN_BODY UL-GapFR2-Config VAL_PTR = &param_tvb
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    proto_tree *subtree = proto_item_add_subtree(actx->created_item, ett_f1ap_UL_GapFR2_Config);
+    dissect_nr_rrc_UL_GapFR2_Config_r17_PDU(param_tvb, actx->pinfo, subtree, NULL);
+  }
+
+#.FN_BODY RelativeTime1900 VAL_PTR = &param_tvb HF_INDEX = -1
+  tvbuff_t *param_tvb = NULL;
+%(DEFAULT_BODY)s
+  if (param_tvb) {
+    actx->created_item = proto_tree_add_item(tree, hf_index, param_tvb, 0, 8, ENC_TIME_NTP|ENC_BIG_ENDIAN);
+  }
+
 #.FN_HDR Reset
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Reset");
+  set_message_label(actx, MTYPE_RESET);
+  set_stats_message_type(actx->pinfo, MTYPE_RESET);
 #.FN_HDR ResetAcknowledge
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "ResetAcknowledge");
+  set_message_label(actx, MTYPE_RESET_ACK);
+  set_stats_message_type(actx->pinfo, MTYPE_RESET_ACK);
 #.FN_HDR F1SetupRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "F1SetupRequest");
+  set_message_label(actx, MTYPE_F1_SETUP_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_F1_SETUP_REQUEST);
 #.FN_HDR F1SetupResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "F1SetupResponse");
+  set_message_label(actx, MTYPE_F1_SETUP_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_F1_SETUP_RESPONSE);
 #.FN_HDR F1SetupFailure
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "F1SetupFailure");
+  set_message_label(actx, MTYPE_F1_SETUP_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_F1_SETUP_FAILURE);
 #.FN_HDR GNBDUConfigurationUpdate
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBDUConfigurationUpdate");
+  set_message_label(actx, MTYPE_GNB_DU_CONFIGURATION_UPDATE);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_DU_CONFIGURATION_UPDATE);
 #.FN_HDR GNBDUConfigurationUpdateAcknowledge
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBDUConfigurationUpdateAcknowledge");
+  set_message_label(actx, MTYPE_GNB_DU_CONFIGURATION_UPDATE_ACKNOWLEDGE);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_DU_CONFIGURATION_UPDATE_ACKNOWLEDGE);
 #.FN_HDR GNBDUConfigurationUpdateFailure
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBDUConfigurationUpdateFailure");
+  set_message_label(actx, MTYPE_GNB_DU_CONFIGURATION_UPDATE_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_DU_CONFIGURATION_UPDATE_FAILURE);
 #.FN_HDR GNBCUConfigurationUpdate
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBCUConfigurationUpdate");
+  set_message_label(actx, MTYPE_GNB_CU_CONFIGURATION_UPDATE);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_CU_CONFIGURATION_UPDATE);
 #.FN_HDR GNBCUConfigurationUpdateAcknowledge
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBCUConfigurationUpdateAcknowledge");
+  set_message_label(actx, MTYPE_GNB_CU_CONFIGURATION_UPDATE_ACKNOWLEDGE);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_CU_CONFIGURATION_UPDATE_ACKNOWLEDGE);
 #.FN_HDR GNBCUConfigurationUpdateFailure
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBCUConfigurationUpdateFailure");
+  set_message_label(actx, MTYPE_GNB_CU_CONFIGURATION_UPDATE_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_CU_CONFIGURATION_UPDATE_FAILURE);
 #.FN_HDR UEContextSetupRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextSetupRequest");
+  set_message_label(actx, MTYPE_UE_CONTEXT_SETUP_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_SETUP_REQUEST);
 #.FN_HDR UEContextSetupResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextSetupResponse");
+  set_message_label(actx, MTYPE_UE_CONTEXT_SETUP_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_SETUP_RESPONSE);
 #.FN_HDR UEContextSetupFailure
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextSetupFailure");
+  set_message_label(actx, MTYPE_UE_CONTEXT_SETUP_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_SETUP_FAILURE);
 #.FN_HDR UEContextReleaseCommand
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextReleaseCommand");
+  set_message_label(actx, MTYPE_UE_CONTEXT_RELEASE_COMMAND);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_RELEASE_COMMAND);
 #.FN_HDR UEContextReleaseComplete
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextReleaseComplete");
+  set_message_label(actx, MTYPE_UE_CONTEXT_RELEASE_COMPLETE);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_RELEASE_COMPLETE);
 #.FN_HDR UEContextModificationRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextModificationRequest");
+  set_message_label(actx, MTYPE_UE_CONTEXT_MODIFICATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_MODIFICATION_REQUEST);
 #.FN_HDR UEContextModificationResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextModificationResponse");
+  set_message_label(actx, MTYPE_UE_CONTEXT_MODIFICATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_MODIFICATION_RESPONSE);
 #.FN_HDR UEContextModificationFailure
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextModificationFailure");
+  set_message_label(actx, MTYPE_UE_CONTEXT_MODIFICATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_MODIFICATION_FAILURE);
 #.FN_HDR UEContextModificationRequired
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextModificationRequired");
+  set_message_label(actx, MTYPE_UE_CONTEXT_MODIFICATION_REQUIRED);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_MODIFICATION_REQUIRED);
 #.FN_HDR UEContextModificationConfirm
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextModificationConfirm");
+  set_message_label(actx, MTYPE_UE_CONTEXT_MODIFICATION_CONFIRM);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_MODIFICATION_CONFIRM);
 #.FN_HDR UEContextModificationRefuse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextModificationRefuse");
+  set_message_label(actx, MTYPE_UE_CONTEXT_MODIFICATION_REFUSE);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_MODIFICATION_REFUSE);
 #.FN_HDR WriteReplaceWarningRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "WriteReplaceWarningRequest");
+  set_message_label(actx, MTYPE_WRITE_REPLACE_WARNING_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_WRITE_REPLACE_WARNING_REQUEST);
 #.FN_HDR WriteReplaceWarningResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "WriteReplaceWarningResponse");
+  set_message_label(actx, MTYPE_WRITE_REPLACE_WARNING_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_WRITE_REPLACE_WARNING_RESPONSE);
 #.FN_HDR PWSCancelRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "PWSCancelRequest");
+  set_message_label(actx, MTYPE_PWS_CANCEL_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_PWS_CANCEL_REQUEST);
 #.FN_HDR PWSCancelResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "PWSCancelResponse");
+  set_message_label(actx, MTYPE_PWS_CANCEL_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_PWS_CANCEL_RESPONSE);
 #.FN_HDR ErrorIndication
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "ErrorIndication");
+  set_message_label(actx, MTYPE_ERROR_INDICATION);
+  set_stats_message_type(actx->pinfo, MTYPE_ERROR_INDICATION);
 #.FN_HDR UEContextReleaseRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEContextReleaseRequest");
+  set_message_label(actx, MTYPE_UE_CONTEXT_RELEASE_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_CONTEXT_RELEASE_REQUEST);
 #.FN_HDR InitialULRRCMessageTransfer
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "InitialULRRCMessageTransfer");
+  set_message_label(actx, MTYPE_INITIAL_UL_RRC_MESSAGE_TRANSFER);
+  set_stats_message_type(actx->pinfo, MTYPE_INITIAL_UL_RRC_MESSAGE_TRANSFER);
 #.FN_HDR DLRRCMessageTransfer
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "DLRRCMessageTransfer");
+  set_message_label(actx, MTYPE_DL_RRC_MESSAGE_TRANSFER);
+  set_stats_message_type(actx->pinfo, MTYPE_DL_RRC_MESSAGE_TRANSFER);
 #.FN_HDR ULRRCMessageTransfer
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "ULRRCMessageTransfer");
+  set_message_label(actx, MTYPE_UL_RRC_MESSAGE_TRANSFER);
+  set_stats_message_type(actx->pinfo, MTYPE_UL_RRC_MESSAGE_TRANSFER);
 #.FN_HDR UEInactivityNotification
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "UEInactivityNotification");
+  set_message_label(actx, MTYPE_UE_INACTIVITY_NOTIFICATION);
+  set_stats_message_type(actx->pinfo, MTYPE_UE_INACTIVITY_NOTIFICATION);
 #.FN_HDR GNBDUResourceCoordinationRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBDUResourceCoordinationRequest");
+  set_message_label(actx, MTYPE_GNB_DU_RESOURCE_COORDINATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_DU_RESOURCE_COORDINATION_REQUEST);
 #.FN_HDR GNBDUResourceCoordinationResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBDUResourceCoordinationResponse");
+  set_message_label(actx, MTYPE_GNB_DU_RESOURCE_COORDINATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_DU_RESOURCE_COORDINATION_RESPONSE);
 #.FN_HDR PrivateMessage
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "PrivateMessage");
+  set_message_label(actx, MTYPE_PRIVATE_MESSAGE);
+  set_stats_message_type(actx->pinfo, MTYPE_PRIVATE_MESSAGE);
 #.FN_HDR SystemInformationDeliveryCommand
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "SystemInformationDeliveryCommand");
+  set_message_label(actx, MTYPE_SYSTEM_INFORMATION_DELIVERY_COMMAND);
+  set_stats_message_type(actx->pinfo, MTYPE_SYSTEM_INFORMATION_DELIVERY_COMMAND);
 #.FN_HDR Paging
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Paging");
+  set_message_label(actx, MTYPE_PAGING);
+  set_stats_message_type(actx->pinfo, MTYPE_PAGING);
 #.FN_HDR Notify
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Notify");
+  set_message_label(actx, MTYPE_NOTIFY);
+  set_stats_message_type(actx->pinfo, MTYPE_NOTIFY);
 #.FN_HDR NetworkAccessRateReduction
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "NetworkAccessRateReduction");
+  set_message_label(actx, MTYPE_NETWORK_ACCESS_RATE_REDUCTION);
+  set_stats_message_type(actx->pinfo, MTYPE_NETWORK_ACCESS_RATE_REDUCTION);
 #.FN_HDR PWSRestartIndication
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "PWSRestartIndication");
+  set_message_label(actx, MTYPE_PWS_RESTART_INDICATION);
+  set_stats_message_type(actx->pinfo, MTYPE_PWS_RESTART_INDICATION);
 #.FN_HDR PWSFailureIndication
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "PWSFailureIndication");
+  set_message_label(actx, MTYPE_PWS_FAILURE_INDICATION);
+  set_stats_message_type(actx->pinfo, MTYPE_PWS_FAILURE_INDICATION);
 #.FN_HDR GNBDUStatusIndication
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBDUStatusIndication");
+  set_message_label(actx, MTYPE_GNB_DU_STATUS_INDICATION);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_DU_STATUS_INDICATION);
 #.FN_HDR RRCDeliveryReport
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "RRCDeliveryReport");
+  set_message_label(actx, MTYPE_RRC_DELIVERY_REPORT);
+  set_stats_message_type(actx->pinfo, MTYPE_RRC_DELIVERY_REPORT);
 #.END
 #.FN_HDR F1RemovalRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "F1RemovalRequest");
+  set_message_label(actx, MTYPE_F1_REMOVAL_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_F1_REMOVAL_REQUEST);
 #.END
 #.FN_HDR F1RemovalResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "F1RemovalResponse");
+  set_message_label(actx, MTYPE_F1_REMOVAL_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_F1_REMOVAL_RESPONSE);
 #.END
 #.FN_HDR F1RemovalFailure
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "F1RemovalFailure");
+  set_message_label(actx, MTYPE_F1_REMOVAL_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_F1_REMOVAL_FAILURE);
 #.END
 #.FN_HDR TraceStart
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "TraceStart");
+  set_message_label(actx, MTYPE_TRACE_START);
+  set_stats_message_type(actx->pinfo, MTYPE_TRACE_START);
 #.END
 #.FN_HDR DeactivateTrace
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "DeactivateTrace");
+  set_message_label(actx, MTYPE_DEACTIVATE_TRACE);
+  set_stats_message_type(actx->pinfo, MTYPE_DEACTIVATE_TRACE);
 #.END
 #.FN_HDR DUCURadioInformationTransfer
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "DUCURadioInformationTransfer");
+  set_message_label(actx, MTYPE_DU_CU_RADIO_INFORMATION_TRANSFER);
+  set_stats_message_type(actx->pinfo, MTYPE_DU_CU_RADIO_INFORMATION_TRANSFER);
 #.END
 #.FN_HDR CUDURadioInformationTransfer
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "CUDURadioInformationTransfer");
+  set_message_label(actx, MTYPE_CU_DU_RADIO_INFORMATION_TRANSFER);
+  set_stats_message_type(actx->pinfo, MTYPE_CU_DU_RADIO_INFORMATION_TRANSFER);
 #.END
 #.FN_HDR BAPMappingConfiguration
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "BAPMappingConfiguration");
+  set_message_label(actx, MTYPE_BAP_MAPPING_CONFIGURATION);
+  set_stats_message_type(actx->pinfo, MTYPE_BAP_MAPPING_CONFIGURATION);
 #.END
 #.FN_HDR BAPMappingConfigurationAcknowledge
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "BAPMappingConfigurationAcknowledge");
+  set_message_label(actx, MTYPE_BAP_MAPPING_CONFIGURATION_ACKNOWLEDGE);
+  set_stats_message_type(actx->pinfo, MTYPE_BAP_MAPPING_CONFIGURATION_ACKNOWLEDGE);
+#.END
+#.FN_HDR BAPMappingConfigurationFailure
+  set_message_label(actx, MTYPE_BAP_MAPPING_CONFIGURATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_BAP_MAPPING_CONFIGURATION_FAILURE);
 #.END
 #.FN_HDR GNBDUResourceConfiguration
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBDUResourceConfiguration");
+  set_message_label(actx, MTYPE_GNB_DU_RESOURCE_CONFIGURATION);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_DU_RESOURCE_CONFIGURATION);
 #.END
 #.FN_HDR GNBDUResourceConfigurationAcknowledge
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "GNBDUResourceConfigurationAcknowledge");
+  set_message_label(actx, MTYPE_GNB_DU_RESOURCE_CONFIGURATION_ACKNOWLEDGE);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_DU_RESOURCE_CONFIGURATION_ACKNOWLEDGE);
+#.END
+#.FN_HDR GNBDUResourceConfigurationFailure
+  set_message_label(actx, MTYPE_GNB_DU_RESOURCE_CONFIGURATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_GNB_DU_RESOURCE_CONFIGURATION_FAILURE);
 #.END
 #.FN_HDR IABTNLAddressRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "IABTNLAddressRequest");
+  set_message_label(actx, MTYPE_IAB_TNL_ADDRESS_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_IAB_TNL_ADDRESS_REQUEST);
 #.END
 #.FN_HDR IABTNLAddressResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "IABTNLAddressResponse");
+  set_message_label(actx, MTYPE_IAB_TNL_ADDRESS_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_IAB_TNL_ADDRESS_RESPONSE);
+#.END
+#.FN_HDR IABTNLAddressFailure
+  set_message_label(actx, MTYPE_IAB_TNL_ADDRESS_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_IAB_TNL_ADDRESS_FAILURE);
 #.END
 #.FN_HDR IABUPConfigurationUpdateRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "IABUPConfigurationUpdateRequest");
+  set_message_label(actx, MTYPE_IAB_UP_CONFIGURATION_UPDATE_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_IAB_UP_CONFIGURATION_UPDATE_REQUEST);
 #.END
 #.FN_HDR IABUPConfigurationUpdateResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "IABUPConfigurationUpdateResponse");
+  set_message_label(actx, MTYPE_IAB_UP_CONFIGURATION_UPDATE_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_IAB_UP_CONFIGURATION_UPDATE_RESPONSE);
 #.END
 #.FN_HDR IABUPConfigurationUpdateFailure
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "IABUPConfigurationUpdateFailure");
+  set_message_label(actx, MTYPE_IAB_UP_CONFIGURATION_UPDATE_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_IAB_UP_CONFIGURATION_UPDATE_FAILURE);
 #.END
 #.FN_HDR ResourceStatusRequest
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "ResourceStatusRequest");
+  set_message_label(actx, MTYPE_RESOURCE_STATUS_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_RESOURCE_STATUS_REQUEST);
 #.END
 #.FN_HDR ResourceStatusResponse
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "ResourceStatusResponse");
+  set_message_label(actx, MTYPE_RESOURCE_STATUS_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_RESOURCE_STATUS_RESPONSE);
 #.END
 #.FN_HDR ResourceStatusFailure
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "ResourceStatusFailure");
+  set_message_label(actx, MTYPE_RESOURCE_STATUS_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_RESOURCE_STATUS_FAILURE);
 #.END
 #.FN_HDR ResourceStatusUpdate
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "ResourceStatusUpdate");
+  set_message_label(actx, MTYPE_RESOURCE_STATUS_UPDATE);
+  set_stats_message_type(actx->pinfo, MTYPE_RESOURCE_STATUS_UPDATE);
 #.END
 #.FN_HDR AccessAndMobilityIndication
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "AccessAndMobilityIndication");
+  set_message_label(actx, MTYPE_ACCESS_AND_MOBILITY_INDICATION);
+  set_stats_message_type(actx->pinfo, MTYPE_ACCESS_AND_MOBILITY_INDICATION);
 #.END
 #.FN_HDR ReferenceTimeInformationReportingControl
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "ReferenceTimeInformationReportingControl");
+  set_message_label(actx, MTYPE_REFERENCE_TIME_INFORMATION_REPORTING_CONTROL);
+  set_stats_message_type(actx->pinfo, MTYPE_REFERENCE_TIME_INFORMATION_REPORTING_CONTROL);
 #.END
 #.FN_HDR ReferenceTimeInformationReport
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "ReferenceTimeInformationReport");
+  set_message_label(actx, MTYPE_REFERENCE_TIME_INFORMATION_REPORT);
+  set_stats_message_type(actx->pinfo, MTYPE_REFERENCE_TIME_INFORMATION_REPORT);
 #.END
 #.FN_HDR AccessSuccess
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "AccessSuccess");
+  set_message_label(actx, MTYPE_ACCESS_SUCCESS);
+  set_stats_message_type(actx->pinfo, MTYPE_ACCESS_SUCCESS);
 #.END
 #.FN_HDR CellTrafficTrace
-  col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "CellTrafficTrace");
+  set_message_label(actx, MTYPE_CELL_TRAFFIC_TRACE);
+  set_stats_message_type(actx->pinfo, MTYPE_CELL_TRAFFIC_TRACE);
+#.END
+#.FN_HDR PositioningAssistanceInformationControl
+  set_message_label(actx, MTYPE_POSITIONING_ASSISTANCE_INFORMATION_CONTROL);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_ASSISTANCE_INFORMATION_CONTROL);
+#.END
+#.FN_HDR PositioningAssistanceInformationFeedback
+  set_message_label(actx, MTYPE_POSITIONING_ASSISTANCE_INFORMATION_FEEDBACK);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_ASSISTANCE_INFORMATION_FEEDBACK);
+#.END
+#.FN_HDR PositioningMeasurementRequest
+  set_message_label(actx, MTYPE_POSITIONING_MEASUREMENT_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_MEASUREMENT_REQUEST);
+#.END
+#.FN_HDR PositioningMeasurementResponse
+  set_message_label(actx, MTYPE_POSITIONING_MEASUREMENT_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_MEASUREMENT_RESPONSE);
+#.END
+#.FN_HDR PositioningMeasurementFailure
+  set_message_label(actx, MTYPE_POSITIONING_MEASUREMENT_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_MEASUREMENT_FAILURE);
+#.END
+#.FN_HDR PositioningMeasurementReport
+  set_message_label(actx, MTYPE_POSITIONING_MEASUREMENT_REPORT);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_MEASUREMENT_REPORT);
+#.END
+#.FN_HDR PositioningMeasurementAbort
+  set_message_label(actx, MTYPE_POSITIONING_MEASUREMENT_ABORT);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_MEASUREMENT_ABORT);
+#.END
+#.FN_HDR PositioningMeasurementFailureIndication
+  set_message_label(actx, MTYPE_POSITIONING_MEASUREMENT_FAILURE_INDICATION);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_MEASUREMENT_FAILURE_INDICATION);
+#.END
+#.FN_HDR PositioningMeasurementUpdate
+  set_message_label(actx, MTYPE_POSITIONING_MEASUREMENT_UPDATE);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_MEASUREMENT_UPDATE);
+#.END
+#.FN_HDR TRPInformationRequest
+  set_message_label(actx, MTYPE_TRP_INFORMATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_TRP_INFORMATION_REQUEST);
+#.END
+#.FN_HDR TRPInformationResponse
+  set_message_label(actx, MTYPE_TRP_INFORMATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_TRP_INFORMATION_RESPONSE);
+#.END
+#.FN_HDR TRPInformationFailure
+  set_message_label(actx, MTYPE_TRP_INFORMATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_TRP_INFORMATION_FAILURE);
+#.END
+#.FN_HDR PositioningInformationRequest
+  set_message_label(actx, MTYPE_POSITIONING_INFORMATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_INFORMATION_REQUEST);
+#.END
+#.FN_HDR PositioningInformationResponse
+  set_message_label(actx, MTYPE_POSITIONING_INFORMATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_INFORMATION_RESPONSE);
+#.END
+#.FN_HDR PositioningInformationFailure
+  set_message_label(actx, MTYPE_POSITIONING_INFORMATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_INFORMATION_FAILURE);
+#.END
+#.FN_HDR PositioningActivationRequest
+  set_message_label(actx, MTYPE_POSITIONING_ACTIVATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_ACTIVATION_REQUEST);
+#.END
+#.FN_HDR PositioningActivationResponse
+  set_message_label(actx, MTYPE_POSITIONING_ACTIVATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_ACTIVATION_RESPONSE);
+#.END
+#.FN_HDR PositioningActivationFailure
+  set_message_label(actx, MTYPE_POSITIONING_ACTIVATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_ACTIVATION_FAILURE);
+#.END
+#.FN_HDR PositioningDeactivation
+  set_message_label(actx, MTYPE_POSITIONING_DEACTIVATION);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_DEACTIVATION);
+#.END
+#.FN_HDR E-CIDMeasurementInitiationRequest
+  set_message_label(actx, MTYPE_E_CID_MEASUREMENT_INITIATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_E_CID_MEASUREMENT_INITIATION_REQUEST);
+#.END
+#.FN_HDR E-CIDMeasurementInitiationResponse
+  set_message_label(actx, MTYPE_E_CID_MEASUREMENT_INITIATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_E_CID_MEASUREMENT_INITIATION_RESPONSE);
+#.END
+#.FN_HDR E-CIDMeasurementInitiationFailure
+  set_message_label(actx, MTYPE_E_CID_MEASUREMENT_INITIATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_E_CID_MEASUREMENT_INITIATION_FAILURE);
+#.END
+#.FN_HDR E-CIDMeasurementFailureIndication
+  set_message_label(actx, MTYPE_E_CID_MEASUREMENT_FAILURE_INDICATION);
+  set_stats_message_type(actx->pinfo, MTYPE_E_CID_MEASUREMENT_FAILURE_INDICATION);
+#.END
+#.FN_HDR E-CIDMeasurementReport
+  set_message_label(actx, MTYPE_E_CID_MEASUREMENT_REPORT);
+  set_stats_message_type(actx->pinfo, MTYPE_E_CID_MEASUREMENT_REPORT);
+#.END
+#.FN_HDR E-CIDMeasurementTerminationCommand
+  set_message_label(actx, MTYPE_E_CID_MEASUREMENT_TERMINATION_COMMAND);
+  set_stats_message_type(actx->pinfo, MTYPE_E_CID_MEASUREMENT_TERMINATION_COMMAND);
+#.END
+#.FN_HDR PositioningInformationUpdate
+  set_message_label(actx, MTYPE_POSITIONING_INFORMATION_UPDATE);
+  set_stats_message_type(actx->pinfo, MTYPE_POSITIONING_INFORMATION_UPDATE);
+#.END
+#.FN_HDR BroadcastContextSetupRequest
+  set_message_label(actx, MTYPE_BROADCAST_CONTEXT_SETUP_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_BROADCAST_CONTEXT_SETUP_REQUEST);
+#.END
+#.FN_HDR BroadcastContextSetupResponse
+  set_message_label(actx, MTYPE_BROADCAST_CONTEXT_SETUP_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_BROADCAST_CONTEXT_SETUP_RESPONSE);
+#.END
+#.FN_HDR BroadcastContextSetupFailure
+  set_message_label(actx, MTYPE_BROADCAST_CONTEXT_SETUP_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_BROADCAST_CONTEXT_SETUP_FAILURE);
+#.END
+#.FN_HDR BroadcastContextReleaseCommand
+  set_message_label(actx, MTYPE_BROADCAST_CONTEXT_RELEASE_COMMAND);
+  set_stats_message_type(actx->pinfo, MTYPE_BROADCAST_CONTEXT_RELEASE_COMMAND);
+#.END
+#.FN_HDR BroadcastContextReleaseComplete
+  set_message_label(actx, MTYPE_BROADCAST_CONTEXT_RELEASE_COMPLETE);
+  set_stats_message_type(actx->pinfo, MTYPE_BROADCAST_CONTEXT_RELEASE_COMPLETE);
+#.END
+#.FN_HDR BroadcastContextReleaseRequest
+  set_message_label(actx, MTYPE_BROADCAST_CONTEXT_RELEASE_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_BROADCAST_CONTEXT_RELEASE_REQUEST);
+#.END
+#.FN_HDR BroadcastContextModificationRequest
+  set_message_label(actx, MTYPE_BROADCAST_CONTEXT_MODIFICATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_BROADCAST_CONTEXT_MODIFICATION_REQUEST);
+#.END
+#.FN_HDR BroadcastContextModificationResponse
+  set_message_label(actx, MTYPE_BROADCAST_CONTEXT_MODIFICATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_BROADCAST_CONTEXT_MODIFICATION_RESPONSE);
+#.END
+#.FN_HDR BroadcastContextModificationFailure
+  set_message_label(actx, MTYPE_BROADCAST_CONTEXT_MODIFICATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_BROADCAST_CONTEXT_MODIFICATION_FAILURE);
+#.END
+#.FN_HDR MulticastGroupPaging
+  set_message_label(actx, MTYPE_MULTICAST_GROUP_PAGING);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_GROUP_PAGING);
+#.END
+#.FN_HDR MulticastContextSetupRequest
+  set_message_label(actx, MTYPE_MULTICAST_CONTEXT_SETUP_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_CONTEXT_SETUP_REQUEST);
+#.END
+#.FN_HDR MulticastContextSetupResponse
+  set_message_label(actx, MTYPE_MULTICAST_CONTEXT_SETUP_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_CONTEXT_SETUP_RESPONSE);
+#.END
+#.FN_HDR MulticastContextSetupFailure
+  set_message_label(actx, MTYPE_MULTICAST_CONTEXT_SETUP_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_CONTEXT_SETUP_FAILURE);
+#.END
+#.FN_HDR MulticastContextReleaseCommand
+  set_message_label(actx, MTYPE_MULTICAST_CONTEXT_RELEASE_COMMAND);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_CONTEXT_RELEASE_COMMAND);
+#.END
+#.FN_HDR MulticastContextReleaseComplete
+  set_message_label(actx, MTYPE_MULTICAST_CONTEXT_RELEASE_COMPLETE);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_CONTEXT_RELEASE_COMPLETE);
+#.END
+#.FN_HDR MulticastContextReleaseRequest
+  set_message_label(actx, MTYPE_MULTICAST_CONTEXT_RELEASE_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_CONTEXT_RELEASE_REQUEST);
+#.END
+#.FN_HDR MulticastContextModificationRequest
+  set_message_label(actx, MTYPE_MULTICAST_CONTEXT_MODIFICATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_CONTEXT_MODIFICATION_REQUEST);
+#.END
+#.FN_HDR MulticastContextModificationResponse
+  set_message_label(actx, MTYPE_MULTICAST_CONTEXT_MODIFICATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_CONTEXT_MODIFICATION_RESPONSE);
+#.END
+#.FN_HDR MulticastContextModificationFailure
+  set_message_label(actx, MTYPE_MULTICAST_CONTEXT_MODIFICATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_CONTEXT_MODIFICATION_FAILURE);
+#.END
+#.FN_HDR MulticastDistributionSetupRequest
+  set_message_label(actx, MTYPE_MULTICAST_DISTRIBUTION_SETUP_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_DISTRIBUTION_SETUP_REQUEST);
+#.END
+#.FN_HDR MulticastDistributionSetupResponse
+  set_message_label(actx, MTYPE_MULTICAST_DISTRIBUTION_SETUP_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_DISTRIBUTION_SETUP_RESPONSE);
+#.END
+#.FN_HDR MulticastDistributionSetupFailure
+  set_message_label(actx, MTYPE_MULTICAST_DISTRIBUTION_SETUP_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_DISTRIBUTION_SETUP_FAILURE);
+#.END
+#.FN_HDR MulticastDistributionReleaseCommand
+  set_message_label(actx, MTYPE_MULTICAST_DISTRIBUTION_RELEASE_COMMAND);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_DISTRIBUTION_RELEASE_COMMAND);
+#.END
+#.FN_HDR MulticastDistributionReleaseComplete
+  set_message_label(actx, MTYPE_MULTICAST_DISTRIBUTION_RELEASE_COMPLETE);
+  set_stats_message_type(actx->pinfo, MTYPE_MULTICAST_DISTRIBUTION_RELEASE_COMPLETE);
+#.END
+#.FN_HDR PDCMeasurementInitiationRequest
+  set_message_label(actx, MTYPE_PDCP_MEASUREMENT_INITIATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_PDCP_MEASUREMENT_INITIATION_REQUEST);
+#.END
+#.FN_HDR PDCMeasurementInitiationResponse
+  set_message_label(actx, MTYPE_PDCP_MEASUREMENT_INITIATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_PDCP_MEASUREMENT_INITIATION_RESPONSE);
+#.END
+#.FN_HDR PDCMeasurementInitiationFailure
+  set_message_label(actx, MTYPE_PDCP_MEASUREMENT_INITIATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_PDCP_MEASUREMENT_INITIATION_FAILURE);
+#.END
+#.FN_HDR PDCMeasurementReport
+  set_message_label(actx, MTYPE_PDCP_MEASUREMENT_REPORT);
+  set_stats_message_type(actx->pinfo, MTYPE_PDCP_MEASUREMENT_REPORT);
+#.END
+#.FN_HDR PDCMeasurementTerminationCommand
+  set_message_label(actx, MTYPE_PDCP_MEASUREMENT_TERMINATION_COMMAND);
+  set_stats_message_type(actx->pinfo, MTYPE_PDCP_MEASUREMENT_TERMINATION_COMMAND);
+#.END
+#.FN_HDR PDCMeasurementFailureIndication
+  set_message_label(actx, MTYPE_PDCP_MEASUREMENT_FAILURE_INDICATION);
+  set_stats_message_type(actx->pinfo, MTYPE_PDCP_MEASUREMENT_FAILURE_INDICATION);
+#.END
+#.FN_HDR PRSConfigurationRequest
+  set_message_label(actx, MTYPE_PRS_CONFIGURATION_REQUEST);
+  set_stats_message_type(actx->pinfo, MTYPE_PRS_CONFIGURATION_REQUEST);
+#.END
+#.FN_HDR PRSConfigurationResponse
+  set_message_label(actx, MTYPE_PRS_CONFIGURATION_RESPONSE);
+  set_stats_message_type(actx->pinfo, MTYPE_PRS_CONFIGURATION_RESPONSE);
+#.END
+#.FN_HDR PRSConfigurationFailure
+  set_message_label(actx, MTYPE_PRS_CONFIGURATION_FAILURE);
+  set_stats_message_type(actx->pinfo, MTYPE_PRS_CONFIGURATION_FAILURE);
+#.END
+#.FN_HDR MeasurementPreconfigurationRequired
+  set_message_label(actx, MTYPE_MEASUREMENT_PRECONFIGURATION_REQUIRED);
+  set_stats_message_type(actx->pinfo, MTYPE_MEASUREMENT_PRECONFIGURATION_REQUIRED);
+#.END
+#.FN_HDR MeasurementPreconfigurationConfirm
+  set_message_label(actx, MTYPE_MEASUREMENT_PRECONFIGURATION_CONFIRM);
+  set_stats_message_type(actx->pinfo, MTYPE_MEASUREMENT_PRECONFIGURATION_CONFIRM);
+#.END
+#.FN_HDR MeasurementPreconfigurationRefuse
+  set_message_label(actx, MTYPE_MEASUREMENT_PRECONFIGURATION_REFUSE);
+  set_stats_message_type(actx->pinfo, MTYPE_MEASUREMENT_PRECONFIGURATION_REFUSE);
+#.END
+#.FN_HDR MeasurementActivation
+  set_message_label(actx, MTYPE_MEASUREMENT_ACTIVATION);
+  set_stats_message_type(actx->pinfo, MTYPE_MEASUREMENT_ACTIVATION);
+#.END
+#.FN_HDR QoEInformationTransfer
+  set_message_label(actx, MTYPE_QOE_INFORMATION_TRANSFER);
+  set_stats_message_type(actx->pinfo, MTYPE_QOE_INFORMATION_TRANSFER);
+#.FN_HDR PosSystemInformationDeliveryCommand
+  set_message_label(actx, MTYPE_POS_SYSTEM_INFORMATION_DELIVERY_COMMAND);
+  set_stats_message_type(actx->pinfo, MTYPE_POS_SYSTEM_INFORMATION_DELIVERY_COMMAND);
 #.END
 
 #

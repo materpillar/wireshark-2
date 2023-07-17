@@ -109,7 +109,7 @@ WSLUA_CONSTRUCTOR Proto_new(lua_State* L) { /* Creates a new <<lua_class_Proto,`
         return 0;
     }
 
-    proto = (wslua_proto_t *)g_malloc(sizeof(wslua_proto_t));
+    proto = g_new0(wslua_proto_t, 1);
 
     proto->name = hiname;
     proto->loname = loname;
@@ -166,7 +166,7 @@ static int Proto__tostring(lua_State* L) {
 WSLUA_FUNCTION wslua_register_postdissector(lua_State* L) {
     /* Make a <<lua_class_Proto,`Proto`>> protocol (with a dissector function) a post-dissector.
        It will be called for every frame after dissection. */
-#define WSLUA_ARG_register_postdissector_PROTO 1 /* the protocol to be used as post-dissector. */
+#define WSLUA_ARG_register_postdissector_PROTO 1 /* The protocol to be used as post-dissector. */
 #define WSLUA_OPTARG_register_postdissector_ALLFIELDS 2 /* Whether to generate all fields.
                                                            Note: This impacts performance (default=false). */
 
@@ -233,7 +233,8 @@ WSLUA_METHOD Proto_register_heuristic(lua_State* L) {
     Proto proto = checkProto(L,1);
     const gchar *listname = luaL_checkstring(L, WSLUA_ARG_Proto_register_heuristic_LISTNAME);
     const gchar *proto_name = proto->name;
-    const int top = lua_gettop(L);
+    const int top _U_ = lua_gettop(L);
+
     gchar *short_name;
 
     if (!proto_name || proto->hfid == -1) {
@@ -278,7 +279,7 @@ WSLUA_METHOD Proto_register_heuristic(lua_State* L) {
         lua_replace(L, WSLUA_ARG_Proto_register_heuristic_FUNC);
         /* pop the lua_dissectors_table */
         lua_pop(L, 1);
-        g_assert(top == lua_gettop(L));
+        ws_assert(top == lua_gettop(L));
     }
 
     /* heuristic functions are stored in a table in the registry; the registry has a
@@ -314,7 +315,7 @@ WSLUA_METHOD Proto_register_heuristic(lua_State* L) {
 
         /* ok, we're done with lua stuff, pop what we added to the stack */
         lua_pop(L,2); /* pop the lists table and the listname table */
-        g_assert(top == lua_gettop(L));
+        ws_assert(top == lua_gettop(L));
 
         short_name = wmem_strconcat(NULL, proto->loname, "_", listname, NULL);
 
@@ -377,6 +378,9 @@ static int Proto_get_prefs(lua_State* L) {
 
 /* WSLUA_ATTRIBUTE Proto_prefs_changed WO The preferences changed routine of this dissector,
    a Lua function you define.
+
+   The function is called when the protocol's preferences are changed.
+   It is passed no arguments.
  */
 static int Proto_set_prefs_changed(lua_State* L) {
     Proto proto = checkProto(L,1);
@@ -396,7 +400,8 @@ static int Proto_set_prefs_changed(lua_State* L) {
 
 /* WSLUA_ATTRIBUTE Proto_init WO The init routine of this dissector, a function you define.
 
-   The called init function is passed no arguments.
+   The init function is called when the a new capture file is opened or when
+   the open capture file is closed.  It is passed no arguments.
 */
 static int Proto_set_init(lua_State* L) {
     Proto proto = checkProto(L,1);
@@ -420,7 +425,7 @@ WSLUA_ATTRIBUTE_STRING_GETTER(Proto,name);
 /* WSLUA_ATTRIBUTE Proto_description RO The description given to this dissector. */
 WSLUA_ATTRIBUTE_NAMED_STRING_GETTER(Proto,description,desc);
 
-/* WSLUA_ATTRIBUTE Proto_fields RW The `ProtoField`s Lua table of this dissector. */
+/* WSLUA_ATTRIBUTE Proto_fields RW The `ProtoField`++'++s Lua table of this dissector. */
 static int Proto_get_fields(lua_State* L) {
     Proto proto = checkProto(L,1);
     lua_rawgeti(L, LUA_REGISTRYINDEX, proto->fields);
@@ -652,7 +657,7 @@ int wslua_deregister_protocols(lua_State* L) {
         }
         lua_pop(L, 1);
 
-        if (proto->hfa->len) {
+        if (proto->hfa && proto->hfa->len) {
             proto_add_deregistered_data(g_array_free(proto->hfa,FALSE));
         } else {
             g_array_free(proto->hfa,TRUE);
@@ -661,7 +666,7 @@ int wslua_deregister_protocols(lua_State* L) {
         /* No need for deferred deletion of subtree indexes */
         g_array_free(proto->etta,TRUE);
 
-        if (proto->eia->len) {
+        if (proto->eia && proto->eia->len) {
             proto_add_deregistered_data(g_array_free(proto->eia,FALSE));
         } else {
             g_array_free(proto->eia,TRUE);

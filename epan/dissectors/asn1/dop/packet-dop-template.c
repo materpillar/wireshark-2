@@ -67,7 +67,7 @@ static void append_oid(packet_info *pinfo, const char *oid)
 {
   	const char *name = NULL;
 
-    name = oid_resolved_from_string(wmem_packet_scope(), oid);
+    name = oid_resolved_from_string(pinfo->pool, oid);
     col_append_fstr(pinfo->cinfo, COL_INFO, " %s", name ? name : oid);
 }
 
@@ -78,7 +78,7 @@ call_dop_oid_callback(const char *base_string, tvbuff_t *tvb, int offset, packet
 {
   char* binding_param;
 
-  binding_param = wmem_strdup_printf(wmem_packet_scope(), "%s.%s", base_string, binding_type ? binding_type : "");
+  binding_param = wmem_strdup_printf(pinfo->pool, "%s.%s", base_string, binding_type ? binding_type : "");
 
   col_append_fstr(pinfo->cinfo, COL_INFO, " %s", col_info);
 
@@ -249,7 +249,7 @@ void proto_register_dop(void) {
 
   dop_handle = register_dissector("dop", dissect_dop, proto_dop);
 
-  dop_dissector_table = register_dissector_table("dop.oid", "DOP OID", proto_dop, FT_STRING, BASE_NONE);
+  dop_dissector_table = register_dissector_table("dop.oid", "DOP OID", proto_dop, FT_STRING, STRING_CASE_SENSITIVE);
 
   /* Register fields and subtrees */
   proto_register_field_array(proto_dop, hf, array_length(hf));

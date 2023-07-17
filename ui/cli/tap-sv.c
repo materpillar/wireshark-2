@@ -22,12 +22,12 @@
 #include <epan/stat_tap_ui.h>
 #include <epan/dissectors/packet-sv.h>
 
-#include <ui/cmdarg_err.h>
+#include <wsutil/cmdarg_err.h>
 
 void register_tap_listener_sv(void);
 
 static tap_packet_status
-sv_packet(void *prs _U_, packet_info *pinfo, epan_dissect_t *edt _U_, const void *pri)
+sv_packet(void *prs _U_, packet_info *pinfo, epan_dissect_t *edt _U_, const void *pri, tap_flags_t flags _U_)
 {
 	int i;
 	const sv_frame_data * sv_data = (const sv_frame_data *)pri;

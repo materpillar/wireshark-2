@@ -48,6 +48,8 @@ static gboolean distcc_desegment = TRUE;
 void proto_register_distcc(void);
 extern void proto_reg_handoff_distcc(void);
 
+static dissector_handle_t distcc_handle;
+
 #define CHECK_PDU_LEN(x) \
     if(parameter>(guint)tvb_captured_length_remaining(tvb, offset) || parameter < 1){\
         len=tvb_captured_length_remaining(tvb, offset);\
@@ -126,7 +128,7 @@ dissect_distcc_argv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int off
      * it being some flavor of "extended ASCII"; these days, it's
      * *probably* UTF-8, but it could conceivably be something else.
      */
-    ti = proto_tree_add_item_ret_display_string(tree, hf_distcc_argv, tvb, offset, len, ENC_ASCII|ENC_NA, wmem_packet_scope(), &argv);
+    ti = proto_tree_add_item_ret_display_string(tree, hf_distcc_argv, tvb, offset, len, ENC_ASCII|ENC_NA, pinfo->pool, &argv);
 
     col_append_fstr(pinfo->cinfo, COL_INFO, "%s ", argv);
 
@@ -153,7 +155,7 @@ dissect_distcc_serr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int off
      * it being some flavor of "extended ASCII"; these days, it's
      * *probably* UTF-8, but it could conceivably be something else.
      */
-    ti = proto_tree_add_item_ret_display_string(tree, hf_distcc_serr, tvb, offset, len, ENC_ASCII|ENC_NA, wmem_packet_scope(), &serr);
+    ti = proto_tree_add_item_ret_display_string(tree, hf_distcc_serr, tvb, offset, len, ENC_ASCII|ENC_NA, pinfo->pool, &serr);
 
     col_append_fstr(pinfo->cinfo, COL_INFO, "SERR:%s ", serr);
 
@@ -180,7 +182,7 @@ dissect_distcc_sout(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int off
      * it being some flavor of "extended ASCII"; these days, it's
      * *probably* UTF-8, but it could conceivably be something else.
      */
-    ti = proto_tree_add_item_ret_display_string(tree, hf_distcc_sout, tvb, offset, len, ENC_ASCII|ENC_NA, wmem_packet_scope(), &sout);
+    ti = proto_tree_add_item_ret_display_string(tree, hf_distcc_sout, tvb, offset, len, ENC_ASCII|ENC_NA, pinfo->pool, &sout);
 
     col_append_fstr(pinfo->cinfo, COL_INFO, "SOUT:%s ", sout);
 
@@ -204,7 +206,7 @@ dissect_distcc_doti(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int off
 
     col_append_str(pinfo->cinfo, COL_INFO, "DOTI source ");
 
-    ti = proto_tree_add_item(tree, hf_distcc_doti_source, tvb, offset, len, ENC_ASCII|ENC_NA);
+    ti = proto_tree_add_item(tree, hf_distcc_doti_source, tvb, offset, len, ENC_ASCII);
 
     if(len!=(gint)parameter){
         expert_add_info_format(pinfo, ti, &ei_distcc_short_pdu, "[Short DOTI PDU]");
@@ -358,14 +360,13 @@ proto_register_distcc(void)
         "Whether the DISTCC dissector should reassemble messages spanning multiple TCP segments."
         " To use this option, you must also enable \"Allow subdissectors to reassemble TCP streams\" in the TCP protocol settings.",
         &distcc_desegment);
+
+    distcc_handle = register_dissector("distcc", dissect_distcc, proto_distcc);
 }
 
 void
 proto_reg_handoff_distcc(void)
 {
-    dissector_handle_t distcc_handle;
-
-    distcc_handle = create_dissector_handle(dissect_distcc, proto_distcc);
     dissector_add_uint_with_preference("tcp.port", TCP_PORT_DISTCC, distcc_handle);
 }
 

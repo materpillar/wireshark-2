@@ -1,4 +1,4 @@
-/* protocol_hierarchy_dialog.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -11,6 +11,7 @@
 #define PROTOCOL_HIERARCHY_DIALOG_H
 
 #include <QMenu>
+#include <QSet>
 
 #include "filter_action.h"
 #include <ui/qt/models/percent_bar_delegate.h>
@@ -39,14 +40,19 @@ private slots:
     void filterActionTriggered();
     void on_actionCopyAsCsv_triggered();
     void on_actionCopyAsYaml_triggered();
+    void on_actionCopyProtoList_triggered();
+    void on_actionDisableProtos_triggered();
+    void on_actionRevertProtos_triggered();
     void on_buttonBox_helpRequested();
 
 private:
     Ui::ProtocolHierarchyDialog *ui;
-    QPushButton *copy_button_;
+    QAction *proto_disable_;
+    QAction *proto_revert_;
     QMenu ctx_menu_;
     PercentBarDelegate percent_bar_delegate_;
     QString display_filter_;
+    QSet<QString> used_protos_;
 
     // Callback for g_node_children_foreach
     static void addTreeNode(GNode *node, gpointer data);
@@ -55,16 +61,3 @@ private:
 };
 
 #endif // PROTOCOL_HIERARCHY_DIALOG_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

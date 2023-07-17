@@ -1,11 +1,8 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-ain.c                                                               */
-/* asn2wrs.py -b -p ain -c ./ain.cnf -s ./packet-ain-template -D . -O ../.. AIN-Operations.asn AIN-Errors.asn AIN-Parameters.asn ../ros/Remote-Operations-Information-Objects.asn ../ros/Remote-Operations-Generic-ROS-PDUs.asn */
+/* asn2wrs.py -b -L -p ain -c ./ain.cnf -s ./packet-ain-template -D . -O ../.. AIN-Operations.asn AIN-Errors.asn AIN-Parameters.asn ../ros/Remote-Operations-Information-Objects.asn ../ros/Remote-Operations-Generic-ROS-PDUs.asn */
 
-/* Input file: packet-ain-template.c */
-
-#line 1 "./asn1/ain/packet-ain-template.c"
 /* packet-ain-template.c
 * Routines for AIN
 * Copyright 2018, Anders Broman <anders.broman@ericsson.com>
@@ -54,13 +51,7 @@ static int proto_ain = -1;
 static dissector_handle_t   ain_handle;
 
 /* include constants */
-
-/*--- Included file: packet-ain-val.h ---*/
-#line 1 "./asn1/ain/packet-ain-val.h"
 #define noInvokeId                     NULL
-
-/*--- End of included file: packet-ain-val.h ---*/
-#line 50 "./asn1/ain/packet-ain-template.c"
 
 static int hf_ain_ext_type_oid = -1;
 static int hf_ain_odd_even_indicator = -1;
@@ -73,9 +64,6 @@ static int hf_ain_nr_digits = -1;
 static int hf_ain_carrier_bcd_digits = -1;
 static int hf_ain_amaslpid = -1;
 
-
-/*--- Included file: packet-ain-hf.c ---*/
-#line 1 "./asn1/ain/packet-ain-hf.c"
 static int hf_ain_CallInfoFromResourceArg_PDU = -1;  /* CallInfoFromResourceArg */
 static int hf_ain_CloseArg_PDU = -1;              /* CloseArg */
 static int hf_ain_CTRClearArg_PDU = -1;           /* CTRClearArg */
@@ -362,7 +350,7 @@ static int hf_ain_action7 = -1;                   /* Action7 */
 static int hf_ain_toggle = -1;                    /* Toggle */
 static int hf_ain_service8 = -1;                  /* Service8 */
 static int hf_ain_action8 = -1;                   /* Action8 */
-static int hf_ain_invoke = -1;                    /* Invoke8 */
+static int hf_ain_action8_invoke = -1;            /* Invoke8 */
 static int hf_ain_service9 = -1;                  /* Service9 */
 static int hf_ain_action9 = -1;                   /* Action9 */
 static int hf_ain_changeList = -1;                /* ChangeList */
@@ -391,7 +379,7 @@ static int hf_ain_continuation = -1;              /* OCTET_STRING_SIZE_1_20 */
 static int hf_ain_calledAddress = -1;             /* OCTET_STRING_SIZE_1_20 */
 static int hf_ain_cause = -1;                     /* OCTET_STRING_SIZE_1_20 */
 static int hf_ain_progressIndicator = -1;         /* OCTET_STRING_SIZE_1_20 */
-static int hf_ain_notificationIndicator_01 = -1;  /* OCTET_STRING_SIZE_1_20 */
+static int hf_ain_displayInformation_notificationIndicator = -1;  /* OCTET_STRING_SIZE_1_20 */
 static int hf_ain_prompt = -1;                    /* OCTET_STRING_SIZE_1_20 */
 static int hf_ain_accumulatedDigits = -1;         /* OCTET_STRING_SIZE_1_20 */
 static int hf_ain_status = -1;                    /* OCTET_STRING_SIZE_1_20 */
@@ -475,7 +463,7 @@ static int hf_ain_privateFacilityGID = -1;        /* PrivateFacilityGID */
 static int hf_ain_aDSIcpeID = -1;                 /* ADSIcpeID */
 static int hf_ain_local = -1;                     /* T_local */
 static int hf_ain_global = -1;                    /* OBJECT_IDENTIFIER */
-static int hf_ain_invoke_01 = -1;                 /* Invoke */
+static int hf_ain_invoke = -1;                    /* Invoke */
 static int hf_ain_returnResult = -1;              /* ReturnResult */
 static int hf_ain_returnError = -1;               /* ReturnError */
 static int hf_ain_reject = -1;                    /* Reject */
@@ -491,7 +479,7 @@ static int hf_ain_errcode = -1;                   /* Code */
 static int hf_ain_parameter_01 = -1;              /* T_parameter */
 static int hf_ain_problem = -1;                   /* T_problem */
 static int hf_ain_general = -1;                   /* GeneralProblem */
-static int hf_ain_invoke_02 = -1;                 /* InvokeProblem */
+static int hf_ain_invokeproblem = -1;             /* InvokeProblem */
 static int hf_ain_returnResult_01 = -1;           /* ReturnResultProblem */
 static int hf_ain_returnError_01 = -1;            /* ReturnErrorProblem */
 static int hf_ain_present_01 = -1;                /* INTEGER */
@@ -561,18 +549,12 @@ static int hf_ain_Request6_delayInterval = -1;
 static int hf_ain_RequestMemorySlot_incoming = -1;
 static int hf_ain_RequestMemorySlot_outgoing = -1;
 
-/*--- End of included file: packet-ain-hf.c ---*/
-#line 63 "./asn1/ain/packet-ain-template.c"
-
 /* Initialize the subtree pointers */
 static int ett_ain = -1;
 static int ett_ain_digits = -1;
 static int ett_ain_carrierformat = -1;
 static int ett_ain_amaslpid = -1;
 
-
-/*--- Included file: packet-ain-ett.c ---*/
-#line 1 "./asn1/ain/packet-ain-ett.c"
 static gint ett_ain_CallInfoFromResourceArg = -1;
 static gint ett_ain_CloseArg = -1;
 static gint ett_ain_CTRClearArg = -1;
@@ -748,9 +730,6 @@ static gint ett_ain_Reject = -1;
 static gint ett_ain_T_problem = -1;
 static gint ett_ain_InvokeId = -1;
 
-/*--- End of included file: packet-ain-ett.c ---*/
-#line 71 "./asn1/ain/packet-ain-template.c"
-
 static expert_field ei_ain_unknown_invokeData = EI_INIT;
 static expert_field ei_ain_unknown_returnResultData = EI_INIT;
 static expert_field ei_ain_unknown_returnErrorData = EI_INIT;
@@ -803,9 +782,6 @@ static const value_string ain_nature_of_carrier_vals[] = {
     {   0, NULL }
 };
 
-
-/*--- Included file: packet-ain-table.c ---*/
-#line 1 "./asn1/ain/packet-ain-table.c"
 
 /* AIN OPERATIONS */
 const value_string ain_opr_code_strings[] = {
@@ -883,12 +859,6 @@ static const value_string ain_err_code_string_vals[] = {
 };
 
 
-/*--- End of included file: packet-ain-table.c ---*/
-#line 125 "./asn1/ain/packet-ain-template.c"
-
-
-/*--- Included file: packet-ain-fn.c ---*/
-#line 1 "./asn1/ain/packet-ain-fn.c"
 
 
 static int
@@ -943,7 +913,6 @@ dissect_ain_SpcID(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, 
 
 static int
 dissect_ain_AINDigits(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 185 "./asn1/ain/ain.cnf"
   tvbuff_t *parameter_tvb;
   proto_tree *subtree;
 
@@ -961,7 +930,6 @@ dissect_ain_AINDigits(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _
   proto_tree_add_item(subtree, hf_ain_numbering_plan, parameter_tvb, 1, 1, ENC_BIG_ENDIAN);
 
   proto_tree_add_item(subtree, hf_ain_bcd_digits, parameter_tvb, 2, tvb_reported_length_remaining(parameter_tvb, 2), ENC_BCD_DIGITS_0_9);
-
 
 
   return offset;
@@ -1145,9 +1113,7 @@ dissect_ain_T_assignmentAuthority(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 
 static int
 dissect_ain_T_parameters(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 182 "./asn1/ain/ain.cnf"
   offset=call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, NULL);
-
 
 
   return offset;
@@ -1546,7 +1512,6 @@ dissect_ain_CollectedAddressInfo(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, i
 
 static int
 dissect_ain_CarrierFormat(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 202 "./asn1/ain/ain.cnf"
   tvbuff_t *parameter_tvb;
   proto_tree *subtree;
 
@@ -1566,7 +1531,6 @@ dissect_ain_CarrierFormat(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offs
 
   /* 2nd Digit 1st Digit .. */
   proto_tree_add_item(subtree, hf_ain_carrier_bcd_digits, parameter_tvb, 2, tvb_reported_length_remaining(parameter_tvb, 2), ENC_BCD_DIGITS_0_9);
-
 
 
   return offset;
@@ -1729,18 +1693,8 @@ dissect_ain_CTRClearArg(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 
 static int
-dissect_ain_BOOLEAN(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_ber_boolean(implicit_tag, actx, tree, tvb, offset, hf_index, NULL);
-
-  return offset;
-}
-
-
-
-static int
 dissect_ain_NotificationIndicator(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_ber_tagged_type(implicit_tag, actx, tree, tvb, offset,
-                                      hf_index, BER_CLASS_CON, 111, TRUE, dissect_ain_BOOLEAN);
+  offset = dissect_ber_boolean(implicit_tag, actx, tree, tvb, offset, hf_index, NULL);
 
   return offset;
 }
@@ -1749,7 +1703,7 @@ dissect_ain_NotificationIndicator(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 static const ber_sequence_t FailureOutcomeArg_sequence[] = {
   { &hf_ain_userID          , BER_CLASS_CON, 53, BER_FLAGS_NOOWNTAG, dissect_ain_UserID },
   { &hf_ain_bearerCapability, BER_CLASS_CON, 13, BER_FLAGS_NOOWNTAG, dissect_ain_BearerCapability },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_ccID            , BER_CLASS_CON, 133, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_CcID },
   { &hf_ain_legID           , BER_CLASS_CON, 132, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_LegID },
   { &hf_ain_bCMType         , BER_CLASS_CON, 134, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_BCMType },
@@ -2037,6 +1991,15 @@ dissect_ain_Sap(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, as
 
 
 static int
+dissect_ain_BOOLEAN(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_ber_boolean(implicit_tag, actx, tree, tvb, offset, hf_index, NULL);
+
+  return offset;
+}
+
+
+
+static int
 dissect_ain_STRConnection(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_ber_tagged_type(implicit_tag, actx, tree, tvb, offset,
                                       hf_index, BER_CLASS_CON, 96, TRUE, dissect_ain_BOOLEAN);
@@ -2307,7 +2270,7 @@ static const ber_sequence_t NetworkBusyArg_sequence[] = {
   { &hf_ain_sap             , BER_CLASS_CON, 81, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Sap },
   { &hf_ain_aMASequenceNumber, BER_CLASS_CON, 89, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_AMASequenceNumber },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_prefix          , BER_CLASS_CON, 148, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Prefix },
   { &hf_ain_triggerInformation, BER_CLASS_UNI, BER_UNI_TAG_OCTETSTRING, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_TriggerInformation },
   { NULL, 0, 0, 0, NULL }
@@ -2325,7 +2288,7 @@ dissect_ain_NetworkBusyArg(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
 static const ber_sequence_t OAnswerArg_sequence[] = {
   { &hf_ain_userID          , BER_CLASS_CON, 53, BER_FLAGS_NOOWNTAG, dissect_ain_UserID },
   { &hf_ain_bearerCapability, BER_CLASS_CON, 13, BER_FLAGS_NOOWNTAG, dissect_ain_BearerCapability },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
@@ -2349,7 +2312,7 @@ static const ber_sequence_t OAbandonArg_sequence[] = {
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { NULL, 0, 0, 0, NULL }
 };
 
@@ -2390,7 +2353,7 @@ dissect_ain_DisconnectCause(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int of
 static const ber_sequence_t ODisconnectArg_sequence[] = {
   { &hf_ain_userID          , BER_CLASS_CON, 53, BER_FLAGS_NOOWNTAG, dissect_ain_UserID },
   { &hf_ain_bearerCapability, BER_CLASS_CON, 13, BER_FLAGS_NOOWNTAG, dissect_ain_BearerCapability },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
@@ -2447,7 +2410,7 @@ static const ber_sequence_t OMidCallArg_sequence[] = {
   { &hf_ain_collectedDigits , BER_CLASS_CON, 23, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_CollectedDigits },
   { &hf_ain_verticalServiceCode, BER_CLASS_CON, 54, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_VerticalServiceCode },
   { &hf_ain_aCGEncountered  , BER_CLASS_CON, 2, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_ACGEncountered },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
@@ -2477,7 +2440,7 @@ static const ber_sequence_t ONoAnswerArg_sequence[] = {
   { &hf_ain_redirectingPartyID, BER_CLASS_CON, 43, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_RedirectingPartyID },
   { &hf_ain_redirectionInformation, BER_CLASS_CON, 44, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_RedirectionInformation },
   { &hf_ain_sap             , BER_CLASS_CON, 81, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Sap },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_aCGEncountered  , BER_CLASS_CON, 2, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_ACGEncountered },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
@@ -2502,7 +2465,7 @@ dissect_ain_ONoAnswerArg(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offse
 static const ber_sequence_t OSuspendedArg_sequence[] = {
   { &hf_ain_userID          , BER_CLASS_CON, 53, BER_FLAGS_NOOWNTAG, dissect_ain_UserID },
   { &hf_ain_bearerCapability, BER_CLASS_CON, 13, BER_FLAGS_NOOWNTAG, dissect_ain_BearerCapability },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
@@ -2523,7 +2486,7 @@ dissect_ain_OSuspendedArg(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offs
 static const ber_sequence_t OTermSeizedArg_sequence[] = {
   { &hf_ain_userID          , BER_CLASS_CON, 53, BER_FLAGS_NOOWNTAG, dissect_ain_UserID },
   { &hf_ain_bearerCapability, BER_CLASS_CON, 13, BER_FLAGS_NOOWNTAG, dissect_ain_BearerCapability },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
@@ -2554,7 +2517,7 @@ static const ber_sequence_t OriginationAttemptArg_sequence[] = {
   { &hf_ain_sap             , BER_CLASS_CON, 81, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Sap },
   { &hf_ain_aMASequenceNumber, BER_CLASS_CON, 89, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_AMASequenceNumber },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_triggerInformation, BER_CLASS_UNI, BER_UNI_TAG_OCTETSTRING, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_TriggerInformation },
   { NULL, 0, 0, 0, NULL }
 };
@@ -2609,7 +2572,7 @@ dissect_ain_ResourceClearArg(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int o
 static const ber_sequence_t SuccessOutcomeArg_sequence[] = {
   { &hf_ain_userID          , BER_CLASS_CON, 53, BER_FLAGS_NOOWNTAG, dissect_ain_UserID },
   { &hf_ain_bearerCapability, BER_CLASS_CON, 13, BER_FLAGS_NOOWNTAG, dissect_ain_BearerCapability },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_ccID            , BER_CLASS_CON, 133, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_CcID },
   { &hf_ain_legID           , BER_CLASS_CON, 132, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_LegID },
   { &hf_ain_bCMType         , BER_CLASS_CON, 134, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_BCMType },
@@ -2632,7 +2595,7 @@ dissect_ain_SuccessOutcomeArg(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
 static const ber_sequence_t TAnswerArg_sequence[] = {
   { &hf_ain_userID          , BER_CLASS_CON, 53, BER_FLAGS_NOOWNTAG, dissect_ain_UserID },
   { &hf_ain_bearerCapability, BER_CLASS_CON, 13, BER_FLAGS_NOOWNTAG, dissect_ain_BearerCapability },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
@@ -2741,7 +2704,7 @@ static const ber_sequence_t TBusyArg_sequence[] = {
   { &hf_ain_calledPartyStationType, BER_CLASS_CON, 16, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_CalledPartyStationType },
   { &hf_ain_sap             , BER_CLASS_CON, 81, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Sap },
   { &hf_ain_genericName     , BER_CLASS_CON, 33, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_GenericName },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_aCGEncountered  , BER_CLASS_CON, 2, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_ACGEncountered },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
@@ -2772,7 +2735,7 @@ static const ber_sequence_t TDisconnectArg_sequence[] = {
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_aMASequenceNumber, BER_CLASS_CON, 89, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_AMASequenceNumber },
   { NULL, 0, 0, 0, NULL }
 };
@@ -2803,7 +2766,7 @@ static const ber_sequence_t TDTMFEnteredArg_sequence[] = {
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { NULL, 0, 0, 0, NULL }
 };
 
@@ -2835,7 +2798,7 @@ static const ber_sequence_t TMidCallArg_sequence[] = {
   { &hf_ain_collectedDigits , BER_CLASS_CON, 23, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_CollectedDigits },
   { &hf_ain_verticalServiceCode, BER_CLASS_CON, 54, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_VerticalServiceCode },
   { &hf_ain_aCGEncountered  , BER_CLASS_CON, 2, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_ACGEncountered },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
@@ -2867,7 +2830,7 @@ static const ber_sequence_t TNoAnswerArg_sequence[] = {
   { &hf_ain_calledPartyStationType, BER_CLASS_CON, 16, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_CalledPartyStationType },
   { &hf_ain_sap             , BER_CLASS_CON, 81, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Sap },
   { &hf_ain_genericName     , BER_CLASS_CON, 33, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_GenericName },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_aCGEncountered  , BER_CLASS_CON, 2, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_ACGEncountered },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
@@ -2940,7 +2903,7 @@ dissect_ain_TerminationAttemptArg(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 static const ber_sequence_t TermResourceAvailableArg_sequence[] = {
   { &hf_ain_userID          , BER_CLASS_CON, 53, BER_FLAGS_NOOWNTAG, dissect_ain_UserID },
   { &hf_ain_bearerCapability, BER_CLASS_CON, 13, BER_FLAGS_NOOWNTAG, dissect_ain_BearerCapability },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
@@ -2984,7 +2947,7 @@ static const ber_sequence_t TimeoutArg_sequence[] = {
   { &hf_ain_amp1            , BER_CLASS_CON, 11, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp1 },
   { &hf_ain_amp2            , BER_CLASS_CON, 109, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_Amp2 },
   { &hf_ain_extensionParameter, BER_CLASS_CON, 84, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_ExtensionParameter },
-  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { NULL, 0, 0, 0, NULL }
 };
 
@@ -3210,7 +3173,6 @@ dissect_ain_SEQUENCE_SIZE_1_2_OF_AMALineNumber(gboolean implicit_tag _U_, tvbuff
 
 static int
 dissect_ain_AMAslpID(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 221 "./asn1/ain/ain.cnf"
   tvbuff_t *parameter_tvb;
   proto_tree *subtree;
 
@@ -3224,7 +3186,6 @@ dissect_ain_AMAslpID(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U
   subtree = proto_item_add_subtree(actx->created_item, ett_ain_amaslpid);
 
   proto_tree_add_item(subtree, hf_ain_amaslpid, parameter_tvb, 0, tvb_reported_length_remaining(parameter_tvb, 0), ENC_BCD_DIGITS_0_9);
-
 
 
   return offset;
@@ -3481,7 +3442,7 @@ static const ber_choice_t DisplayInformation_choice[] = {
   {   3, &hf_ain_calledAddress   , BER_CLASS_CON, 3, BER_FLAGS_IMPLTAG, dissect_ain_OCTET_STRING_SIZE_1_20 },
   {   4, &hf_ain_cause           , BER_CLASS_CON, 4, BER_FLAGS_IMPLTAG, dissect_ain_OCTET_STRING_SIZE_1_20 },
   {   5, &hf_ain_progressIndicator, BER_CLASS_CON, 5, BER_FLAGS_IMPLTAG, dissect_ain_OCTET_STRING_SIZE_1_20 },
-  {   6, &hf_ain_notificationIndicator_01, BER_CLASS_CON, 6, BER_FLAGS_IMPLTAG, dissect_ain_OCTET_STRING_SIZE_1_20 },
+  {   6, &hf_ain_displayInformation_notificationIndicator, BER_CLASS_CON, 6, BER_FLAGS_IMPLTAG, dissect_ain_OCTET_STRING_SIZE_1_20 },
   {   7, &hf_ain_prompt          , BER_CLASS_CON, 7, BER_FLAGS_IMPLTAG, dissect_ain_OCTET_STRING_SIZE_1_20 },
   {   8, &hf_ain_accumulatedDigits, BER_CLASS_CON, 8, BER_FLAGS_IMPLTAG, dissect_ain_OCTET_STRING_SIZE_1_20 },
   {   9, &hf_ain_status          , BER_CLASS_CON, 9, BER_FLAGS_IMPLTAG, dissect_ain_OCTET_STRING_SIZE_1_20 },
@@ -7257,7 +7218,7 @@ static const value_string ain_Action8_vals[] = {
 };
 
 static const ber_choice_t Action8_choice[] = {
-  {   2, &hf_ain_invoke          , BER_CLASS_CON, 2, BER_FLAGS_IMPLTAG, dissect_ain_Invoke8 },
+  {   2, &hf_ain_action8_invoke  , BER_CLASS_CON, 2, BER_FLAGS_IMPLTAG, dissect_ain_Invoke8 },
   { 0, NULL, 0, 0, 0, NULL }
 };
 
@@ -7992,7 +7953,7 @@ static const ber_choice_t Parms_choice[] = {
   { 102, &hf_ain_tNoAnswerTimer  , BER_CLASS_CON, 99, BER_FLAGS_NOOWNTAG, dissect_ain_TNoAnswerTimer },
   { 103, &hf_ain_editListType    , BER_CLASS_UNI, BER_UNI_TAG_ENUMERATED, BER_FLAGS_NOOWNTAG, dissect_ain_EditListType },
   { 104, &hf_ain_aCGGlobalOverride, BER_CLASS_CON, 110, BER_FLAGS_NOOWNTAG, dissect_ain_ACGGlobalOverride },
-  { 105, &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_NOOWNTAG, dissect_ain_NotificationIndicator },
+  { 105, &hf_ain_notificationIndicator, BER_CLASS_CON, 111, BER_FLAGS_IMPLTAG, dissect_ain_NotificationIndicator },
   { 106, &hf_ain_aMALineNumber   , BER_CLASS_CON, 9, BER_FLAGS_NOOWNTAG, dissect_ain_AMALineNumber },
   { 107, &hf_ain_aMADigitsDialedWC, BER_CLASS_CON, 8, BER_FLAGS_NOOWNTAG, dissect_ain_AMADigitsDialedWC },
   { 108, &hf_ain_carrierUsage    , BER_CLASS_CON, 79, BER_FLAGS_NOOWNTAG, dissect_ain_CarrierUsage },
@@ -8143,7 +8104,6 @@ dissect_ain_PAR_failureReport(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
 
 static int
 dissect_ain_T_local(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 137 "./asn1/ain/ain.cnf"
     offset = dissect_ber_integer(implicit_tag, actx, tree, tvb, offset, hf_index,
                                                 &opcode);
 
@@ -8157,7 +8117,6 @@ dissect_ain_T_local(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_
       col_append_str(actx->pinfo->cinfo, COL_INFO, " ");
       col_set_fence(actx->pinfo->cinfo, COL_INFO);
     }
-
 
 
   return offset;
@@ -8252,10 +8211,8 @@ dissect_ain_T_linkedId(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
 
 static int
 dissect_ain_T_argument(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 166 "./asn1/ain/ain.cnf"
 
   offset = dissect_invokeData(tree, tvb, offset, actx);
-
 
 
   return offset;
@@ -8272,10 +8229,8 @@ static const ber_sequence_t Invoke_sequence[] = {
 
 static int
 dissect_ain_Invoke(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 150 "./asn1/ain/ain.cnf"
 
   ain_opcode_type=AIN_OPCODE_INVOKE;
-
 
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    Invoke_sequence, hf_index, ett_ain_Invoke);
@@ -8287,10 +8242,8 @@ dissect_ain_Invoke(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_,
 
 static int
 dissect_ain_T_result_01(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 170 "./asn1/ain/ain.cnf"
 
   offset = dissect_returnResultData(tree, tvb, offset, actx);
-
 
 
   return offset;
@@ -8320,10 +8273,8 @@ static const ber_sequence_t ReturnResult_sequence[] = {
 
 static int
 dissect_ain_ReturnResult(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 154 "./asn1/ain/ain.cnf"
 
   ain_opcode_type=AIN_OPCODE_RETURN_RESULT;
-
 
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    ReturnResult_sequence, hf_index, ett_ain_ReturnResult);
@@ -8335,10 +8286,8 @@ dissect_ain_ReturnResult(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offse
 
 static int
 dissect_ain_T_parameter(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 174 "./asn1/ain/ain.cnf"
 
   offset = dissect_returnErrorData(tree, tvb, offset, actx);
-
 
 
   return offset;
@@ -8354,10 +8303,8 @@ static const ber_sequence_t ReturnError_sequence[] = {
 
 static int
 dissect_ain_ReturnError(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 158 "./asn1/ain/ain.cnf"
 
   ain_opcode_type=AIN_OPCODE_RETURN_ERROR;
-
 
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    ReturnError_sequence, hf_index, ett_ain_ReturnError);
@@ -8451,7 +8398,7 @@ static const value_string ain_T_problem_vals[] = {
 
 static const ber_choice_t T_problem_choice[] = {
   {   0, &hf_ain_general         , BER_CLASS_CON, 0, BER_FLAGS_IMPLTAG, dissect_ain_GeneralProblem },
-  {   1, &hf_ain_invoke_02       , BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_ain_InvokeProblem },
+  {   1, &hf_ain_invokeproblem   , BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_ain_InvokeProblem },
   {   2, &hf_ain_returnResult_01 , BER_CLASS_CON, 2, BER_FLAGS_IMPLTAG, dissect_ain_ReturnResultProblem },
   {   3, &hf_ain_returnError_01  , BER_CLASS_CON, 3, BER_FLAGS_IMPLTAG, dissect_ain_ReturnErrorProblem },
   { 0, NULL, 0, 0, 0, NULL }
@@ -8475,10 +8422,8 @@ static const ber_sequence_t Reject_sequence[] = {
 
 static int
 dissect_ain_Reject(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 162 "./asn1/ain/ain.cnf"
 
   ain_opcode_type=AIN_OPCODE_REJECT;
-
 
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    Reject_sequence, hf_index, ett_ain_Reject);
@@ -8488,7 +8433,7 @@ dissect_ain_Reject(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_,
 
 
 static const ber_choice_t ROS_choice[] = {
-  {   1, &hf_ain_invoke_01       , BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_ain_Invoke },
+  {   1, &hf_ain_invoke          , BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_ain_Invoke },
   {   2, &hf_ain_returnResult    , BER_CLASS_CON, 2, BER_FLAGS_IMPLTAG, dissect_ain_ReturnResult },
   {   3, &hf_ain_returnError     , BER_CLASS_CON, 3, BER_FLAGS_IMPLTAG, dissect_ain_ReturnError },
   {   4, &hf_ain_reject          , BER_CLASS_CON, 4, BER_FLAGS_IMPLTAG, dissect_ain_Reject },
@@ -9040,12 +8985,6 @@ static int dissect_PAR_failureReport_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _
 }
 
 
-/*--- End of included file: packet-ain-fn.c ---*/
-#line 127 "./asn1/ain/packet-ain-template.c"
-
-
-/*--- Included file: packet-ain-table2.c ---*/
-#line 1 "./asn1/ain/packet-ain-table2.c"
 
 static int dissect_invokeData(proto_tree *tree, tvbuff_t *tvb, int offset, asn1_ctx_t *actx) {
 
@@ -9308,9 +9247,6 @@ static int dissect_returnErrorData(proto_tree *tree, tvbuff_t *tvb, int offset,a
 }
 
 
-/*--- End of included file: packet-ain-table2.c ---*/
-#line 129 "./asn1/ain/packet-ain-template.c"
-
 
 static int
 dissect_ain(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *data _U_)
@@ -9426,9 +9362,6 @@ void proto_register_ain(void) {
     FT_STRING, BASE_NONE, NULL, 0,
     NULL, HFILL } },
 
-
-/*--- Included file: packet-ain-hfarr.c ---*/
-#line 1 "./asn1/ain/packet-ain-hfarr.c"
     { &hf_ain_CallInfoFromResourceArg_PDU,
       { "CallInfoFromResourceArg", "ain.CallInfoFromResourceArg_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -10573,8 +10506,8 @@ void proto_register_ain(void) {
       { "action8", "ain.action8",
         FT_UINT32, BASE_DEC, VALS(ain_Action8_vals), 0,
         NULL, HFILL }},
-    { &hf_ain_invoke,
-      { "invoke", "ain.invoke",
+    { &hf_ain_action8_invoke,
+      { "invoke", "ain.action8.invoke",
         FT_UINT32, BASE_DEC, VALS(ain_Invoke8_vals), 0,
         "Invoke8", HFILL }},
     { &hf_ain_service9,
@@ -10689,8 +10622,8 @@ void proto_register_ain(void) {
       { "progressIndicator", "ain.progressIndicator",
         FT_BYTES, BASE_NONE, NULL, 0,
         "OCTET_STRING_SIZE_1_20", HFILL }},
-    { &hf_ain_notificationIndicator_01,
-      { "notificationIndicator", "ain.notificationIndicator",
+    { &hf_ain_displayInformation_notificationIndicator,
+      { "notificationIndicator", "ain.displayInformation.notificationIndicator",
         FT_BYTES, BASE_NONE, NULL, 0,
         "OCTET_STRING_SIZE_1_20", HFILL }},
     { &hf_ain_prompt,
@@ -11025,7 +10958,7 @@ void proto_register_ain(void) {
       { "global", "ain.global",
         FT_OID, BASE_NONE, NULL, 0,
         "OBJECT_IDENTIFIER", HFILL }},
-    { &hf_ain_invoke_01,
+    { &hf_ain_invoke,
       { "invoke", "ain.invoke_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
@@ -11089,8 +11022,8 @@ void proto_register_ain(void) {
       { "general", "ain.general",
         FT_INT32, BASE_DEC, VALS(ain_GeneralProblem_vals), 0,
         "GeneralProblem", HFILL }},
-    { &hf_ain_invoke_02,
-      { "invoke", "ain.invoke",
+    { &hf_ain_invokeproblem,
+      { "invoke", "ain.invokeproblem",
         FT_INT32, BASE_DEC, VALS(ain_InvokeProblem_vals), 0,
         "InvokeProblem", HFILL }},
     { &hf_ain_returnResult_01,
@@ -11361,9 +11294,6 @@ void proto_register_ain(void) {
       { "outgoing", "ain.RequestMemorySlot.outgoing",
         FT_BOOLEAN, 8, NULL, 0x40,
         NULL, HFILL }},
-
-/*--- End of included file: packet-ain-hfarr.c ---*/
-#line 246 "./asn1/ain/packet-ain-template.c"
     };
 
     /* List of subtrees */
@@ -11372,9 +11302,6 @@ void proto_register_ain(void) {
         &ett_ain_digits,
         &ett_ain_carrierformat,
         &ett_ain_amaslpid,
-
-/*--- Included file: packet-ain-ettarr.c ---*/
-#line 1 "./asn1/ain/packet-ain-ettarr.c"
     &ett_ain_CallInfoFromResourceArg,
     &ett_ain_CloseArg,
     &ett_ain_CTRClearArg,
@@ -11549,9 +11476,6 @@ void proto_register_ain(void) {
     &ett_ain_Reject,
     &ett_ain_T_problem,
     &ett_ain_InvokeId,
-
-/*--- End of included file: packet-ain-ettarr.c ---*/
-#line 255 "./asn1/ain/packet-ain-template.c"
     };
 
     static ei_register_info ei[] = {

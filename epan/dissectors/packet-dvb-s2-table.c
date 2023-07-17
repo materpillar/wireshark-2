@@ -28,7 +28,6 @@
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/etypes.h>
-#include <stdio.h>
 #include "packet-snmp.h"
 
 void proto_register_dvb_s2_table(void);
@@ -937,8 +936,8 @@ static int dissect_dvb_s2_table_desc(tvbuff_t *tvb, int cur_off, proto_tree *dvb
     int cur_desc, lls_size, rc_size, raac_size, new_off = 0;
     int start_off = 0;
     int linkage_type = 0;
-    int hand_over_type = 0;
-    int origin_type = 0;
+    guint32 hand_over_type = 0;
+    guint32 origin_type = 0;
     int remaning_data = 0;
     int capacity_type_flag = 0;
     int traffic_burst_type = 0;
@@ -1172,11 +1171,9 @@ static int dissect_dvb_s2_table_desc(tvbuff_t *tvb, int cur_off, proto_tree *dvb
                 proto_tree_add_item(dvb_s2_hdr_table_desc_tree, hf_dvb_s2_table_ld_linkage_type, tvb, cur_off + new_off, 1, ENC_NA);
                 new_off += 1;
                 if (linkage_type == 0x08) {
-                    hand_over_type = tvb_get_guint8(tvb, cur_off + new_off) & DVB_S2_TABLE_DESC_HAND_OVER_TYPE_MASK;
-                    origin_type = tvb_get_guint8(tvb, cur_off + new_off) && DVB_S2_TABLE_DESC_ORIGIN_TYPE_MASK;
-                    proto_tree_add_item(dvb_s2_hdr_table_desc_tree, hf_dvb_s2_table_ld_ho_type, tvb, cur_off + new_off, 1, ENC_NA);
+                    proto_tree_add_item_ret_uint(dvb_s2_hdr_table_desc_tree, hf_dvb_s2_table_ld_ho_type, tvb, cur_off + new_off, 1, ENC_NA, &hand_over_type);
                     proto_tree_add_item(dvb_s2_hdr_table_desc_tree, hf_dvb_s2_table_ld_reserved_future_use, tvb, cur_off + new_off, 1, ENC_NA);
-                    proto_tree_add_item(dvb_s2_hdr_table_desc_tree, hf_dvb_s2_table_ld_origin_type, tvb, cur_off + new_off, 1, ENC_NA);
+                    proto_tree_add_item_ret_uint(dvb_s2_hdr_table_desc_tree, hf_dvb_s2_table_ld_origin_type, tvb, cur_off + new_off, 1, ENC_NA, &origin_type);
                     new_off += 1;
                     if ((hand_over_type == 0x01) || (hand_over_type == 0x02) || (hand_over_type == 0x03)) {
                         proto_tree_add_item(dvb_s2_hdr_table_desc_tree, hf_dvb_s2_table_ld_network_id, tvb, cur_off + new_off, 2, ENC_NA);
@@ -2516,7 +2513,7 @@ void proto_register_dvb_s2_table(void)
                 NULL, HFILL}
         },
         {&hf_dvb_s2_table_private, {
-                "Table private indicator", "dvb-s2_table.section",
+                "Table private indicator", "dvb-s2_table.private_indicator",
                 FT_UINT8, BASE_HEX, NULL, DVB_S2_TABLE_PRIVATE_MASK,
                 NULL, HFILL}
         },
@@ -3490,12 +3487,12 @@ void proto_register_dvb_s2_table(void)
         },
         {&hf_dvb_s2_tdt_date, {
                 "Date", "dvb-s2_table.date",
-                FT_UINT8, BASE_HEX, NULL, 0x0,
+                FT_UINT16, BASE_HEX, NULL, 0x0,
                 NULL, HFILL}
         },
         {&hf_dvb_s2_tdt_hour, {
                 "Hour", "dvb-s2_table.hour",
-                FT_UINT8, BASE_HEX, NULL, 0x0,
+                FT_UINT16, BASE_HEX, NULL, 0x0,
                 NULL, HFILL}
         },
         {&hf_dvb_s2_tdt_minute, {
@@ -3545,7 +3542,7 @@ void proto_register_dvb_s2_table(void)
                 NULL, HFILL}
         },
         {&hf_dvb_s2_table_pt_mapping_section, {
-                "Mapping section", "dvb-s2_table.pt.mapping_sections",
+                "Mapping section", "dvb-s2_table.pt.mapping_section",
                 FT_BYTES, BASE_NONE, NULL, 0x0,
                 NULL, HFILL}
         },
@@ -3555,7 +3552,7 @@ void proto_register_dvb_s2_table(void)
                 NULL, HFILL}
         },
         {&hf_dvb_s2_table_pt_ms_inclusion_end, {
-                "Mapping section inclusion end", "dvb-s2_table.pt.ms.inclusion_start",
+                "Mapping section inclusion end", "dvb-s2_table.pt.ms.inclusion_end",
                 FT_BYTES, BASE_NONE, NULL, 0x0,
                 NULL, HFILL}
         },
@@ -4156,7 +4153,7 @@ void proto_register_dvb_s2_table(void)
         },
         {&hf_dvb_s2_table_desc_sync_frame_nbr, {
                 "Descriptor SYNC frame number", "dvb-s2_table.desc.sync_frame_number",
-                FT_UINT8, BASE_DEC, NULL, DVB_S2_TABLE_DESC_SYNC_FRAME_NBR_MASK,
+                FT_UINT8, BASE_DEC, NULL, 0x0,
                 NULL, HFILL}
         },
         {&hf_dvb_s2_table_desc_sync_repeat_period, {
@@ -4386,7 +4383,7 @@ void proto_register_dvb_s2_table(void)
                 NULL, HFILL}
         },
         {&hf_dvb_s2_table_lls, {
-                "lower layer service", "dvb-s2_table.lls.index",
+                "lower layer service", "dvb-s2_table.lls",
                 FT_BYTES, BASE_NONE, NULL, 0x0,
                 NULL, HFILL}
         },

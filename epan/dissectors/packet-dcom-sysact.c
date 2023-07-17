@@ -405,7 +405,7 @@ dissect_dcom_ActivationProperties(tvbuff_t *tvb, gint offset, packet_info *pinfo
             hf_sysact_res, &u32Res);
 
     old_pg = (property_guids_t*)di->private_data;
-    di->private_data = wmem_new0(wmem_packet_scope(), property_guids_t);
+    di->private_data = wmem_new0(pinfo->pool, property_guids_t);
 
     offset = dissect_dcom_ActivationPropertiesCustomerHdr(tvb, offset, pinfo, sub_tree, di, drep);
     offset = dissect_dcom_ActivationPropertiesBody(tvb, offset, pinfo, sub_tree, di, drep);
@@ -1236,7 +1236,7 @@ proto_register_ISystemActivator (void)
         { &hf_sysact_spsysprop_cltimpersonating,
         { "ClientImpersonating", "isystemactivator.properties.spcl.cltimp", FT_UINT32, BASE_DEC_HEX, NULL, 0x0, NULL, HFILL }},
         { &hf_sysact_spsysprop_partitionid,
-        { "PartitionIDPresent", "isystemactivator.properties.spcl.cltimp", FT_UINT32, BASE_DEC_HEX, NULL, 0x0, NULL, HFILL }},
+        { "PartitionIDPresent", "isystemactivator.properties.spcl.partitionid", FT_UINT32, BASE_DEC_HEX, NULL, 0x0, NULL, HFILL }},
         { &hf_sysact_spsysprop_defauthlvl,
         { "DefaultAuthnLevel", "isystemactivator.properties.spcl.defauthlvl", FT_UINT32, BASE_DEC_HEX, NULL, 0x0, NULL, HFILL }},
         { &hf_sysact_spsysprop_partition,
@@ -1264,7 +1264,7 @@ proto_register_ISystemActivator (void)
         { &hf_sysact_instninfo_actflags,
         { "ActivationFlags", "isystemactivator.properties.instninfo.actflags", FT_UINT32, BASE_DEC_HEX, VALS(instninfo_actflags), 0x0, NULL, HFILL }},
         { &hf_sysact_instninfo_issurrogate,
-        { "FlagsSurrogate", "isystemactivator.properties.instninfo.actflags", FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
+        { "FlagsSurrogate", "isystemactivator.properties.instninfo.issurogate", FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
         { &hf_sysact_instninfo_iidcount,
         { "InterfaceIdCount", "isystemactivator.properties.instninfo.iidcount", FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
         { &hf_sysact_instninfo_instflags,

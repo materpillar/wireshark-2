@@ -13,24 +13,6 @@ if (HAVE_HFI_SECTION_INIT)
 	)
 endif()
 
-include_directories(
-		${BROTLI_INCLUDE_DIRS}
-		${GLIB2_INCLUDE_DIRS}
-		${CARES_INCLUDE_DIRS}
-		${GCRYPT_INCLUDE_DIRS}
-		${GTHREAD2_INCLUDE_DIRS}
-		${GNUTLS_INCLUDE_DIRS}
-		${KERBEROS_INCLUDE_DIRS}
-		${LUA_INCLUDE_DIRS}
-		${LZ4_INCLUDE_DIRS}
-		${NGHTTP2_INCLUDE_DIRS}
-		${SMI_INCLUDE_DIRS}
-		${SNAPPY_INCLUDE_DIRS}
-		${ZLIB_INCLUDE_DIRS}
-		${ZSTD_INCLUDE_DIRS}
-		${LIBXML2_INCLUDE_DIRS}
-)
-
 add_definitions(
 		${LIBXML2_DEFINITIONS}
 		${KERBEROS_DEFINITIONS}
@@ -40,19 +22,14 @@ add_subdirectory(crypt)
 add_subdirectory(dfilter)
 add_subdirectory(dissectors)
 add_subdirectory(ftypes)
-add_subdirectory(wmem)
+
 if(LUA_FOUND)
 	add_subdirectory(wslua)
 endif()
 
-include_directories(
-	${CMAKE_CURRENT_BINARY_DIR}
-	${CMAKE_CURRENT_SOURCE_DIR}
-)
-
 add_custom_command(
 	OUTPUT ps.c
-	COMMAND ${PYTHON_EXECUTABLE}
+	COMMAND ${Python3_EXECUTABLE}
 		${CMAKE_SOURCE_DIR}/tools/rdps.py
 		${CMAKE_CURRENT_SOURCE_DIR}/print.ps
 		ps.c
@@ -95,6 +72,7 @@ set(LIBWIRESHARK_PUBLIC_HEADERS
 	diam_dict.h
 	disabled_protos.h
 	conversation_filter.h
+	dccpservicecodes.h
 	dtd.h
 	dtd_parse.h
 	dvb_chartbl.h
@@ -109,18 +87,19 @@ set(LIBWIRESHARK_PUBLIC_HEADERS
 	expert.h
 	export_object.h
 	exported_pdu.h
+	fifo_string_cache.h
 	filter_expressions.h
 	follow.h
 	frame_data.h
 	frame_data_sequence.h
 	funnel.h
-	garrayfix.h
 	#geoip_db.h
 	golay.h
 	guid-utils.h
 	iana_charsets.h
 	iax2_codec_type.h
 	in_cksum.h
+	introspection.h
 	ip_opts.h
 	ipproto.h
 	ipv4.h
@@ -137,6 +116,7 @@ set(LIBWIRESHARK_PUBLIC_HEADERS
 	packet.h
 	packet_info.h
 	params.h
+	pci-ids.h
 	plugin_if.h
 	ppptypes.h
 	print.h
@@ -172,7 +152,6 @@ set(LIBWIRESHARK_PUBLIC_HEADERS
 	timestamp.h
 	timestats.h
 	tfs.h
-	time_fmt.h
 	to_str.h
 	tvbparse.h
 	tvbuff.h
@@ -181,6 +160,8 @@ set(LIBWIRESHARK_PUBLIC_HEADERS
 	uat-int.h
 	unit_strings.h
 	value_string.h
+	wmem_scopes.h
+	wscbor.h
 	x264_prt_id.h
 	xdlc.h
 )
@@ -213,12 +194,14 @@ set(LIBWIRESHARK_NONGENERATED_FILES
 	disabled_protos.c
 	conversation_filter.c
 	dvb_chartbl.c
+	enterprises.c
 	epan.c
 	ex-opt.c
 	except.c
 	expert.c
 	export_object.c
 	exported_pdu.c
+	fifo_string_cache.c
 	filter_expressions.c
 	follow.c
 	frame_data.c
@@ -229,6 +212,7 @@ set(LIBWIRESHARK_NONGENERATED_FILES
 	guid-utils.c
 	iana_charsets.c
 	in_cksum.c
+	introspection.c
 	ipproto.c
 	maxmind_db.c
 	media_params.c
@@ -236,6 +220,7 @@ set(LIBWIRESHARK_NONGENERATED_FILES
 	oids.c
 	osi-utils.c
 	packet.c
+	pci-ids.c
 	plugin_if.c
 	print.c
 	print_stream.c
@@ -248,8 +233,10 @@ set(LIBWIRESHARK_NONGENERATED_FILES
 	register.c
 	req_resp_hdrs.c
 	rtd_table.c
+	sctpppids.c
 	secrets.c
 	sequence_analysis.c
+	services.c
 	show_exception.c
 	srt_table.c
 	stat_tap_ui.c
@@ -270,12 +257,16 @@ set(LIBWIRESHARK_NONGENERATED_FILES
 	tvbuff_real.c
 	tvbuff_subset.c
 	tvbuff_zlib.c
+	tvbuff_zstd.c
 	tvbuff_lz77.c
 	tvbuff_lz77huff.c
 	tvbuff_lznt1.c
+	tvbuff_rdp.c
 	uat.c
 	value_string.c
+	wscbor.c
 	unit_strings.c
+	wmem_scopes.c
 	xdlc.c
 	protobuf-helper.c
 	protobuf_lang_tree.c
@@ -295,14 +286,11 @@ add_lex_files(LEX_FILES LIBWIRESHARK_FILES
 
 add_lemon_files(LEMON_FILES LIBWIRESHARK_FILES
 	dtd_grammar.lemon
-)
-
-add_yacc_files(YACC_FILES LIBWIRESHARK_FILES
-	protobuf_lang.y
+	protobuf_lang_parser.lemon
 )
 
 set_source_files_properties(
-	${LIBWIRESHARK_FILES}
+	${LIBWIRESHARK_NONGENERATED_FILES}
 	PROPERTIES
 	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
@@ -316,16 +304,11 @@ add_library(epan
 	$<TARGET_OBJECTS:dfilter>
 	$<TARGET_OBJECTS:dissectors>
 	$<TARGET_OBJECTS:dissectors-corba>
+	$<TARGET_OBJECTS:dissector-registration>
 	$<TARGET_OBJECTS:ftypes>
-	$<TARGET_OBJECTS:version_info>
-	$<TARGET_OBJECTS:wmem>
 	$<$<BOOL:${LUA_FOUND}>:$<TARGET_OBJECTS:wslua>>
-	${CMAKE_BINARY_DIR}/image/libwireshark.rc
+	${CMAKE_BINARY_DIR}/resources/libwireshark.rc
 )
-
-if(ENABLE_PLUGINS)
-	target_compile_definitions(epan PUBLIC HAVE_PLUGINS)
-endif()
 
 set_target_properties(epan PROPERTIES
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"
@@ -338,20 +321,23 @@ set_target_properties(epan PROPERTIES
 	PREFIX "lib"
 	FOLDER "DLLs"
 )
+if(MSVC)
+	set_target_properties(epan PROPERTIES LINK_FLAGS_DEBUG "${WS_MSVC_DEBUG_LINK_FLAGS}")
+endif()
 
 target_link_libraries(epan
 	PUBLIC
-		wiretap
 		wsutil
 		${GLIB2_LIBRARIES}
 	PRIVATE
+		wiretap
 		${BROTLI_LIBRARIES}
 		${CARES_LIBRARIES}
 		${GCRYPT_LIBRARIES}
 		${GIO2_LIBRARIES}
-		${GTHREAD2_LIBRARIES}
 		${GNUTLS_LIBRARIES}
 		${KERBEROS_LIBRARIES}
+		${LIBXML2_LIBRARIES}
 		${LUA_LIBRARIES}
 		${LZ4_LIBRARIES}
 		${M_LIBRARIES}
@@ -359,18 +345,41 @@ target_link_libraries(epan
 		${SMI_LIBRARIES}
 		${SNAPPY_LIBRARIES}
 		${WIN_PSAPI_LIBRARY}
-		${LIBXML2_LIBRARIES}
+		${WIN_WS2_32_LIBRARY}
 		${ZLIB_LIBRARIES}
 		${ZSTD_LIBRARIES}
+		$<$<BOOL:${LUA_FOUND}>:lrexlib>
+)
+
+target_include_directories(epan
+	SYSTEM PUBLIC
+		${GLIB2_INCLUDE_DIRS}
 )
 
 target_include_directories(epan
 	INTERFACE
-	$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
-	$<INSTALL_INTERFACE:include/wireshark>
+		$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+		$<INSTALL_INTERFACE:include/wireshark>
 )
 
-target_include_directories(epan SYSTEM PUBLIC ${GLIB2_INCLUDE_DIRS})
+target_include_directories(epan
+	SYSTEM PRIVATE
+		${BROTLI_INCLUDE_DIRS}
+		${CARES_INCLUDE_DIRS}
+		${GCRYPT_INCLUDE_DIRS}
+		${GLIB2_INCLUDE_DIRS}
+		${GNUTLS_INCLUDE_DIRS}
+		${LIBXML2_INCLUDE_DIRS}
+		${LUA_INCLUDE_DIRS}
+		${LZ4_INCLUDE_DIRS}
+		${NGHTTP2_INCLUDE_DIRS}
+		${SMI_INCLUDE_DIRS}
+		${ZLIB_INCLUDE_DIRS}
+		${ZSTD_INCLUDE_DIRS}
+	PRIVATE
+		${CMAKE_CURRENT_BINARY_DIR}
+		${CMAKE_CURRENT_SOURCE_DIR}
+)
 
 add_dependencies(epan lemon)
 
@@ -383,22 +392,35 @@ install(TARGETS epan
 
 install(FILES ${LIBWIRESHARK_PUBLIC_HEADERS}
 	DESTINATION "${PROJECT_INSTALL_INCLUDEDIR}/epan"
+	COMPONENT "Development"
+	EXCLUDE_FROM_ALL
 )
 
 add_executable(exntest EXCLUDE_FROM_ALL exntest.c except.c)
-target_link_libraries(exntest ${GLIB2_LIBRARIES})
+target_link_libraries(exntest epan)
 set_target_properties(exntest PROPERTIES
 	FOLDER "Tests"
 	EXCLUDE_FROM_DEFAULT_BUILD True
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"
+	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
+)
+
+add_executable(fifo_string_cache_test EXCLUDE_FROM_ALL fifo_string_cache_test.c)
+target_link_libraries(fifo_string_cache_test epan)
+set_target_properties(fifo_string_cache_test PROPERTIES
+	FOLDER "Tests"
+	EXCLUDE_FROM_DEFAULT_BUILD True
+	COMPILE_DEFINITIONS "WS_BUILD_DLL"
+	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
 
 add_executable(oids_test EXCLUDE_FROM_ALL oids_test.c)
-target_link_libraries(oids_test epan ${ZLIB_LIBRARIES})
+target_link_libraries(oids_test epan)
 set_target_properties(oids_test PROPERTIES
 	FOLDER "Tests"
 	EXCLUDE_FROM_DEFAULT_BUILD True
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"
+	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
 
 add_executable(reassemble_test EXCLUDE_FROM_ALL reassemble_test.c)
@@ -406,6 +428,7 @@ target_link_libraries(reassemble_test epan)
 set_target_properties(reassemble_test PROPERTIES
 	FOLDER "Tests"
 	EXCLUDE_FROM_DEFAULT_BUILD True
+	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
 
 add_executable(tvbtest EXCLUDE_FROM_ALL tvbtest.c)
@@ -414,13 +437,29 @@ set_target_properties(tvbtest PROPERTIES
 	FOLDER "Tests"
 	EXCLUDE_FROM_DEFAULT_BUILD True
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"
+	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
+)
+
+add_executable(wscbor_test EXCLUDE_FROM_ALL wscbor_test.c)
+target_link_libraries(wscbor_test epan)
+set_target_properties(wscbor_test PROPERTIES
+    FOLDER "Tests"
+    EXCLUDE_FROM_DEFAULT_BUILD True
+    COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
+)
+
+add_executable(test_epan EXCLUDE_FROM_ALL test_epan.c)
+target_link_libraries(test_epan epan)
+set_target_properties(test_epan PROPERTIES
+	FOLDER "Tests"
+	EXCLUDE_FROM_DEFAULT_BUILD True
+	COMPILE_FLAGS "${WERROR_COMMON_FLAGS}"
 )
 
 CHECKAPI(
 	NAME
 	  epan
 	SWITCHES
-	  --group termoutput:10 --summary-group termoutput
 	SOURCES
 	  ${LIBWIRESHARK_NONGENERATED_FILES}
 )

@@ -21,7 +21,7 @@
 #include <epan/tap.h>
 #include <epan/stat_tap_ui.h>
 
-#include <ui/cmdarg_err.h>
+#include <wsutil/cmdarg_err.h>
 #include <ui/tap-credentials.h>
 
 void register_tap_listener_credentials(void);
@@ -42,7 +42,7 @@ static tap_credential_t* tap_credential_clone(tap_credential_t* auth)
     return clone;
 }
 
-static tap_packet_status credentials_packet(void *p _U_, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *pri)
+static tap_packet_status credentials_packet(void *p _U_, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *pri, tap_flags_t flags _U_)
 {
     tap_credential_t* clone = tap_credential_clone((tap_credential_t*)pri);
     wmem_array_append(credentials, (void*)clone, 1);
@@ -85,7 +85,7 @@ static void credentials_init(const char *opt_arg _U_, void *userdata _U_)
         exit(1);
     }
 
-    credentials = wmem_array_new(wmem_file_scope(), sizeof(tap_credential_t));
+    credentials = wmem_array_new(wmem_epan_scope(), sizeof(tap_credential_t));
 }
 
 static stat_tap_ui credentials_ui = {

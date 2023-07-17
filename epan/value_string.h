@@ -1,4 +1,4 @@
-/* value_string.h
+/** @file
  * Definitions for value_string structures and routines
  *
  * Wireshark - Network traffic analyzer
@@ -11,13 +11,15 @@
 #ifndef __VALUE_STRING_H__
 #define __VALUE_STRING_H__
 
+#include <glib.h>
+#include <stdint.h>
+
+#include "ws_symbol_export.h"
+#include <epan/wmem_scopes.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
-
-#include <glib.h>
-#include "ws_symbol_export.h"
-#include "wmem/wmem.h"
 
 /* VALUE TO STRING MATCHING */
 
@@ -121,6 +123,10 @@ try_val_to_str(const guint32 val, const value_string *vs);
 WS_DLL_PUBLIC
 const gchar *
 try_val_to_str_idx(const guint32 val, const value_string *vs, gint *idx);
+
+WS_DLL_PUBLIC
+const gchar *
+char_val_to_str(char val, const value_string *vs, const char *msg);
 
 /* 64-BIT VALUE TO STRING MATCHING */
 
@@ -285,8 +291,8 @@ try_str_to_str_idx(const gchar *val, const string_string *vs, gint *idx);
 /* RANGE TO STRING MATCHING */
 
 typedef struct _range_string {
-    guint32      value_min;
-    guint32      value_max;
+    uint64_t     value_min;
+    uint64_t     value_max;
     const gchar *strptr;
 } range_string;
 

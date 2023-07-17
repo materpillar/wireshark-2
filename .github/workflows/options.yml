@@ -8,12 +8,14 @@ on:
 jobs:
   options:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Install deps
-        run: sudo tools/debian-setup.sh ninja-build -y
+        run: |
+          sudo tools/debian-setup.sh --install-all ninja-build -y
+          sudo gem install asciidoctor
       - run: mkdir build
       - name: CMake
         run: >-
@@ -21,7 +23,6 @@ jobs:
           -GNinja
           -DENABLE_BROTLI=OFF
           -DENABLE_CAP=OFF
-          -DENABLE_CARES=OFF
           -DENABLE_CHECKHF_CONFLICT=ON
           -DENABLE_GNUTLS=OFF
           -DENABLE_KERBEROS=OFF

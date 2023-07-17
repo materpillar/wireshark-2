@@ -11,10 +11,24 @@
 
 #include <errno.h>
 
+#include <ws_diag_control.h>
+
+#if WS_IS_AT_LEAST_GNUC_VERSION(12,1)
+DIAG_OFF(stringop-overflow)
+#if WS_IS_AT_LEAST_GNUC_VERSION(13,0)
+DIAG_OFF(restrict)
+#endif
+#endif
 #include "interface_toolbar.h"
+#if WS_IS_AT_LEAST_GNUC_VERSION(12,1)
+DIAG_ON(stringop-overflow)
+#if WS_IS_AT_LEAST_GNUC_VERSION(13,0)
+DIAG_ON(restrict)
+#endif
+#endif
 #include <ui/qt/widgets/interface_toolbar_lineedit.h>
 #include "simple_dialog.h"
-#include "wireshark_application.h"
+#include "main_application.h"
 #include <ui_interface_toolbar.h>
 
 #include "capture_opts.h"
@@ -22,7 +36,6 @@
 #include "sync_pipe.h"
 #include "wsutil/file_util.h"
 
-#include "log.h"
 #ifdef _WIN32
 #include <wsutil/win32-utils.h>
 #endif
@@ -555,7 +568,7 @@ void InterfaceToolbar::controlReceived(QString ifname, int num, int command, QBy
             break;
 
         case commandStatusMessage:
-            wsApp->pushStatus(WiresharkApplication::TemporaryStatus, payload);
+            mainApp->pushStatus(MainApplication::TemporaryStatus, payload);
             break;
 
         case commandInformationMessage:
@@ -667,7 +680,7 @@ void InterfaceToolbar::onLogButtonClicked()
 
     if (!interface_[ifname].log_dialog.contains(num))
     {
-        interface_[ifname].log_dialog[num] = new FunnelTextDialog(ifname + " " + button->text());
+        interface_[ifname].log_dialog[num] = new FunnelTextDialog(window(), ifname + " " + button->text());
         connect(interface_[ifname].log_dialog[num], SIGNAL(accepted()), this, SLOT(closeLog()));
         connect(interface_[ifname].log_dialog[num], SIGNAL(rejected()), this, SLOT(closeLog()));
 
@@ -804,7 +817,8 @@ void InterfaceToolbar::stopCapture()
 
         if (interface_[ifname].out_fd != -1)
         {
-            ws_close (interface_[ifname].out_fd);
+            ws_close_if_possible (interface_[ifname].out_fd);
+
             interface_[ifname].out_fd = -1;
         }
 
@@ -971,14 +985,14 @@ void InterfaceToolbar::interfaceListChanged()
     if (!keep_selected)
     {
         // Select the first interface
-        on_interfacesComboBox_currentIndexChanged(ui->interfacesComboBox->currentText());
+        on_interfacesComboBox_currentTextChanged(ui->interfacesComboBox->currentText());
     }
 
     updateWidgets();
 #endif
 }
 
-void InterfaceToolbar::on_interfacesComboBox_currentIndexChanged(const QString &ifname)
+void InterfaceToolbar::on_interfacesComboBox_currentTextChanged(const QString &ifname)
 {
     foreach (int num, control_widget_.keys())
     {
@@ -1002,16 +1016,3 @@ void InterfaceToolbar::on_interfacesComboBox_currentIndexChanged(const QString &
 
     updateWidgets();
 }
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

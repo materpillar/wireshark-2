@@ -1315,7 +1315,7 @@ static const value_string rtp_midi_controller_values[] = {
 	{ RTP_MIDI_CTRL_EFFECTS_2_DEPTH,				"Effects 2 Depth (formerly: Tremolo Depth)" },
 	{ RTP_MIDI_CTRL_EFFECTS_3_DEPTH,				"Effects 3 Depth (formerly: Chorus Depth)" },
 	{ RTP_MIDI_CTRL_EFFECTS_4_DEPTH,				"Effects 4 Depth (formerly: Celeste (Detune) Depth)" },
-	{ RTP_MIDI_CTRL_EFFECTS_5_DEPTH,				"Effects 5 Depth (formerly: Phaser Deptch)" },
+	{ RTP_MIDI_CTRL_EFFECTS_5_DEPTH,				"Effects 5 Depth (formerly: Phaser Depth)" },
 	{ RTP_MIDI_CTRL_DATA_INCREMENT,					"Data Increment" },
 	{ RTP_MIDI_CTRL_DATA_DECREMENT,					"Data Decrement" },
 	{ RTP_MIDI_CTRL_NON_REGISTERED_PARAM_LSB,			"Non-Registered Parameter (lsb)" },
@@ -2883,10 +2883,6 @@ static gint ett_rtp_midi_sysex_common_nrt			= -1;
 static gint ett_rtp_midi_sysex_common_tune_note			= -1;
 
 
-static range_t *rtp_midi_payload_type_range	= NULL;
-static range_t *saved_payload_type_range        = NULL;
-
-
 static int proto_rtp_midi			= -1;
 
 
@@ -3468,7 +3464,7 @@ decode_sysex_common_nrt_fd( tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *t
 		data_len--;
 
 		/* file type */
-		proto_tree_add_item( tree, hf_rtp_midi_sysex_common_nrt_fd_type, tvb, offset, 4, ENC_ASCII|ENC_NA );
+		proto_tree_add_item( tree, hf_rtp_midi_sysex_common_nrt_fd_type, tvb, offset, 4, ENC_ASCII );
 		offset	 += 4;
 		data_len -= 4;
 
@@ -3480,7 +3476,7 @@ decode_sysex_common_nrt_fd( tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *t
 		if ( data_len ) {
 
 			/* file-name */
-			proto_tree_add_item( tree, hf_rtp_midi_sysex_common_nrt_fd_name, tvb, offset, data_len, ENC_ASCII|ENC_NA );
+			proto_tree_add_item( tree, hf_rtp_midi_sysex_common_nrt_fd_name, tvb, offset, data_len, ENC_ASCII );
 			offset	 += data_len;
 		}
 
@@ -3515,14 +3511,14 @@ decode_sysex_common_nrt_fd( tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *t
 		data_len--;
 
 		/* file type */
-		proto_tree_add_item( tree, hf_rtp_midi_sysex_common_nrt_fd_type, tvb, offset, 4, ENC_ASCII|ENC_NA );
+		proto_tree_add_item( tree, hf_rtp_midi_sysex_common_nrt_fd_type, tvb, offset, 4, ENC_ASCII );
 		offset	 += 4;
 		data_len -= 4;
 
 		if ( data_len ) {
 
 			/* file-name */
-			proto_tree_add_item( tree, hf_rtp_midi_sysex_common_nrt_fd_name, tvb, offset, data_len, ENC_ASCII|ENC_NA );
+			proto_tree_add_item( tree, hf_rtp_midi_sysex_common_nrt_fd_name, tvb, offset, data_len, ENC_ASCII );
 			offset += data_len;
 		}
 	}
@@ -3564,7 +3560,7 @@ decode_sysex_common_tuning( tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *t
 		offset++;
 
 		/* file length */
-		proto_tree_add_item( tree, hf_rtp_midi_sysex_common_tune_name, tvb, offset, 16, ENC_ASCII|ENC_NA );
+		proto_tree_add_item( tree, hf_rtp_midi_sysex_common_tune_name, tvb, offset, 16, ENC_ASCII );
 		offset	 += 16;
 
 		for ( i=0; i < 128; i++ ) {
@@ -5127,7 +5123,7 @@ decode_cj_chapter_e( tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, un
 				ett_rtp_midi_cj_chapter_e, NULL, RTP_MIDI_TREE_NAME_CJ_CHAPTER_E );
 
 	proto_tree_add_item( rtp_midi_cj_chapter_tree, hf_rtp_midi_cj_chapter_e_sflag, tvb, offset, 1, ENC_BIG_ENDIAN );
-	proto_tree_add_item( rtp_midi_cj_chapter_tree, hf_rtp_midi_cj_chapter_e_len, tvb, offset, 2, ENC_BIG_ENDIAN );
+	proto_tree_add_item( rtp_midi_cj_chapter_tree, hf_rtp_midi_cj_chapter_e_len, tvb, offset, 1, ENC_BIG_ENDIAN );
 
 	offset++;
 
@@ -5200,7 +5196,7 @@ decode_cj_chapter_a( tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, un
 	rtp_midi_cj_chapter_tree = proto_tree_add_subtree( tree, tvb, offset, 1 + ( log_count * 2 ), ett_rtp_midi_cj_chapter_a, NULL, RTP_MIDI_TREE_NAME_CJ_CHAPTER_A );
 
 	proto_tree_add_item( rtp_midi_cj_chapter_tree, hf_rtp_midi_cj_chapter_a_sflag, tvb, offset, 1, ENC_BIG_ENDIAN );
-	proto_tree_add_item( rtp_midi_cj_chapter_tree, hf_rtp_midi_cj_chapter_a_len, tvb, offset, 2, ENC_BIG_ENDIAN );
+	proto_tree_add_item( rtp_midi_cj_chapter_tree, hf_rtp_midi_cj_chapter_a_len, tvb, offset, 1, ENC_BIG_ENDIAN );
 
 	offset++;
 
@@ -6766,7 +6762,7 @@ proto_register_rtp_midi( void )
 				FT_BOOLEAN,
 				24,
 				TFS(&rtp_midi_cj_flag_p),
-				0x80,
+				0x000080,
 				NULL, HFILL
 			}
 		},
@@ -6778,7 +6774,7 @@ proto_register_rtp_midi( void )
 				FT_BOOLEAN,
 				24,
 				TFS(&rtp_midi_cj_flag_c),
-				0x40,
+				0x000040,
 				NULL, HFILL
 			}
 		},
@@ -6790,7 +6786,7 @@ proto_register_rtp_midi( void )
 				FT_BOOLEAN,
 				24,
 				TFS(&rtp_midi_cj_flag_m),
-				0x20,
+				0x000020,
 				NULL, HFILL
 			}
 		},
@@ -6802,7 +6798,7 @@ proto_register_rtp_midi( void )
 				FT_BOOLEAN,
 				24,
 				TFS(&rtp_midi_cj_flag_w),
-				0x10,
+				0x000010,
 				NULL, HFILL
 			}
 		},
@@ -6814,7 +6810,7 @@ proto_register_rtp_midi( void )
 				FT_BOOLEAN,
 				24,
 				TFS(&rtp_midi_cj_flag_n),
-				0x08,
+				0x000008,
 				NULL, HFILL
 			}
 		},
@@ -6826,7 +6822,7 @@ proto_register_rtp_midi( void )
 				FT_BOOLEAN,
 				24,
 				TFS(&rtp_midi_cj_flag_e),
-				0x04,
+				0x000004,
 				NULL, HFILL
 			}
 		},
@@ -6838,7 +6834,7 @@ proto_register_rtp_midi( void )
 				FT_BOOLEAN,
 				24,
 				TFS(&rtp_midi_cj_flag_t),
-				0x02,
+				0x000002,
 				NULL, HFILL
 			}
 		},
@@ -6850,7 +6846,7 @@ proto_register_rtp_midi( void )
 				FT_BOOLEAN,
 				24,
 				TFS(&rtp_midi_cj_flag_a),
-				0x01,
+				0x000001,
 				NULL, HFILL
 			}
 		},
@@ -10021,12 +10017,8 @@ proto_register_rtp_midi( void )
 	proto_register_field_array( proto_rtp_midi, hf, array_length( hf ) );
 	proto_register_subtree_array( ett, array_length( ett ) );
 
-	rtp_midi_module = prefs_register_protocol( proto_rtp_midi, proto_reg_handoff_rtp_midi );
-	prefs_register_range_preference( rtp_midi_module, "midi_payload_type_value",
-			"Payload Types for RFC 4695/6295 RTP-MIDI",
-			"Dynamic payload types which will be interpreted as RTP-MIDI"
-			"; values must be in the range 1 - 127",
-			&rtp_midi_payload_type_range, 127);
+	rtp_midi_module = prefs_register_protocol( proto_rtp_midi, NULL );
+	prefs_register_obsolete_preference( rtp_midi_module, "midi_payload_type_value");
 	rtp_midi_handle = register_dissector( RTP_MIDI_DISSECTOR_ABBREVIATION, dissect_rtp_midi, proto_rtp_midi );
 }
 
@@ -10035,20 +10027,8 @@ proto_register_rtp_midi( void )
 void
 proto_reg_handoff_rtp_midi( void )
 {
-	static int			rtp_midi_prefs_initialized = FALSE;
-
-
-	if ( !rtp_midi_prefs_initialized ) {
-		dissector_add_string("rtp_dyn_payload_type", "rtp-midi", rtp_midi_handle);
-		rtp_midi_prefs_initialized = TRUE;
-	}
-	else {
-		dissector_delete_uint_range( "rtp.pt", saved_payload_type_range, rtp_midi_handle );
-		wmem_free(wmem_epan_scope(), saved_payload_type_range);
-	}
-	saved_payload_type_range = range_copy(wmem_epan_scope(), rtp_midi_payload_type_range);
-	range_remove_value(wmem_epan_scope(), &saved_payload_type_range, 0);
-	dissector_add_uint_range( "rtp.pt", saved_payload_type_range, rtp_midi_handle );
+	dissector_add_string("rtp_dyn_payload_type", "rtp-midi", rtp_midi_handle);
+	dissector_add_uint_range_with_preference( "rtp.pt", "", rtp_midi_handle );
 
 }
 

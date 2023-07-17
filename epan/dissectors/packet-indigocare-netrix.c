@@ -13,7 +13,6 @@
 #include "config.h"
 
 #include <range.h>
-#include <wiretap/wtap.h>
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <wsutil/strtoi.h>
@@ -71,6 +70,8 @@
 
 void proto_reg_handoff_netrix(void);
 void proto_register_netrix(void);
+
+static dissector_handle_t netrix_handle;
 
 static expert_field ei_netrix_unexpected_header = EI_INIT;
 static expert_field ei_netrix_unexpected_record = EI_INIT;
@@ -181,7 +182,7 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 
 	/* Read header */
 	header_offset = tvb_find_guint8(tvb, current_offset, -1, INDIGOCARE_NETRIX_STX);
-	if(!ws_strtoi32(tvb_get_string_enc(wmem_packet_scope(), tvb, current_offset, header_offset - current_offset, ENC_ASCII|ENC_NA), NULL, &header)) {
+	if(!ws_strtoi32(tvb_get_string_enc(pinfo->pool, tvb, current_offset, header_offset - current_offset, ENC_ASCII|ENC_NA), NULL, &header)) {
 		/* Warn about invalid header? */
 		return 0;
 	}
@@ -250,12 +251,12 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 	while (tvb_get_guint8(tvb, current_offset) != INDIGOCARE_NETRIX_ETX) {
 		identifier_start = current_offset;
 		identifier_offset = tvb_find_guint8(tvb, current_offset, -1, INDIGOCARE_NETRIX_US);
-		ws_strtoi32(tvb_get_string_enc(wmem_packet_scope(), tvb, current_offset, identifier_offset - current_offset, ENC_ASCII|ENC_NA), NULL, &record_identifier);
+		ws_strtoi32(tvb_get_string_enc(pinfo->pool, tvb, current_offset, identifier_offset - current_offset, ENC_ASCII|ENC_NA), NULL, &record_identifier);
 		current_offset = identifier_offset + 1;
 
 		data_start = current_offset;
 		data_offset = tvb_find_guint8(tvb, current_offset, -1, INDIGOCARE_NETRIX_RS);
-		record_data = tvb_get_string_enc(wmem_packet_scope(), tvb, current_offset, data_offset - current_offset, ENC_ASCII|ENC_NA);
+		record_data = tvb_get_string_enc(pinfo->pool, tvb, current_offset, data_offset - current_offset, ENC_ASCII|ENC_NA);
 
 		current_offset = data_offset + 1;
 
@@ -263,19 +264,19 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 			case INDIGOCARE_NETRIX_SYSTEMINFO:
 				switch (record_identifier) {
 					case INDIGOCARE_NETRIX_SYSTEMINFO_COMPUTERNAME:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_systeminfo_computername_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_systeminfo_computername_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Computername=%s", record_data);
 					break;
 					case INDIGOCARE_NETRIX_SYSTEMINFO_IPADDRESS:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_systeminfo_ipaddress_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_systeminfo_ipaddress_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " IP Address=%s", record_data);
 					break;
 					case INDIGOCARE_NETRIX_SYSTEMINFO_VERSION:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_systeminfo_version_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_systeminfo_version_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Systeminfo=%s", record_data);
 					break;
 					case INDIGOCARE_NETRIX_SYSTEMINFO_BEEP:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_systeminfo_beep_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_systeminfo_beep_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 					break;
 					default:
 						proto_tree_add_expert_format(netrix_header_tree, pinfo, &ei_netrix_unexpected_record, tvb, identifier_start, data_offset - identifier_start, "Unexpected record %d with value %s", record_identifier, record_data);
@@ -290,25 +291,25 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Groupnumber=%d", group_number);
 					break;
 					case INDIGOCARE_NETRIX_GROUP_TYPE:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_type_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_type_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Type=%s", record_data);
 					break;
 					case INDIGOCARE_NETRIX_GROUP_ADDITION:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_addition_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_addition_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 					break;
 					case INDIGOCARE_NETRIX_GROUP_IDBOSCHLOC:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_idboschloc_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_idboschloc_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 					break;
 					case INDIGOCARE_NETRIX_GROUP_NAME:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_name_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_name_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Name=%s", record_data);
 					break;
 					case INDIGOCARE_NETRIX_GROUP_ROOM:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_room_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_room_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Room=%s", record_data);
 					break;
 					case INDIGOCARE_NETRIX_GROUP_LOCATION:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_location_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_groupcall_location_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Location=%s", record_data);
 					break;
 					default:
@@ -324,25 +325,25 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Profilenumber=%d", profile_number);
 					break;
 					case INDIGOCARE_NETRIX_PROFILE_TYPE:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_type_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_type_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Type=%s", record_data);
 					break;
 					case INDIGOCARE_NETRIX_PROFILE_ADDITION:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_addition_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_addition_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 					break;
 					case INDIGOCARE_NETRIX_PROFILE_IDBOSCHLOC:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_idboschloc_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_idboschloc_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 					break;
 					case INDIGOCARE_NETRIX_PROFILE_NAME:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_name_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_name_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Name=%s", record_data);
 					break;
 					case INDIGOCARE_NETRIX_PROFILE_ROOM:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_room_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_room_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Room=%s", record_data);
 					break;
 					case INDIGOCARE_NETRIX_PROFILE_LOCATION:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_location_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_profilecall_location_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Location=%s", record_data);
 					break;
 					default:
@@ -353,7 +354,7 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 			case INDIGOCARE_NETRIX_GET_CONVERSIONTABLE:
 				switch (record_identifier) {
 					case INDIGOCARE_NETRIX_GET_CONVERSIONTABLE_TABLE:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_get_conversiontable_table_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_get_conversiontable_table_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Table=%s", record_data);
 					break;
 				}
@@ -361,7 +362,7 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 			case INDIGOCARE_NETRIX_SEARCH_CONVERSIONTABLES:
 				switch (record_identifier) {
 					case INDIGOCARE_NETRIX_SEARCH_CONVERSIONTABLES_KEY:
-						proto_tree_add_item(netrix_header_tree, hf_netrix_search_conversiontables_key_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+						proto_tree_add_item(netrix_header_tree, hf_netrix_search_conversiontables_key_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 						col_append_fstr(pinfo->cinfo, COL_INFO, " Key=%s", record_data);
 					break;
 					default:
@@ -373,11 +374,11 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 				if ((header >= INDIGOCARE_NETRIX_GET_CONVERSIONTABLE_BEGIN) && (header <= INDIGOCARE_NETRIX_GET_CONVERSIONTABLE_END)) {
 					switch (record_identifier) {
 						case INDIGOCARE_NETRIX_GET_CONVERSIONTABLE_KEY:
-							proto_tree_add_item(netrix_header_tree, hf_netrix_get_conversiontable_key_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+							proto_tree_add_item(netrix_header_tree, hf_netrix_get_conversiontable_key_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 							col_append_fstr(pinfo->cinfo, COL_INFO, " Key=%s", record_data);
 						break;
 						case INDIGOCARE_NETRIX_GET_CONVERSIONTABLE_VALUE:
-							proto_tree_add_item(netrix_header_tree, hf_netrix_get_conversiontable_value_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+							proto_tree_add_item(netrix_header_tree, hf_netrix_get_conversiontable_value_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 							col_append_fstr(pinfo->cinfo, COL_INFO, " Value=%s", record_data);
 						break;
 						default:
@@ -387,7 +388,7 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 				} else if ((header >= INDIGOCARE_NETRIX_SEARCH_CONVERSIONTABLES_BEGIN) && (header <= INDIGOCARE_NETRIX_SEARCH_CONVERSIONTABLES_END)) {
 					switch (record_identifier) {
 						case INDIGOCARE_NETRIX_SEARCH_CONVERSIONTABLES_TABLE:
-							proto_tree_add_item(netrix_header_tree, hf_netrix_search_conversiontables_table_type, tvb, data_start, data_offset - data_start, ENC_ASCII|ENC_NA);
+							proto_tree_add_item(netrix_header_tree, hf_netrix_search_conversiontables_table_type, tvb, data_start, data_offset - data_start, ENC_ASCII);
 							col_append_fstr(pinfo->cinfo, COL_INFO, " Table=%s", record_data);
 						break;
 						default:
@@ -404,9 +405,6 @@ dissect_netrix(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree _U_, void *da
 void
 proto_reg_handoff_netrix(void)
 {
-	static dissector_handle_t netrix_handle;
-
-	netrix_handle = create_dissector_handle(dissect_netrix, proto_netrix);
 	dissector_add_for_decode_as("tcp.port", netrix_handle);
 }
 
@@ -652,6 +650,8 @@ proto_register_netrix(void)
 
 	expert_netrix = expert_register_protocol(proto_netrix);
 	expert_register_field_array(expert_netrix, ei, array_length(ei));
+
+	netrix_handle = register_dissector("netrix", dissect_netrix, proto_netrix);
 }
 
 /*

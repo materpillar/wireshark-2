@@ -3,9 +3,6 @@
 /* packet-idmp.c                                                              */
 /* asn2wrs.py -b -L -p idmp -c ./idmp.cnf -s ./packet-idmp-template -D . -O ../.. IDMProtocolSpecification.asn CommonProtocolSpecification.asn */
 
-/* Input file: packet-idmp-template.c */
-
-#line 1 "./asn1/idmp/packet-idmp-template.c"
 /* packet-idmp.c
  * Routines for X.519 Internet Directly Mapped Procotol (IDMP) packet dissection
  * Graeme Lunt 2010
@@ -108,23 +105,20 @@ static int call_idmp_oid_callback(tvbuff_t *tvb, int offset, packet_info *pinfo,
 {
     if(session != NULL) {
 
-        if((!saved_protocolID) && (op == (ROS_OP_BIND | ROS_OP_RESULT))) {
-            /* save for subsequent operations - should be into session data */
-            saved_protocolID = wmem_strdup(wmem_file_scope(), protocolID);
+        /* XXX saved_protocolID should be part of session data */
+        if (!saved_protocolID) {
+            saved_protocolID = "[ unknown ]";
         }
 
         /* mimic ROS! */
         session->ros_op = op;
-        offset = call_ros_oid_callback(saved_protocolID ? saved_protocolID : protocolID, tvb, offset, pinfo, tree, session);
+        offset = call_ros_oid_callback(saved_protocolID, tvb, offset, pinfo, tree, session);
     }
 
     return offset;
 
 }
 
-
-/*--- Included file: packet-idmp-hf.c ---*/
-#line 1 "./asn1/idmp/packet-idmp-hf.c"
 static int hf_idmp_bind = -1;                     /* IdmBind */
 static int hf_idmp_bindResult = -1;               /* IdmBindResult */
 static int hf_idmp_bindError = -1;                /* IdmBindError */
@@ -158,14 +152,8 @@ static int hf_idmp_global = -1;                   /* OBJECT_IDENTIFIER */
 static int hf_idmp_present = -1;                  /* INTEGER */
 static int hf_idmp_absent = -1;                   /* NULL */
 
-/*--- End of included file: packet-idmp-hf.c ---*/
-#line 118 "./asn1/idmp/packet-idmp-template.c"
-
 /* Initialize the subtree pointers */
 static gint ett_idmp = -1;
-
-/*--- Included file: packet-idmp-ett.c ---*/
-#line 1 "./asn1/idmp/packet-idmp-ett.c"
 static gint ett_idmp_IDM_PDU = -1;
 static gint ett_idmp_IdmBind = -1;
 static gint ett_idmp_IdmBindResult = -1;
@@ -177,12 +165,6 @@ static gint ett_idmp_IdmReject = -1;
 static gint ett_idmp_Code = -1;
 static gint ett_idmp_InvokeId = -1;
 
-/*--- End of included file: packet-idmp-ett.c ---*/
-#line 122 "./asn1/idmp/packet-idmp-template.c"
-
-
-/*--- Included file: packet-idmp-fn.c ---*/
-#line 1 "./asn1/idmp/packet-idmp-fn.c"
 
 
 static int
@@ -215,9 +197,13 @@ static const ber_sequence_t IdmBind_sequence[] = {
 
 static int
 dissect_idmp_IdmBind(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+	protocolID = saved_protocolID = NULL;
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    IdmBind_sequence, hf_index, ett_idmp_IdmBind);
 
+	if (protocolID) {
+		saved_protocolID = wmem_strdup(wmem_epan_scope(), protocolID);
+	}
   return offset;
 }
 
@@ -605,9 +591,6 @@ dissect_idmp_IDM_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U
 }
 
 
-/*--- End of included file: packet-idmp-fn.c ---*/
-#line 124 "./asn1/idmp/packet-idmp-template.c"
-
 void
 register_idmp_protocol_info(const char *oid, const ros_info_t *rinfo, int proto _U_, const char *name)
 {
@@ -720,8 +703,8 @@ static int dissect_idmp_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *paren
 
 static void idmp_reassemble_cleanup(void)
 {
-    protocolID = NULL;
-    saved_protocolID = NULL;
+    protocolID = NULL; // packet scoped
+    saved_protocolID = NULL; // epan scoped copy of protocolID
     opcode = -1;
 }
 
@@ -783,9 +766,6 @@ void proto_register_idmp(void)
           { "IDMP segment data", "idmp.segment_data", FT_BYTES, BASE_NONE,
             NULL, 0x00, NULL, HFILL } },
 
-
-/*--- Included file: packet-idmp-hfarr.c ---*/
-#line 1 "./asn1/idmp/packet-idmp-hfarr.c"
     { &hf_idmp_bind,
       { "bind", "idmp.bind_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -879,7 +859,7 @@ void proto_register_idmp(void)
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_idmp_idm_invokeID,
-      { "invokeID", "idmp.invokeID",
+      { "invokeID", "idmp.idmResult.invokeID",
         FT_UINT32, BASE_DEC, VALS(idmp_InvokeId_vals), 0,
         NULL, HFILL }},
     { &hf_idmp_result,
@@ -914,9 +894,6 @@ void proto_register_idmp(void)
       { "absent", "idmp.absent_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
-
-/*--- End of included file: packet-idmp-hfarr.c ---*/
-#line 301 "./asn1/idmp/packet-idmp-template.c"
     };
 
     /* List of subtrees */
@@ -924,9 +901,6 @@ void proto_register_idmp(void)
         &ett_idmp,
         &ett_idmp_fragment,
         &ett_idmp_fragments,
-
-/*--- Included file: packet-idmp-ettarr.c ---*/
-#line 1 "./asn1/idmp/packet-idmp-ettarr.c"
     &ett_idmp_IDM_PDU,
     &ett_idmp_IdmBind,
     &ett_idmp_IdmBindResult,
@@ -937,9 +911,6 @@ void proto_register_idmp(void)
     &ett_idmp_IdmReject,
     &ett_idmp_Code,
     &ett_idmp_InvokeId,
-
-/*--- End of included file: packet-idmp-ettarr.c ---*/
-#line 309 "./asn1/idmp/packet-idmp-template.c"
     };
     module_t *idmp_module;
 

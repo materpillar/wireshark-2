@@ -24,7 +24,8 @@
 #include "config.h"
 
 #include <epan/packet.h>
-#include <epan/dissectors/packet-ieee802154.h>
+#include <epan/exceptions.h>
+#include "packet-ieee802154.h"
 
 #define NXP_802154_SNIFFER_UDP_PORT             49999 /* Not IANA registered */
 #define NXP_802154_SNIFFER_TIMESTAMP_LENGTH     5
@@ -42,8 +43,46 @@ static int hf_nxp_802154_sniffer_length = -1;
 
 static gint ett_nxp_802154_sniffer = -1;
 
+static dissector_handle_t nxp_802154_sniffer_handle;
 static dissector_handle_t ieee802154_handle;
 
+static gboolean
+test_nxp_802154_sniffer(tvbuff_t *tvb, guint offset)
+{
+    volatile gboolean valid = TRUE;
+    guint8 channel, frame_len;
+
+    TRY {
+        /* Skip Timestamp */
+        offset += NXP_802154_SNIFFER_TIMESTAMP_LENGTH;
+        /* ID must be a null terminated ASCII string.
+         * tvb_strsize can throw exceptions caught by CATCH_BOUNDS_ERRORS. */
+        offset += tvb_strsize(tvb, offset);
+        /* Channel must be between 11 and 26 (2.4 GHz PHY)
+         * XXX: In the future the channels below 11 (868 and 915 MHz PHY)
+         * might be possible */
+        channel = tvb_get_guint8(tvb, offset);
+        if (channel < 11 || channel > 26) {
+            valid = FALSE;
+        }
+        /* Skip LQI, it can take any value from 0x00 to 0xff */
+        offset += 2;
+        frame_len = tvb_get_guint8(tvb, offset);
+        if (frame_len < IEEE802154_FCS_LEN || frame_len > IEEE802154_PHY_LENGTH_MASK) {
+            valid = FALSE;
+        }
+        offset += 1;
+        if (tvb_reported_length_remaining(tvb, offset) != frame_len) {
+            valid = FALSE;
+        }
+    }
+    CATCH_BOUNDS_ERRORS {
+        valid = FALSE;
+    }
+    ENDTRY;
+
+    return valid;
+}
 
 static int
 dissect_nxp_802154_sniffer(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
@@ -58,6 +97,10 @@ dissect_nxp_802154_sniffer(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
     /* Check that the packet is long enough for it to belong to us. */
     if (tvb_reported_length(tvb) < 9)
         return 0;
+
+    if (!test_nxp_802154_sniffer(tvb, offset)) {
+        return 0;
+    }
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "NXP 802.15.4 SNIFFER");
     col_clear(pinfo->cinfo, COL_INFO);
@@ -85,11 +128,7 @@ dissect_nxp_802154_sniffer(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
     proto_tree_add_item(nxp_802154_sniffer_tree, hf_nxp_802154_sniffer_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset += 1;
 
-    if (offset >= (tvb_captured_length(tvb) - IEEE802154_FCS_LEN)) {
-        return 0;
-    }
-
-    ieee802154_tvb = tvb_new_subset_length(tvb, offset, tvb_captured_length(tvb) - offset);
+    ieee802154_tvb = tvb_new_subset_remaining(tvb, offset);
     call_dissector(ieee802154_handle, ieee802154_tvb, pinfo, tree);
 
     return tvb_captured_length(tvb);
@@ -121,16 +160,15 @@ proto_register_nxp_802154_sniffer(void)
                                                "nxp_802154_sniffer");
     proto_register_field_array(proto_nxp_802154_sniffer, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    nxp_802154_sniffer_handle = register_dissector("nxp_802154_sniffer", dissect_nxp_802154_sniffer, proto_nxp_802154_sniffer);
 }
 
 void
 proto_reg_handoff_nxp_802154_sniffer(void)
 {
-    dissector_handle_t nxp_802154_sniffer_handle;
-
     ieee802154_handle = find_dissector_add_dependency("wpan", proto_nxp_802154_sniffer);
 
-    nxp_802154_sniffer_handle = create_dissector_handle(dissect_nxp_802154_sniffer, proto_nxp_802154_sniffer);
     dissector_add_uint_with_preference("udp.port", NXP_802154_SNIFFER_UDP_PORT, nxp_802154_sniffer_handle);
 }
 

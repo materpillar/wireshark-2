@@ -11,13 +11,16 @@
  */
 
 #include "config.h"
+#define WS_LOG_DOMAIN "dpauxmon"
+
+#include <wireshark.h>
 
 #include "extcap-base.h"
 
 #include <wsutil/strtoi.h>
 #include <wsutil/filesystem.h>
-#include <wsutil/netlink.h>
 #include <wsutil/privileges.h>
+#include <wsutil/wslog.h>
 #include <writecap/pcapio.h>
 
 #include <netlink/netlink.h>
@@ -25,7 +28,6 @@
 #include <netlink/genl/ctrl.h>
 #include <netlink/genl/mngt.h>
 
-#include <signal.h>
 #include <errno.h>
 
 #include <linux/genetlink.h>
@@ -39,7 +41,6 @@
 #define DPAUXMON_VERSION_MINOR "1"
 #define DPAUXMON_VERSION_RELEASE "0"
 
-static gboolean run_loop = TRUE;
 FILE* pcap_fp = NULL;
 
 enum {
@@ -49,13 +50,13 @@ enum {
 	OPT_INTERFACE_ID,
 };
 
-static struct option longopts[] = {
+static struct ws_option longopts[] = {
 	EXTCAP_BASE_OPTIONS,
 	/* Generic application options */
-	{ "help", no_argument, NULL, OPT_HELP},
-	{ "version", no_argument, NULL, OPT_VERSION},
+	{ "help", ws_no_argument, NULL, OPT_HELP},
+	{ "version", ws_no_argument, NULL, OPT_VERSION},
 	/* Interfaces options */
-	{ "interface_id", required_argument, NULL, OPT_INTERFACE_ID},
+	{ "interface_id", ws_required_argument, NULL, OPT_INTERFACE_ID},
 	{ 0, 0, 0, 0 }
 };
 
@@ -75,12 +76,12 @@ static int list_config(char *interface)
 	unsigned inc = 0;
 
 	if (!interface) {
-		g_warning("No interface specified.");
+		ws_warning("No interface specified.");
 		return EXIT_FAILURE;
 	}
 
 	if (g_strcmp0(interface, DPAUXMON_EXTCAP_INTERFACE)) {
-		g_warning("interface must be %s", DPAUXMON_EXTCAP_INTERFACE);
+		ws_warning("interface must be %s", DPAUXMON_EXTCAP_INTERFACE);
 		return EXIT_FAILURE;
 	}
 
@@ -93,14 +94,9 @@ static int list_config(char *interface)
 	return EXIT_SUCCESS;
 }
 
-static void exit_from_loop(int signo _U_)
-{
-	run_loop = FALSE;
-}
-
 static int setup_dumpfile(const char* fifo, FILE** fp)
 {
-	guint64 bytes_written = 0;
+	uint64_t bytes_written = 0;
 	int err;
 
 	if (!g_strcmp0(fifo, "-")) {
@@ -110,26 +106,26 @@ static int setup_dumpfile(const char* fifo, FILE** fp)
 
 	*fp = fopen(fifo, "wb");
 	if (!(*fp)) {
-		g_warning("Error creating output file: %s", g_strerror(errno));
+		ws_warning("Error creating output file: %s", g_strerror(errno));
 		return EXIT_FAILURE;
 	}
 
-	if (!libpcap_write_file_header(*fp, 275, PCAP_SNAPLEN, FALSE, &bytes_written, &err)) {
-		g_warning("Can't write pcap file header");
+	if (!libpcap_write_file_header(*fp, 275, PCAP_SNAPLEN, false, &bytes_written, &err)) {
+		ws_warning("Can't write pcap file header");
 		return EXIT_FAILURE;
 	}
 
 	return EXIT_SUCCESS;
 }
 
-static int dump_packet(FILE* fp, const char* buf, const guint32 buflen, guint64 ts_usecs)
+static int dump_packet(FILE* fp, const char* buf, const uint32_t buflen, uint64_t ts_usecs)
 {
-	guint64 bytes_written = 0;
+	uint64_t bytes_written = 0;
 	int err;
 	int ret = EXIT_SUCCESS;
 
 	if (!libpcap_write_packet(fp, ts_usecs / 1000000, ts_usecs % 1000000, buflen, buflen, buf, &bytes_written, &err)) {
-		g_warning("Can't write packet");
+		ws_warning("Can't write packet");
 		ret = EXIT_FAILURE;
 	}
 
@@ -250,7 +246,7 @@ static int nl_receive_timeout(struct nl_sock* sk, struct sockaddr_nl* nla, unsig
 	int poll_res = poll(&fds, 1, 500);
 
 	if (poll_res < 0) {
-		g_debug("poll() failed in nl_receive_timeout");
+		ws_debug("poll() failed in nl_receive_timeout");
 		g_usleep(500000);
 		return -nl_syserr2nlerr(errno);
 	}
@@ -267,26 +263,26 @@ static int send_start(struct nl_sock *sock, int family, unsigned int interface_i
 
 	msg = nlmsg_alloc();
 	if (msg == NULL) {
-		g_critical("Unable to allocate netlink message");
+		ws_critical("Unable to allocate netlink message");
 		return -ENOMEM;
 	}
 
 	hdr = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0,
 		    DPAUXMON_CMD_START, 1);
 	if (hdr == NULL) {
-		g_critical("Unable to write genl header");
+		ws_critical("Unable to write genl header");
 		res = -ENOMEM;
 		goto out_free;
 	}
 
 	if ((err = nla_put_u32(msg, DPAUXMON_ATTR_IFINDEX, interface_id)) < 0) {
-		g_critical("Unable to add attribute: %s", nl_geterror(err));
+		ws_critical("Unable to add attribute: %s", nl_geterror(err));
 		res = -EIO;
 		goto out_free;
 	}
 
 	if ((err = nl_send_auto_complete(sock, msg)) < 0)
-		g_debug("Starting monitor failed, already running?");
+		ws_debug("Starting monitor failed, already running? :%s", nl_geterror(err));
 
 out_free:
 	nlmsg_free(msg);
@@ -301,24 +297,24 @@ static void send_stop(struct nl_sock *sock, int family, unsigned int interface_i
 
 	msg = nlmsg_alloc();
 	if (msg == NULL) {
-		g_critical("Unable to allocate netlink message");
+		ws_critical("Unable to allocate netlink message");
 		return;
 	}
 
 	hdr = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0,
 		    DPAUXMON_CMD_STOP, 1);
 	if (hdr == NULL) {
-		g_critical("Unable to write genl header");
+		ws_critical("Unable to write genl header");
 		goto out_free;
 	}
 
 	if ((err = nla_put_u32(msg, DPAUXMON_ATTR_IFINDEX, interface_id)) < 0) {
-		g_critical("Unable to add attribute: %s", nl_geterror(err));
+		ws_critical("Unable to add attribute: %s", nl_geterror(err));
 		goto out_free;
 	}
 
 	if ((err = nl_send_auto_complete(sock, msg)) < 0) {
-		g_critical("Unable to send message: %s", nl_geterror(err));
+		ws_critical("Unable to send message: %s", nl_geterror(err));
 		goto out_free;
 	}
 
@@ -330,9 +326,9 @@ static int handle_data(struct nl_cache_ops *unused _U_, struct genl_cmd *cmd _U_
 			 struct genl_info *info, void *arg _U_)
 {
 	unsigned char *data;
-	guint32 data_size;
-	guint64 ts = 0;
-	guint8 packet[21] = { 0x00 };
+	uint32_t data_size;
+	uint64_t ts = 0;
+	uint8_t packet[21] = { 0x00 };
 
 	if (!info->attrs[DPAUXMON_ATTR_DATA])
 		return NL_SKIP;
@@ -341,7 +337,7 @@ static int handle_data(struct nl_cache_ops *unused _U_, struct genl_cmd *cmd _U_
 	data_size = nla_len(info->attrs[DPAUXMON_ATTR_DATA]);
 
 	if (data_size > 19) {
-		g_debug("Invalid packet size %u", data_size);
+		ws_debug("Invalid packet size %u", data_size);
 		return NL_SKIP;
 	}
 
@@ -353,7 +349,7 @@ static int handle_data(struct nl_cache_ops *unused _U_, struct genl_cmd *cmd _U_
 	memcpy(&packet[2], data, data_size);
 
 	if (dump_packet(pcap_fp, packet, data_size + 2, ts) == EXIT_FAILURE)
-		run_loop = FALSE;
+		extcap_end_application = true;
 
 	return NL_OK;
 }
@@ -403,13 +399,7 @@ static void run_listener(const char* fifo, unsigned int interface_id)
 {
 	int err;
 	int grp;
-	struct sigaction int_handler = { .sa_handler = exit_from_loop };
 	struct nl_cb *socket_cb;
-
-	if (sigaction(SIGINT, &int_handler, 0)) {
-		g_warning("Can't set signal handler");
-		return;
-	}
 
 	if (setup_dumpfile(fifo, &pcap_fp) == EXIT_FAILURE) {
 		if (pcap_fp)
@@ -417,30 +407,33 @@ static void run_listener(const char* fifo, unsigned int interface_id)
 	}
 
 	if (!(sock = nl_socket_alloc())) {
-		g_critical("Unable to allocate netlink socket");
+		ws_critical("Unable to allocate netlink socket");
 		goto close_out;
 	}
 
 	if ((err = nl_connect(sock, NETLINK_GENERIC)) < 0) {
-		g_critical("Unable to connect netlink socket: %s",
+		ws_critical("Unable to connect netlink socket: %s",
 			   nl_geterror(err));
 		goto free_out;
 	}
 
 	if ((err = genl_register_family(&ops)) < 0) {
-		g_critical("Unable to register Generic Netlink family");
+		ws_critical("Unable to register Generic Netlink family: %s",
+			   nl_geterror(err));
 		goto err_out;
 	}
 
 	if ((err = genl_ops_resolve(sock, &ops)) < 0) {
-		g_critical("Unable to resolve family name");
+		ws_critical("Unable to resolve family name: %s",
+			   nl_geterror(err));
 		goto err_out;
 	}
 
 	/* register notification handler callback */
 	if ((err = nl_socket_modify_cb(sock, NL_CB_VALID, NL_CB_CUSTOM,
 			parse_cb, NULL)) < 0) {
-		g_critical("Unable to modify valid message callback");
+		ws_critical("Unable to modify valid message callback %s",
+			   nl_geterror(err));
 		goto err_out;
 	}
 
@@ -448,7 +441,7 @@ static void run_listener(const char* fifo, unsigned int interface_id)
 	nl_socket_add_membership(sock, grp);
 
 	if (!(socket_cb = nl_socket_get_cb(sock))) {
-		g_warning("Can't overwrite recv callback");
+		ws_warning("Can't overwrite recv callback");
 	} else {
 		nl_cb_overwrite_recv(socket_cb, nl_receive_timeout);
 		nl_cb_put(socket_cb);
@@ -460,11 +453,11 @@ static void run_listener(const char* fifo, unsigned int interface_id)
 
 	nl_socket_disable_seq_check(sock);
 
-	g_debug("DisplayPort AUX monitor running on interface %u", interface_id);
+	ws_debug("DisplayPort AUX monitor running on interface %u", interface_id);
 
-	while(run_loop == TRUE) {
+	while(!extcap_end_application) {
 		if ((err = nl_recvmsgs_default(sock)) < 0)
-			g_warning("Unable to receive message: %s", nl_geterror(err));
+			ws_warning("Unable to receive message: %s", nl_geterror(err));
 	}
 
 	send_stop(sock, ops.o_id, interface_id);
@@ -479,13 +472,16 @@ close_out:
 
 int main(int argc, char *argv[])
 {
-	char* init_progfile_dir_error;
+	char* configuration_init_error;
 	int option_idx = 0;
 	int result;
 	unsigned int interface_id = 0;
 	int ret = EXIT_FAILURE;
 	extcap_parameters* extcap_conf = g_new0(extcap_parameters, 1);
 	char* help_header = NULL;
+
+	/* Initialize log handler early so we can have proper logging during startup. */
+	extcap_log_init("dpauxmon");
 
 	/*
 	 * Get credential information for later use.
@@ -496,18 +492,18 @@ int main(int argc, char *argv[])
 	 * Attempt to get the pathname of the directory containing the
 	 * executable file.
 	 */
-	init_progfile_dir_error = init_progfile_dir(argv[0]);
-	if (init_progfile_dir_error != NULL) {
-		g_warning("Can't get pathname of directory containing the captype program: %s.",
-			init_progfile_dir_error);
-		g_free(init_progfile_dir_error);
+	configuration_init_error = configuration_init(argv[0], NULL);
+	if (configuration_init_error != NULL) {
+		ws_warning("Can't get pathname of directory containing the extcap program: %s.",
+			configuration_init_error);
+		g_free(configuration_init_error);
 	}
 
 	extcap_base_set_util_info(extcap_conf, argv[0], DPAUXMON_VERSION_MAJOR, DPAUXMON_VERSION_MINOR, DPAUXMON_VERSION_RELEASE,
 		NULL);
 	extcap_base_register_interface(extcap_conf, DPAUXMON_EXTCAP_INTERFACE, "DisplayPort AUX channel monitor capture", 275, "DisplayPort AUX channel monitor");
 
-	help_header = g_strdup_printf(
+	help_header = ws_strdup_printf(
 		" %s --extcap-interfaces\n"
 		" %s --extcap-interface=%s --extcap-dlts\n"
 		" %s --extcap-interface=%s --extcap-config\n"
@@ -519,15 +515,15 @@ int main(int argc, char *argv[])
 	extcap_help_add_option(extcap_conf, "--version", "print the version");
 	extcap_help_add_option(extcap_conf, "--port <port> ", "the dpauxmon interface index");
 
-	opterr = 0;
-	optind = 0;
+	ws_opterr = 0;
+	ws_optind = 0;
 
 	if (argc == 1) {
 		extcap_help_print(extcap_conf);
 		goto end;
 	}
 
-	while ((result = getopt_long(argc, argv, ":", longopts, &option_idx)) != -1) {
+	while ((result = ws_getopt_long(argc, argv, ":", longopts, &option_idx)) != -1) {
 		switch (result) {
 
 		case OPT_HELP:
@@ -540,20 +536,20 @@ int main(int argc, char *argv[])
 			goto end;
 
 		case OPT_INTERFACE_ID:
-			if (!ws_strtou32(optarg, NULL, &interface_id)) {
-				g_warning("Invalid interface id: %s", optarg);
+			if (!ws_strtou32(ws_optarg, NULL, &interface_id)) {
+				ws_warning("Invalid interface id: %s", ws_optarg);
 				goto end;
 			}
 			break;
 
 		case ':':
 			/* missing option argument */
-			g_warning("Option '%s' requires an argument", argv[optind - 1]);
+			ws_warning("Option '%s' requires an argument", argv[ws_optind - 1]);
 			break;
 
 		default:
-			if (!extcap_base_parse_options(extcap_conf, result - EXTCAP_OPT_LIST_INTERFACES, optarg)) {
-				g_warning("Invalid option: %s", argv[optind - 1]);
+			if (!extcap_base_parse_options(extcap_conf, result - EXTCAP_OPT_LIST_INTERFACES, ws_optarg)) {
+				ws_warning("Invalid option: %s", argv[ws_optind - 1]);
 				goto end;
 			}
 		}
@@ -561,12 +557,17 @@ int main(int argc, char *argv[])
 
 	extcap_cmdline_debug(argv, argc);
 
-	if (optind != argc) {
-		g_warning("Unexpected extra option: %s", argv[optind]);
+	if (ws_optind != argc) {
+		ws_warning("Unexpected extra option: %s", argv[ws_optind]);
 		goto end;
 	}
 
 	if (extcap_base_handle_interface(extcap_conf)) {
+		ret = EXIT_SUCCESS;
+		goto end;
+	}
+
+	if (!extcap_base_register_graceful_shutdown_cb(extcap_conf, NULL)) {
 		ret = EXIT_SUCCESS;
 		goto end;
 	}

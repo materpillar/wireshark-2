@@ -19,6 +19,8 @@
 void proto_register_maap(void);
 void proto_reg_handoff_maap(void);
 
+static dissector_handle_t maap_handle;
+
 /* MAAP starts after common 1722 header */
 #define MAAP_START_OFFSET                   1
 
@@ -94,13 +96,13 @@ dissect_maap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
     case MAAP_MSG_TYPE_PROBE:
     case MAAP_MSG_TYPE_ANNOUNCE:
         col_append_fstr(pinfo->cinfo, COL_INFO, " req_start=%s, cnt=%d",
-                        tvb_ether_to_str(tvb, MAAP_REQ_START_ADDR_OFFSET),
+                        tvb_ether_to_str(pinfo->pool, tvb, MAAP_REQ_START_ADDR_OFFSET),
                         tvb_get_ntohs(tvb, MAAP_REQ_COUNT_OFFSET));
 
         break;
     case MAAP_MSG_TYPE_DEFEND:
         col_append_fstr(pinfo->cinfo, COL_INFO, " conflict_start=%s, cnt=%d",
-                        tvb_ether_to_str(tvb, MAAP_CONFLICT_START_ADDR_OFFSET),
+                        tvb_ether_to_str(pinfo->pool, tvb, MAAP_CONFLICT_START_ADDR_OFFSET),
                         tvb_get_ntohs(tvb, MAAP_CONFLICT_COUNT_OFFSET));
         break;
     default:
@@ -194,14 +196,14 @@ proto_register_maap(void)
     proto_register_field_array(proto_maap, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
+    /* Register the dissector */
+    maap_handle = register_dissector("maap", dissect_maap, proto_maap);
+
 } /* end proto_register_maap() */
 
 void
 proto_reg_handoff_maap(void)
 {
-    dissector_handle_t maap_handle;
-
-    maap_handle = create_dissector_handle(dissect_maap, proto_maap);
     dissector_add_uint("ieee1722.subtype", 0xFE, maap_handle);
 }
 

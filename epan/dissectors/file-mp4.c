@@ -12,6 +12,7 @@
 /* this dissector is based on
  * ISO/IEC 14496-12 (ISO base media file format) and
  * ISO/IEC 14496-14 (MP4 file format)
+ * 3GPP TS 26.244 (Adaptive-Streaming profile)
  *
  * at the moment, it dissects the basic box structure and the payload of
  * some simple boxes */
@@ -24,6 +25,7 @@
 #include <epan/packet.h>
 #include <epan/to_str.h>
 #include <epan/expert.h>
+#include <wiretap/wtap.h>
 
 #define MAKE_TYPE_VAL(a, b, c, d)   ((a)<<24 | (b)<<16 | (c)<<8 | (d))
 
@@ -35,6 +37,8 @@
 
 void proto_register_mp4(void);
 void proto_reg_handoff_mp4(void);
+
+static dissector_handle_t mp4_handle;
 
 static gint dissect_mp4_box(guint32 parent_box_type _U_, guint depth,
         tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree);
@@ -97,6 +101,27 @@ static int hf_mp4_elst_segment_duration = -1;
 static int hf_mp4_elst_media_time = -1;
 static int hf_mp4_elst_media_rate_integer = -1;
 static int hf_mp4_elst_media_rate_fraction = -1;
+static int hf_mp4_sidx_reference_id = -1;
+static int hf_mp4_sidx_timescale = -1;
+static int hf_mp4_sidx_earliest_presentation_time_v0 = -1;
+static int hf_mp4_sidx_first_offset_v0 = -1;
+static int hf_mp4_sidx_earliest_presentation_time = -1;
+static int hf_mp4_sidx_first_offset = -1;
+static int hf_mp4_sidx_reserved = -1;
+static int hf_mp4_sidx_entry_cnt = -1;
+static int hf_mp4_sidx_reference_type = -1;
+static int hf_mp4_sidx_reference_size = -1;
+static int hf_mp4_sidx_subsegment_duration = -1;
+static int hf_mp4_sidx_starts_with_sap = -1;
+static int hf_mp4_sidx_sap_type = -1;
+static int hf_mp4_sidx_sap_delta_time = -1;
+
+static const value_string mp4_sidx_reference_type_vals[] = {
+    { 0,  "Movie" },
+    { 1,  "Index" },
+
+    { 0,  NULL }
+};
 
 static expert_field ei_mp4_box_too_large = EI_INIT;
 static expert_field ei_mp4_too_many_rec_lvls = EI_INIT;
@@ -150,6 +175,8 @@ static guint32 mvhd_timescale = 0;
 #define BOX_TYPE_URL_  MAKE_TYPE_VAL('u', 'r', 'l', ' ')
 #define BOX_TYPE_EDTS  MAKE_TYPE_VAL('e', 'd', 't', 's')
 #define BOX_TYPE_ELST  MAKE_TYPE_VAL('e', 'l', 's', 't')
+#define BOX_TYPE_SIDX  MAKE_TYPE_VAL('s', 'i', 'd', 'x')
+#define BOX_TYPE_STYP  MAKE_TYPE_VAL('s', 't', 'y', 'p')
 
 #define TKHD_FLAG_ENABLED              0x000001
 #define TKHD_FLAG_IN_MOVIE             0x000002
@@ -195,6 +222,8 @@ static const value_string box_types[] = {
     { BOX_TYPE_URL_, "URL Box" },
     { BOX_TYPE_EDTS, "Edit Box" },
     { BOX_TYPE_ELST, "Edit List Box" },
+    { BOX_TYPE_SIDX, "Segment Index Box"},
+    { BOX_TYPE_STYP, "Segment Type Box" },
     { 0, NULL }
 };
 
@@ -209,13 +238,17 @@ make_fract(guint x)
 }
 
 static inline gchar *
-timescaled_val_to_str(guint64 val)
+timescaled_val_to_str(wmem_allocator_t *pool, guint64 val)
 {
     nstime_t nstime;
 
+    if (mvhd_timescale == 0) {
+        return wmem_strdup(pool, "no timescale");
+    }
+
     nstime.secs = val / mvhd_timescale;
     nstime.nsecs = (val % mvhd_timescale) * (1000000000UL / mvhd_timescale);
-    return rel_time_to_str(NULL, &nstime);
+    return rel_time_to_str(pool, &nstime);
 }
 
 static gint
@@ -283,10 +316,17 @@ dissect_mp4_mvhd_body(tvbuff_t *tvb, gint offset, gint len _U_,
     } else {
         duration = tvb_get_ntoh64(tvb , offset);
     }
-    proto_tree_add_uint64_format(tree, hf_mp4_mvhd_duration,
-            tvb, offset, time_len, duration,
-            "Duration: %f seconds (%" G_GUINT64_FORMAT ")",
-            (double) duration / mvhd_timescale, duration);
+    if (mvhd_timescale == 0) {
+        proto_tree_add_uint64_format(tree, hf_mp4_mvhd_duration,
+                tvb, offset, time_len, duration,
+                "Duration: no timescale (%" PRIu64 ")",
+                duration);
+    } else {
+        proto_tree_add_uint64_format(tree, hf_mp4_mvhd_duration,
+                tvb, offset, time_len, duration,
+                "Duration: %f seconds (%" PRIu64 ")",
+                (double) duration / mvhd_timescale, duration);
+    }
     offset += time_len;
 
     rate = tvb_get_ntohs(tvb, offset);
@@ -405,7 +445,7 @@ dissect_mp4_ftyp_body(tvbuff_t *tvb, gint offset, gint len,
 
     offset_start = offset;
     proto_tree_add_item(tree, hf_mp4_ftyp_brand,
-            tvb, offset, 4, ENC_ASCII|ENC_NA);
+            tvb, offset, 4, ENC_ASCII);
     offset += 4;
     proto_tree_add_item(tree, hf_mp4_ftyp_ver,
             tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -413,7 +453,7 @@ dissect_mp4_ftyp_body(tvbuff_t *tvb, gint offset, gint len,
 
     while ((offset-offset_start) < len) {
         proto_tree_add_item(tree, hf_mp4_ftyp_add_brand,
-                tvb, offset, 4, ENC_ASCII|ENC_NA);
+                tvb, offset, 4, ENC_ASCII);
         offset += 4;
     }
 
@@ -521,7 +561,7 @@ dissect_mp4_hdlr_body(tvbuff_t *tvb, gint offset, gint len _U_,
     offset += 4;   /* four reserved 0 bytes */
 
     proto_tree_add_item(tree, hf_mp4_hdlr_type,
-            tvb, offset, 4, ENC_ASCII|ENC_NA);
+            tvb, offset, 4, ENC_ASCII);
     offset += 4;
 
     offset += 12;   /* 3x32bit reserved */
@@ -529,7 +569,7 @@ dissect_mp4_hdlr_body(tvbuff_t *tvb, gint offset, gint len _U_,
     /* name is a 0-terminated UTF-8 string, len includes the final 0 */
     hdlr_name_len = tvb_strsize(tvb, offset);
     proto_tree_add_item(tree, hf_mp4_hdlr_name,
-            tvb, offset, hdlr_name_len, ENC_UTF_8|ENC_NA);
+            tvb, offset, hdlr_name_len, ENC_UTF_8);
     offset += hdlr_name_len;
 
     return offset-offset_start;
@@ -738,7 +778,7 @@ dissect_mp4_ctts_body(tvbuff_t *tvb, gint offset, gint len,
 
 static gint
 dissect_mp4_elst_body(tvbuff_t *tvb, gint offset, gint len,
-        packet_info *pinfo _U_, guint depth _U_, proto_tree *tree)
+        packet_info *pinfo, guint depth _U_, proto_tree *tree)
 {
     guint8 version;
     guint32 entry_cnt;
@@ -771,10 +811,10 @@ dissect_mp4_elst_body(tvbuff_t *tvb, gint offset, gint len,
         } else {
             segment_duration = tvb_get_ntohl(tvb, offset);
         }
-        segment_duration_str = timescaled_val_to_str(segment_duration);
+        segment_duration_str = timescaled_val_to_str(pinfo->pool, segment_duration);
         proto_tree_add_uint64_format(subtree, hf_mp4_elst_segment_duration,
                 tvb, offset, field_length, segment_duration,
-                "Segment duration: %s (%" G_GUINT64_FORMAT ")",
+                "Segment duration: %s (%" PRIu64 ")",
                 segment_duration_str, segment_duration);
         offset += field_length;
 
@@ -783,10 +823,10 @@ dissect_mp4_elst_body(tvbuff_t *tvb, gint offset, gint len,
         } else {
             media_time = tvb_get_ntohl(tvb, offset);
         }
-        media_time_str = timescaled_val_to_str(media_time);
+        media_time_str = timescaled_val_to_str(pinfo->pool, media_time);
         proto_tree_add_int64_format(subtree, hf_mp4_elst_media_time,
                 tvb, offset, field_length, media_time,
-                "Media time: %s (%" G_GINT64_FORMAT ")",
+                "Media time: %s (%" PRId64 ")",
                 media_time_str, media_time);
         offset += field_length;
 
@@ -801,12 +841,86 @@ dissect_mp4_elst_body(tvbuff_t *tvb, gint offset, gint len,
         proto_item_append_text (subtree_item,
                 " Segment duration: %s; Media time: %s; Media rate: %d.%d",
                 segment_duration_str, media_time_str, rate_int, rate_fraction);
-
-        wmem_free (NULL, segment_duration_str);
-        wmem_free (NULL, media_time_str);
     }
 
     return len;
+}
+
+/* 3GPP TS 26.244 version 16.1.0 Release 16: 13.4 Segment Index Box */
+static gint
+dissect_mp4_sidx_body(tvbuff_t *tvb, gint offset, gint len _U_,
+        packet_info *pinfo _U_, guint depth _U_, proto_tree *tree)
+{
+    guint8   version;
+    gint     offset_start;
+    guint16  entry_cnt, i;
+
+    offset_start = offset;
+
+    offset += dissect_mp4_full_box (tvb, offset, tree, NULL, &version, NULL);
+
+    proto_tree_add_item(tree, hf_mp4_sidx_reference_id,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+    offset += 4;
+
+    proto_tree_add_item(tree, hf_mp4_sidx_timescale,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+    offset += 4;
+
+    if (version == 0) {
+        proto_tree_add_item(tree, hf_mp4_sidx_earliest_presentation_time_v0,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+        offset += 4;
+
+        proto_tree_add_item(tree, hf_mp4_sidx_first_offset_v0,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+        offset += 4;
+    } else {
+        proto_tree_add_item(tree, hf_mp4_sidx_earliest_presentation_time,
+            tvb, offset, 8, ENC_BIG_ENDIAN);
+        offset += 8;
+
+        proto_tree_add_item(tree, hf_mp4_sidx_first_offset,
+            tvb, offset, 8, ENC_BIG_ENDIAN);
+        offset += 8;
+    }
+
+    proto_tree_add_item(tree, hf_mp4_sidx_reserved,
+            tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+
+    entry_cnt = tvb_get_guint16(tvb, offset, ENC_BIG_ENDIAN);
+    proto_tree_add_item(tree, hf_mp4_sidx_entry_cnt,
+            tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
+
+    for(i=1; i<=entry_cnt; i++) {
+        proto_tree *subtree;
+        proto_item *subtree_item;
+
+        subtree = proto_tree_add_subtree_format (tree, tvb, offset, 8,
+               ett_mp4_entry, &subtree_item, "Entry %u:", i);
+
+        proto_tree_add_item(subtree, hf_mp4_sidx_reference_type,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+        proto_tree_add_item(subtree, hf_mp4_sidx_reference_size,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+        offset += 4;
+
+        proto_tree_add_item(subtree, hf_mp4_sidx_subsegment_duration,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+        offset += 4;
+
+        proto_tree_add_item(subtree, hf_mp4_sidx_starts_with_sap,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+        proto_tree_add_item(subtree, hf_mp4_sidx_sap_type,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+        proto_tree_add_item(subtree, hf_mp4_sidx_sap_delta_time,
+            tvb, offset, 4, ENC_BIG_ENDIAN);
+        offset += 4;
+    }
+
+    return offset-offset_start;
 }
 
 /* dissect a box, return its (standard or extended) length or 0 for error
@@ -836,7 +950,7 @@ dissect_mp4_box(guint32 parent_box_type _U_, guint depth,
         return -1;
 
     box_type = tvb_get_ntohl(tvb, offset+4);
-    box_type_str = tvb_get_string_enc(wmem_packet_scope(), tvb,
+    box_type_str = tvb_get_string_enc(pinfo->pool, tvb,
             offset+4, 4, ENC_ASCII|ENC_NA);
 
     box_tree = proto_tree_add_subtree_format(tree, tvb, offset, -1, ett_mp4_box, &type_pi, "%s (%s)",
@@ -849,7 +963,7 @@ dissect_mp4_box(guint32 parent_box_type _U_, guint depth,
 
     offset += 4;
     proto_tree_add_item(box_tree, hf_mp4_box_type_str,
-            tvb, offset, 4, ENC_ASCII|ENC_NA);
+            tvb, offset, 4, ENC_ASCII);
     offset += 4;
 
     if (box_size == BOX_SIZE_EXTENDED) {
@@ -880,7 +994,9 @@ dissect_mp4_box(guint32 parent_box_type _U_, guint depth,
 
     /* XXX - check parent box if supplied */
     switch (box_type) {
+        /* As per 3GPP TS 26.244 styp and ftyp boxes have the same format*/
         case BOX_TYPE_FTYP:
+        case BOX_TYPE_STYP:
             dissect_mp4_ftyp_body(tvb, offset, body_size, pinfo, depth, box_tree);
             break;
         case BOX_TYPE_MVHD:
@@ -921,6 +1037,9 @@ dissect_mp4_box(guint32 parent_box_type _U_, guint depth,
             break;
         case BOX_TYPE_ELST:
             dissect_mp4_elst_body(tvb, offset, body_size, pinfo, depth, box_tree);
+            break;
+        case BOX_TYPE_SIDX:
+            dissect_mp4_sidx_body(tvb, offset, body_size, pinfo, depth, box_tree);
             break;
         case BOX_TYPE_MOOV:
         case BOX_TYPE_MOOF:
@@ -1144,6 +1263,48 @@ proto_register_mp4(void)
         { &hf_mp4_elst_media_rate_fraction,
             { "Media rate fraction", "mp4.elst.media_rate_fraction", FT_INT16,
                 BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_reference_id,
+            { "Reference ID", "mp4.sidx.reference_id", FT_UINT32,
+                BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_timescale,
+            { "Timescale", "mp4.sidx.timescale", FT_UINT32,
+                BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_earliest_presentation_time_v0,
+            { "Earliest Presentation Time", "mp4.sidx.earliest_presentation_time", FT_UINT32,
+                BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_first_offset_v0,
+            { "First Offset", "mp4.sidx.first_offset", FT_UINT32,
+                BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_earliest_presentation_time,
+            { "Earliest Presentation Time", "mp4.sidx.earliest_presentation_time", FT_UINT64,
+                BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_first_offset,
+            { "First Offset", "mp4.sidx.first_offset", FT_UINT64,
+                BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_reserved,
+            { "Reserved", "mp4.sidx.reserved", FT_UINT16,
+                BASE_HEX, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_entry_cnt,
+            { "Number of entries", "mp4.sidx.entry_count", FT_UINT16,
+                BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_reference_type,
+            { "Reference Type", "mp4.sidx.reference_type", FT_UINT32,
+                BASE_DEC, VALS(mp4_sidx_reference_type_vals), 0x80000000, NULL, HFILL } },
+        { &hf_mp4_sidx_reference_size,
+            { "Reference size", "mp4.sidx.reference_size", FT_UINT32,
+                BASE_DEC, NULL, 0x7FFFFFFF, NULL, HFILL } },
+        { &hf_mp4_sidx_subsegment_duration,
+            { "Segment duration", "mp4.sidx.subsegment_duration", FT_UINT32,
+                BASE_DEC, NULL, 0, NULL, HFILL } },
+        { &hf_mp4_sidx_starts_with_sap,
+            { "Starts With SAP", "mp4.sidx.starts_with_sap", FT_BOOLEAN,
+                32, NULL, 0x80000000, NULL, HFILL } },
+        { &hf_mp4_sidx_sap_type,
+            { "SAP Type", "mp4.sidx.sap_type", FT_UINT32,
+                BASE_DEC, NULL, 0x70000000, NULL, HFILL } },
+        { &hf_mp4_sidx_sap_delta_time,
+            { "SAP Delta Time", "mp4.sidx.sap_delta_time", FT_UINT32,
+                BASE_DEC, NULL, 0x0FFFFFFF, NULL, HFILL } },
     };
 
     static gint *ett[] = {
@@ -1173,12 +1334,13 @@ proto_register_mp4(void)
     proto_register_subtree_array(ett, array_length(ett));
     expert_mp4 = expert_register_protocol(proto_mp4);
     expert_register_field_array(expert_mp4, ei, array_length(ei));
+
+    mp4_handle = register_dissector("mp4", dissect_mp4, proto_mp4);
 }
 
 void
 proto_reg_handoff_mp4(void)
 {
-    dissector_handle_t mp4_handle = create_dissector_handle(dissect_mp4, proto_mp4);
     dissector_add_string("media_type", "video/mp4", mp4_handle);
     dissector_add_string("media_type", "audio/mp4", mp4_handle);
     dissector_add_uint("wtap_encap", WTAP_ENCAP_MP4, mp4_handle);

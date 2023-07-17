@@ -17,6 +17,8 @@
 void proto_register_gnutella(void);
 void proto_reg_handoff_gnutella(void);
 
+static dissector_handle_t gnutella_handle;
+
 /*
  * See
  *
@@ -191,7 +193,7 @@ static void dissect_gnutella_query(tvbuff_t *tvb, guint offset, proto_tree *tree
 			tvb,
 			offset + GNUTELLA_QUERY_SEARCH_OFFSET,
 			size - GNUTELLA_SHORT_LENGTH,
-			ENC_ASCII|ENC_NA);
+			ENC_ASCII);
 	}
 	else {
 		proto_tree_add_string_format(tree,
@@ -309,7 +311,7 @@ static void dissect_gnutella_queryhit(tvbuff_t *tvb, guint offset, proto_tree *t
 			tvb,
 			name_at_offset,
 			name_length,
-			ENC_ASCII|ENC_NA);
+			ENC_ASCII);
 
 		if(extra_length) {
 			proto_tree_add_item(hit_tree,
@@ -802,12 +804,11 @@ void proto_register_gnutella(void) {
 	proto_register_field_array(proto_gnutella, hf, array_length(hf));
 
 	proto_register_subtree_array(ett, array_length(ett));
+
+	gnutella_handle = register_dissector("gnutella", dissect_gnutella, proto_gnutella);
 }
 
 void proto_reg_handoff_gnutella(void) {
-	dissector_handle_t gnutella_handle;
-
-	gnutella_handle = create_dissector_handle(dissect_gnutella, proto_gnutella);
 	dissector_add_uint_with_preference("tcp.port", GNUTELLA_TCP_PORT, gnutella_handle);
 }
 

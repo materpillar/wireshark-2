@@ -17,6 +17,7 @@
 
 #include <epan/packet.h>
 #include <epan/expert.h>
+#include <epan/charsets.h>
 
 #include "packet-t38.h"
 #include "packet-t30.h"
@@ -492,16 +493,14 @@ reverse_byte(guint8 val)
 
 #define LENGTH_T30_NUM  20
 static gchar *
-t30_get_string_numbers(tvbuff_t *tvb, int offset, int len)
+t30_get_string_numbers(wmem_allocator_t *pool, tvbuff_t *tvb, int offset, int len)
 {
-    gchar *buf;
+    gchar buf[LENGTH_T30_NUM+1];
     int    i;
 
     /* the length must be 20 bytes per T30 rec*/
     if (len != LENGTH_T30_NUM)
         return NULL;
-
-    buf=(gchar *)wmem_alloc(wmem_packet_scope(), LENGTH_T30_NUM+1);
 
     for (i=0; i<LENGTH_T30_NUM; i++)
         buf[LENGTH_T30_NUM-i-1] = reverse_byte(tvb_get_guint8(tvb, offset+i));
@@ -509,7 +508,8 @@ t30_get_string_numbers(tvbuff_t *tvb, int offset, int len)
     /* add end of string */
     buf[LENGTH_T30_NUM] = '\0';
 
-    return g_strstrip(buf);
+    char *s = g_strstrip(buf);
+    return get_utf_8_string(pool, s, (int)strlen(s));
 
 }
 
@@ -518,15 +518,14 @@ dissect_t30_numbers(tvbuff_t *tvb, int offset, packet_info *pinfo, int len, prot
 {
     gchar *str_num;
 
-    str_num = t30_get_string_numbers(tvb, offset, len);
+    str_num = t30_get_string_numbers(pinfo->pool, tvb, offset, len);
     if (str_num) {
-        proto_tree_add_string_format_value(tree, hf_t30_fif_number, tvb, offset, LENGTH_T30_NUM, str_num,
-                                     "%s", str_num);
+        proto_tree_add_string(tree, hf_t30_fif_number, tvb, offset, LENGTH_T30_NUM, str_num);
 
-        col_append_fstr(pinfo->cinfo, COL_INFO, " - Number:%s", str_num );
+        col_append_fstr(pinfo->cinfo, COL_INFO, " - Number:%s", str_num);
 
         if (t38)
-            g_snprintf(t38->desc, MAX_T38_DESC, "Num: %s", str_num);
+            snprintf(t38->desc, MAX_T38_DESC, "Num: %s", str_num);
     }
     else {
         proto_tree_add_expert_format(tree, pinfo, &ei_t30_bad_length, tvb, offset, -1,
@@ -555,7 +554,7 @@ dissect_t30_facsimile_coded_data(tvbuff_t *tvb, int offset, packet_info *pinfo, 
     col_append_fstr(pinfo->cinfo, COL_INFO, " - Frame num:%d", reverse_byte(octet));
 
     if (t38)
-        g_snprintf(t38->desc, MAX_T38_DESC, "Frm num: %d", reverse_byte(octet));
+        snprintf(t38->desc, MAX_T38_DESC, "Frm num: %d", reverse_byte(octet));
 
     proto_tree_add_item(tree, hf_t30_t4_data, tvb, offset, len-1, ENC_NA);
 }
@@ -610,7 +609,7 @@ dissect_t30_partial_page_signal(tvbuff_t *tvb, int offset, packet_info *pinfo, i
     col_append_fstr(pinfo->cinfo, COL_INFO, " - PC:%d BC:%d FC:%d", page_count, block_count, frame_count);
 
     if (t38)
-        g_snprintf(t38->desc, MAX_T38_DESC,
+        snprintf(t38->desc, MAX_T38_DESC,
                    "PC:%d BC:%d FC:%d", page_count, block_count, frame_count);
 
 }
@@ -622,7 +621,7 @@ dissect_t30_partial_page_request(tvbuff_t *tvb, int offset, packet_info *pinfo, 
     int frame_count = 0;
     int frame;
 #define BUF_SIZE  (10*1 + 90*2 + 156*3 + 256*2 + 1) /* 0..9 + 10..99 + 100..255 + 256*', ' + \0 */
-    gchar *buf = (gchar *)wmem_alloc(wmem_packet_scope(), BUF_SIZE);
+    gchar *buf = (gchar *)wmem_alloc(pinfo->pool, BUF_SIZE);
     gchar *buf_top = buf;
 
     if (len != 32) {
@@ -641,7 +640,7 @@ dissect_t30_partial_page_request(tvbuff_t *tvb, int offset, packet_info *pinfo, 
             if (octet & bit) {
                 ++frame_count;
                 DISSECTOR_ASSERT((buf_top-buf) < BUF_SIZE);
-                buf_top += g_snprintf(buf_top, BUF_SIZE - (gulong)(buf_top - buf), "%u, ", frame);
+                buf_top += snprintf(buf_top, BUF_SIZE - (buf_top - buf), "%u, ", frame);
             }
             bit >>= 1;
             ++frame;
@@ -692,7 +691,7 @@ dissect_t30_dis_dtc(tvbuff_t *tvb, int offset, packet_info *pinfo, int len, prot
                             val_to_str_ext_const((octet&0x3C) >> 2, &t30_data_signalling_rate_vals_ext, "<unknown>"));
 
         if (t38)
-          g_snprintf(t38->desc, MAX_T38_DESC,
+          snprintf(t38->desc, MAX_T38_DESC,
                      "DSR:%s",
                      val_to_str_ext_const((octet&0x3C) >> 2, &t30_data_signalling_rate_vals_ext, "<unknown>"));
     }
@@ -703,7 +702,7 @@ dissect_t30_dis_dtc(tvbuff_t *tvb, int offset, packet_info *pinfo, int len, prot
                             val_to_str_ext_const((octet&0x3C) >> 2, &t30_data_signalling_rate_dcs_vals_ext, "<unknown>"));
 
         if (t38)
-          g_snprintf(t38->desc, MAX_T38_DESC,
+          snprintf(t38->desc, MAX_T38_DESC,
                      "DSR:%s",
                      val_to_str_ext_const((octet&0x3C) >> 2, &t30_data_signalling_rate_dcs_vals_ext, "<unknown>"));
     }

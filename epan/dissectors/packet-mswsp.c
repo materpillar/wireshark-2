@@ -313,8 +313,10 @@ struct CTableColumn {
 	guint16 lengthoffset;
 	char name[PROP_LENGTH];
 };
-/* minimum size in bytes on the wire CTableColumn can be */
+/* Minimum size in bytes on the wire CTableColumn can be */
 #define MIN_CTABLECOL_SIZE 32
+/* Maximum sane size in bytes on the wire CTableColumn can be. Arbitrary. */
+#define MAX_CTABLECOL_SIZE 5000
 
 /* 2.2.3.10 */
 
@@ -755,7 +757,7 @@ static struct message_data *find_or_create_message_data(struct mswsp_ct *conv_da
 	result = g_slist_find_custom(conv_data->GSL_message_data,
 								 &to_find, (GCompareFunc)msg_data_find);
 	if (!result) {
-		msg_data = (struct message_data *)wmem_alloc(wmem_file_scope(), sizeof(struct message_data));
+		msg_data = wmem_new(wmem_file_scope(), struct message_data);
 		*msg_data = to_find;
 		conv_data->GSL_message_data = g_slist_prepend(conv_data->GSL_message_data, msg_data);
 	} else {
@@ -2956,21 +2958,23 @@ static void get_name_from_fullpropspec(struct CFullPropSpec *v, char *out, int b
 	id_str = pset ? try_val_to_str(v->u.propid, pset->id_map) : NULL;
 
 	if (id_str) {
-		g_snprintf(dest, bufsize, "%s", id_str);
+		snprintf(dest, bufsize, "%s", id_str);
 	} else {
-		guid_str = guids_get_guid_name(&v->guid);
+		guid_str = guids_get_guid_name(&v->guid, wmem_packet_scope());
 		if (guid_str) {
-			g_snprintf(dest, bufsize, "\"%s\"", guid_str);
+			snprintf(dest, bufsize, "\"%s\"", guid_str);
 		} else {
 			guid_str = guid_to_str(wmem_packet_scope(), &v->guid);
-			g_snprintf(dest, bufsize, "{%s}", guid_str);
+			snprintf(dest, bufsize, "{%s}", guid_str);
 		}
 		if (v->kind == PRSPEC_LPWSTR) {
-			g_snprintf(dest, bufsize, "%s \"%s\"", guid_str, v->u.name);
+			snprintf(dest, bufsize, "%s \"%s\"", guid_str, v->u.name);
 		} else if (v->kind == PRSPEC_PROPID) {
-			g_snprintf(dest, bufsize, "%s 0x%08x", guid_str, v->u.propid);
+			snprintf(dest, bufsize, "%s 0x%08x", guid_str, v->u.propid);
 		} else {
-			g_snprintf(dest, bufsize, "%s <INVALID>", dest);
+			char *str = ws_strdup_printf("%s <INVALID>", dest);
+			g_strlcpy(dest, str, bufsize);
+			g_free(str);
 		}
 	}
 }
@@ -3027,7 +3031,7 @@ static int parse_guid(tvbuff_t *tvb, int offset, proto_tree *tree, e_guid_t *gui
 
 	tvb_get_letohguid(tvb, offset, guid);
 	guid_str =  guid_to_str(wmem_packet_scope(), guid);
-	name = guids_get_guid_name(guid);
+	name = guids_get_guid_name(guid, wmem_packet_scope());
 
 	tr = proto_tree_add_subtree_format(tree, tvb, offset, 16, ett_GUID, NULL, "%s: %s {%s}", text, name ? name : "", guid_str);
 
@@ -3042,7 +3046,7 @@ static int parse_guid(tvbuff_t *tvb, int offset, proto_tree *tree, e_guid_t *gui
 	offset += 1;
 	proto_tree_add_item(tr, hf_mswsp_guid_time_clock_low, tvb, offset, 1, ENC_LITTLE_ENDIAN);
 	offset += 1;
-	bytes = bytestring_to_str(wmem_packet_scope(), &guid->data4[2], 6, ':');
+	bytes = bytes_to_str_punct(wmem_packet_scope(), &guid->data4[2], 6, ':');
 	proto_tree_add_string(tr, hf_mswsp_guid_node, tvb, offset, 6, bytes);
 
 	offset += 6;
@@ -3393,7 +3397,7 @@ static int parse_CFullPropSpec(tvbuff_t *tvb, int offset, proto_tree *parent_tre
 	if (id_str) {
 		proto_item_append_text(item, ": %s", id_str);
 	} else {
-		guid_str = guids_get_guid_name(&v->guid);
+		guid_str = guids_get_guid_name(&v->guid, wmem_packet_scope());
 		if (guid_str) {
 			proto_item_append_text(item, ": \"%s\"", guid_str);
 		} else {
@@ -3973,6 +3977,8 @@ static int vvalue_tvb_lpwstr(tvbuff_t *tvb, int offset, void *val)
 	return 4 + vvalue_tvb_lpwstr_len(tvb, offset + 4, 0, val);
 }
 
+/* Maximum sane vector size. Arbitrary. */
+#define MAX_VT_VECTOR_SIZE 5000
 static int vvalue_tvb_vector_internal(tvbuff_t *tvb, int offset, struct vt_vector *val, struct vtype_data *type, guint num)
 {
 	const int offset_in = offset;
@@ -3987,18 +3993,14 @@ static int vvalue_tvb_vector_internal(tvbuff_t *tvb, int offset, struct vt_vecto
 	 * here, before making a possibly-doomed attempt to allocate
 	 * memory for it.
 	 *
-	 * First, check for an overflow.
+	 * First, check for sane values.
 	 */
-	if ((guint64)elsize * (guint64)num > G_MAXUINT) {
-		/*
-		 * We never have more than G_MAXUINT bytes in a tvbuff,
-		 * so this will *definitely* fail.
-		 */
+	if (num > MAX_VT_VECTOR_SIZE) {
 		THROW(ReportedBoundsError);
 	}
 
 	/*
-	 * No overflow; now make sure we at least have that data.
+	 * No huge numbers from the wire; now make sure we at least have that data.
 	 */
 	tvb_ensure_bytes_exist(tvb, offset, elsize * num);
 
@@ -4055,7 +4057,7 @@ static void vvalue_strbuf_append_i4(wmem_strbuf_t *strbuf, void *ptr)
 static void vvalue_strbuf_append_i8(wmem_strbuf_t *strbuf, void *ptr)
 {
 	gint64 i8 = *(gint64*)ptr;
-	wmem_strbuf_append_printf(strbuf, "%" G_GINT64_MODIFIER "d", i8);
+	wmem_strbuf_append_printf(strbuf, "%" PRId64, i8);
 }
 
 static void vvalue_strbuf_append_ui1(wmem_strbuf_t *strbuf, void *ptr)
@@ -4079,7 +4081,7 @@ static void vvalue_strbuf_append_ui4(wmem_strbuf_t *strbuf, void *ptr)
 static void vvalue_strbuf_append_ui8(wmem_strbuf_t *strbuf, void *ptr)
 {
 	guint64 ui8 = *(guint64*)ptr;
-	wmem_strbuf_append_printf(strbuf, "%" G_GINT64_MODIFIER "u", ui8);
+	wmem_strbuf_append_printf(strbuf, "%" PRIu64, ui8);
 }
 
 static void vvalue_strbuf_append_r4(wmem_strbuf_t *strbuf, void *ptr)
@@ -4609,7 +4611,14 @@ int parse_CCategSpec(tvbuff_t *tvb, packet_info *pinfo, int offset, proto_tree *
 
 	offset = parse_CSort(tvb, offset, tree, pad_tree, "CSort");
 
-	offset = parse_CRangeCategSpec(tvb, pinfo, offset, tree, pad_tree, "CRangeCategSpec");
+	/*
+	 * A CRangeCategSpec structure specifying the range values.
+	 * This field MUST be omitted if _ulCategType is set to
+	 * CATEGORIZE_UNIQUE e.g. '0' otherwise it MUST be present.
+	 */
+	if (type != 0) {
+		offset = parse_CRangeCategSpec(tvb, pinfo, offset, tree, pad_tree, "CRangeCategSpec");
+	}
 
 	proto_item_set_end(item, tvb, offset);
 	return offset;
@@ -5211,7 +5220,7 @@ static int parse_VariantColVector(tvbuff_t *tvb, int offset, proto_tree *tree, g
 			size = 8;
 			address_of_address = buf_offset + (i * size);
 			item_address = tvb_get_letoh64(tvb, address_of_address);
-			proto_tree_add_uint64_format(sub_tree, hf_mswsp_rowvariant_item_address64, tvb, address_of_address, size, item_address, "address[%d] 0x%" G_GINT64_MODIFIER "x", i, item_address);
+			proto_tree_add_uint64_format(sub_tree, hf_mswsp_rowvariant_item_address64, tvb, address_of_address, size, item_address, "address[%d] 0x%" PRIx64, i, item_address);
 		} else {
 			size = 4;
 			item_address = tvb_get_letohl(tvb, buf_offset + (i * size));
@@ -5852,7 +5861,7 @@ static int dissect_CPMSetBindings(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
 
 		/* Sanity check size value */
 		column_size = num*MIN_CTABLECOL_SIZE;
-		if (column_size > tvb_reported_length_remaining(tvb, offset))
+		if (num > MAX_CTABLECOL_SIZE || column_size > tvb_reported_length_remaining(tvb, offset))
 		{
 			expert_add_info(pinfo, ti, &ei_mswsp_msg_cpmsetbinding_ccolumns);
 			return tvb_reported_length(tvb);
@@ -6445,7 +6454,7 @@ proto_register_mswsp(void)
 			&hf_mswsp_bool_options_cursor,
 			{
 				"Cursor", "mswsp.CPMCreateQuery.RowSetProperties.uBooleanOptions.cursor", FT_UINT32,
-				BASE_HEX, VALS(cursor_vals), 0x0000000007, "Cursor Type", HFILL
+				BASE_HEX, VALS(cursor_vals), 0x00000007, "Cursor Type", HFILL
 			}
 		},
 		{
@@ -6921,7 +6930,7 @@ proto_register_mswsp(void)
 			&hf_mswsp_ccategspec_type,
 			{
 				"type", "mswsp.ccategspec.type",
-				FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL
+				FT_UINT32, BASE_DEC, NULL, 0, NULL, HFILL
 			}
 		},
 		{

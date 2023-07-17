@@ -1,4 +1,4 @@
-/* wtap-int.h
+/** @file
  *
  * Wiretap Library
  * Copyright (c) 1998 by Gilbert Ramirez <gram@alumni.rice.edu>
@@ -9,7 +9,7 @@
 #ifndef __WTAP_INT_H__
 #define __WTAP_INT_H__
 
-#include <glib.h>
+#include "wtap.h"
 #include <time.h>
 
 #ifdef _WIN32
@@ -18,8 +18,9 @@
 
 #include <wsutil/file_util.h>
 
-#include "wtap.h"
 #include "wtap_opttypes.h"
+
+void wtap_init_file_type_subtypes(void);
 
 WS_DLL_PUBLIC
 int wtap_fstat(wtap *wth, ws_statb64 *statb, int *err);
@@ -40,8 +41,11 @@ struct wtap {
     guint                       snapshot_length;
     GArray                      *shb_hdrs;
     GArray                      *interface_data;        /**< An array holding the interface data from pcapng IDB:s or equivalent(?)*/
-    GArray                      *nrb_hdrs;              /**< holds the Name Res Block's comment/custom_opts, or NULL */
+    guint                       next_interface_data;    /**< Next interface data that wtap_get_next_interface_description() will show */
+    GArray                      *nrbs;                  /**< holds the Name Res Blocks, or NULL */
     GArray                      *dsbs;                  /**< An array of DSBs (of type wtap_block_t), or NULL if not supported. */
+
+    char                        *pathname;              /**< File pathname; might just be "-" */
 
     void                        *priv;          /* this one holds per-file state and is free'd automatically by wtap_close() */
     void                        *wslua_data;    /* this one holds wslua state info and is not free'd */
@@ -79,29 +83,37 @@ struct wtap_dumper;
  */
 typedef void *WFILE_T;
 
+typedef gboolean (*subtype_add_idb_func)(struct wtap_dumper*, wtap_block_t,
+                                         int *, gchar **);
+
 typedef gboolean (*subtype_write_func)(struct wtap_dumper*,
                                        const wtap_rec *rec,
                                        const guint8*, int*, gchar**);
-typedef gboolean (*subtype_finish_func)(struct wtap_dumper*, int*);
+typedef gboolean (*subtype_finish_func)(struct wtap_dumper*, int*, gchar**);
 
 struct wtap_dumper {
     WFILE_T                 fh;
     int                     file_type_subtype;
     int                     snaplen;
-    int                     encap;
+    int                     file_encap;      /* per-file, for those
+                                              * file formats that have
+                                              * per-file encapsulation
+                                              * types rather than per-packet
+                                              * encapsulation types
+                                              */
     wtap_compression_type   compression_type;
-    gboolean                needs_reload;   /* TRUE if the file requires re-loading after saving with wtap */
+    gboolean                needs_reload;    /* TRUE if the file requires re-loading after saving with wtap */
     gint64                  bytes_dumped;
 
-    void                    *priv;          /* this one holds per-file state and is free'd automatically by wtap_dump_close() */
-    void                    *wslua_data;    /* this one holds wslua state info and is not free'd */
+    void                    *priv;           /* this one holds per-file state and is free'd automatically by wtap_dump_close() */
+    void                    *wslua_data;     /* this one holds wslua state info and is not free'd */
 
-    subtype_write_func      subtype_write;  /* write out a record */
-    subtype_finish_func     subtype_finish; /* write out information to finish writing file */
+    subtype_add_idb_func    subtype_add_idb; /* add an IDB, writing it as necessary */
+    subtype_write_func      subtype_write;   /* write out a record */
+    subtype_finish_func     subtype_finish;  /* write out information to finish writing file */
 
     addrinfo_lists_t        *addrinfo_lists; /**< Struct containing lists of resolved addresses */
     GArray                  *shb_hdrs;
-    GArray                  *nrb_hdrs;        /**< name resolution comment/custom_opt, or NULL */
     GArray                  *interface_data; /**< An array holding the interface data from pcapng IDB:s or equivalent(?) NULL if not present.*/
     GArray                  *dsbs_initial;   /**< An array of initial DSBs (of type wtap_block_t) */
 
@@ -109,7 +121,9 @@ struct wtap_dumper {
      * Additional blocks that might grow as data is being collected.
      * Subtypes should write these blocks before writing new packet blocks.
      */
+    const GArray            *nrbs_growing;          /**< A reference to an array of NRBs (of type wtap_block_t) */
     const GArray            *dsbs_growing;          /**< A reference to an array of DSBs (of type wtap_block_t) */
+    guint                   nrbs_growing_written;   /**< Number of already processed NRBs in nrbs_growing. */
     guint                   dsbs_growing_written;   /**< Number of already processed DSBs in dsbs_growing. */
 };
 
@@ -117,7 +131,6 @@ WS_DLL_PUBLIC gboolean wtap_dump_file_write(wtap_dumper *wdh, const void *buf,
     size_t bufsize, int *err);
 WS_DLL_PUBLIC gint64 wtap_dump_file_seek(wtap_dumper *wdh, gint64 offset, int whence, int *err);
 WS_DLL_PUBLIC gint64 wtap_dump_file_tell(wtap_dumper *wdh, int *err);
-
 
 extern gint wtap_num_file_types;
 
@@ -334,10 +347,100 @@ void
 wtap_add_idb(wtap *wth, wtap_block_t idb);
 
 /**
+ * Invokes the callback with the given name resolution block.
+ */
+void
+wtapng_process_nrb(wtap *wth, wtap_block_t nrb);
+
+/**
  * Invokes the callback with the given decryption secrets block.
  */
 void
 wtapng_process_dsb(wtap *wth, wtap_block_t dsb);
+
+void
+wtap_register_compatibility_file_subtype_name(const char *old_name,
+    const char *new_name);
+
+void
+wtap_register_backwards_compatibility_lua_name(const char *name, int ft);
+
+struct backwards_compatibiliity_lua_name {
+	const char *name;
+	int ft;
+};
+
+WS_DLL_PUBLIC
+const GArray *get_backwards_compatibility_lua_table(void);
+
+/**
+ * @brief Gets new section header block for new file, based on existing info.
+ * @details Creates a new wtap_block_t section header block and only
+ *          copies appropriate members of the SHB for a new file. In
+ *          particular, the comment string is copied, and any custom options
+ *          which should be copied are copied. The os, hardware, and
+ *          application strings are *not* copied.
+ *
+ * @note Use wtap_free_shb() to free the returned section header.
+ *
+ * @param wth The wiretap session.
+ * @return The new section header, which must be wtap_free_shb'd.
+ */
+GArray* wtap_file_get_shb_for_new_file(wtap *wth);
+
+/**
+ * @brief Generate an IDB, given a wiretap handle for the file,
+ *      using the file's encapsulation type, snapshot length,
+ *      and time stamp resolution, and add it to the interface
+ *      data for a file.
+ * @note This requires that the encapsulation type and time stamp
+ *      resolution not be per-packet; it will terminate the process
+ *      if either of them are.
+ *
+ * @param wth The wiretap handle for the file.
+ */
+WS_DLL_PUBLIC
+void wtap_add_generated_idb(wtap *wth);
+
+/**
+ * @brief Generate an IDB, given a set of dump parameters, using the
+ *      parameters' encapsulation type, snapshot length, and time stamp
+ *      resolution. For use when a dump file has a given encapsulation type,
+ *      and the source is not passing IDBs.
+ * @note This requires that the encapsulation type and time stamp
+ *      resolution not be per-packet; it will terminate the process
+ *      if either of them are.
+ *
+ * @param params The wtap dump parameters.
+ */
+
+wtap_block_t wtap_dump_params_generate_idb(const wtap_dump_params *params);
+
+/**
+ * @brief Generate an IDB, given a packet record, using the records's
+ *      encapsulation type and time stamp resolution, and the default
+ *      snap length for the encapsulation type. For use when a file has
+ *      per-packet encapsulation, and the source is not passing along IDBs.
+ * @note This requires that the record type be REC_TYPE_PACKET, and the
+ *      encapsulation type and time stamp resolution not be per-packet;
+ *      it will terminate the process if any of them are.
+ *
+ * @param rec The packet record.
+ */
+wtap_block_t wtap_rec_generate_idb(const wtap_rec *rec);
+
+/**
+ * @brief Gets new name resolution info for new file, based on existing info.
+ * @details Creates a new wtap_block_t of name resolution info and only
+ *          copies appropriate members for a new file.
+ *
+ * @note Use wtap_free_nrb() to free the returned pointer.
+ *
+ * @param wth The wiretap session.
+ * @return The new name resolution info, which must be freed.
+ */
+GArray* wtap_file_get_nrb_for_new_file(wtap *wth);
+
 #endif /* __WTAP_INT_H__ */
 
 /*

@@ -1,4 +1,4 @@
-/* data_printer.h
+/** @file
  *
  * Used by ByteView and others, to create data dumps in printable
  * form
@@ -30,9 +30,9 @@ public:
         DP_HexDump,
         DP_HexOnly,
         DP_HexStream,
-        DP_PrintableText,
-        DP_EscapedString,
-        DP_Binary
+        DP_CString,
+        DP_MimeData,
+        DP_Base64
     };
 
     void toClipboard(DataPrinter::DumpType type, IDataPrintable * printable);
@@ -58,16 +58,3 @@ private:
 };
 
 #endif // DATA_PRINTER_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

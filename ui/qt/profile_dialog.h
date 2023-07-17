@@ -1,4 +1,4 @@
-/* profile_dialog.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -64,8 +64,6 @@ private:
     void updateWidgets();
     void resetTreeView();
 
-    QString lastOpenDir();
-    void storeLastDir(QString dir);
     void finishImport(QFileInfo fi, int count, int skipped, QStringList import);
 
 private slots:

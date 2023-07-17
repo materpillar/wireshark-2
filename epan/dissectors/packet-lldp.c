@@ -36,9 +36,10 @@
 #include <epan/addr_resolv.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
-#include <epan/wmem/wmem.h>
+#include <epan/wmem_scopes.h>
 #include <epan/oui.h>
 
+#include "packet-enip.h"
 
 #define DEFAULT_COLUMN_INFO            1
 #define PROFINET_SPECIAL_COLUMN_INFO   2
@@ -55,6 +56,8 @@ typedef struct _profinet_lldp_column_info {
 
 static gint column_info_selection = DEFAULT_COLUMN_INFO;
 
+static dissector_handle_t lldp_handle;
+
 void proto_register_lldp(void);
 void proto_reg_handoff_lldp(void);
 
@@ -68,6 +71,14 @@ static int hf_ex_avaya_rsvd = -1;
 static int hf_ex_avaya_system_id = -1;
 static int hf_ex_avaya_status = -1;
 static int hf_ex_avaya_i_sid = -1;
+
+static int hf_ex_avaya2_tlv_subtype = -1;
+static int hf_ex_avaya2_fabric_connect = -1;
+static int hf_ex_avaya2_fabric_numbvlans = -1;
+static int hf_ex_avaya2_fabric_bvlanid = -1;
+static int hf_ex_avaya2_fabric_sysidlength = -1;
+static int hf_ex_avaya2_fabric_sysid = -1;
+
 /* Sub Dissector Tables */
 static dissector_table_t oui_unique_code_table;
 
@@ -84,6 +95,9 @@ static int hf_lldp_tlv_system_cap_router = -1;
 static int hf_lldp_tlv_system_cap_telephone = -1;
 static int hf_lldp_tlv_system_cap_docsis_cable_device = -1;
 static int hf_lldp_tlv_system_cap_station_only = -1;
+static int hf_lldp_tlv_system_cap_cvlan_component = -1;
+static int hf_lldp_tlv_system_cap_svlan_component = -1;
+static int hf_lldp_tlv_system_cap_tpmr_component = -1;
 static int hf_lldp_tlv_system_name = -1;
 static int hf_lldp_tlv_system_desc = -1;
 static int hf_lldp_tlv_enable_system_cap = -1;
@@ -95,6 +109,9 @@ static int hf_lldp_tlv_enable_system_cap_router = -1;
 static int hf_lldp_tlv_enable_system_cap_telephone = -1;
 static int hf_lldp_tlv_enable_system_cap_docsis_cable_device = -1;
 static int hf_lldp_tlv_enable_system_cap_station_only = -1;
+static int hf_lldp_tlv_enable_system_cap_cvlan_component = -1;
+static int hf_lldp_tlv_enable_system_cap_svlan_component = -1;
+static int hf_lldp_tlv_enable_system_cap_tpmr_component = -1;
 static int hf_chassis_id_subtype = -1;
 static int hf_chassis_id = -1;
 static int hf_chassis_id_mac = -1;
@@ -368,6 +385,15 @@ static int hf_profinet_port_tx_delay_local = -1;
 static int hf_profinet_port_tx_delay_remote = -1;
 static int hf_profinet_cable_delay_local = -1;
 static int hf_profinet_mrp_domain_uuid = -1;
+static int hf_profinet_tsn_domain_uuid = -1;
+static int hf_profinet_tsn_nme_management_addr = -1;
+static int hf_profinet_tsn_nme_management_addr_str_length = -1;
+static int hf_profinet_tsn_nme_management_addr_subtype = -1;
+static int hf_profinet_tsn_nme_name_uuid = -1;
+static int hf_profinet_tsn_nme_parameter_uuid = -1;
+static int hf_profinet_time_domain_number = -1;
+static int hf_profinet_time_domain_uuid = -1;
+static int hf_profinet_time_domain_master_identity = -1;
 static int hf_profinet_mrrt_port_status = -1;
 static int hf_profinet_cm_mac = -1;
 static int hf_profinet_master_source_address = -1;
@@ -390,23 +416,24 @@ static int hf_cisco_upoe_pse_spare_pair_oper = -1;
 static int hf_cisco_aci_portstate = -1;
 static int hf_cisco_aci_noderole = -1;
 static int hf_cisco_aci_nodeid = -1;
-static int hf_cisco_aci_unknowncc = -1;
-static int hf_cisco_aci_pod = -1;
+static int hf_cisco_aci_spinelevel = -1;
+static int hf_cisco_aci_podid = -1;
 static int hf_cisco_aci_fabricname = -1;
 static int hf_cisco_aci_apiclist = -1;
 static int hf_cisco_aci_apicid = -1;
 static int hf_cisco_aci_apicipv4 = -1;
 static int hf_cisco_aci_apicuuid = -1;
 static int hf_cisco_aci_nodeip = -1;
-static int hf_cisco_aci_unknownd1 = -1;
+static int hf_cisco_aci_portrole = -1;
 static int hf_cisco_aci_version = -1;
 static int hf_cisco_aci_fabricvlan = -1;
 static int hf_cisco_aci_serialno = -1;
 static int hf_cisco_aci_model = -1;
 static int hf_cisco_aci_nodename = -1;
 static int hf_cisco_aci_portmode = -1;
-static int hf_cisco_aci_unknownd9 = -1;
+static int hf_cisco_aci_authcookie = -1;
 static int hf_cisco_aci_apicmode = -1;
+static int hf_cisco_aci_fabricid = -1;
 static int hf_hytec_tlv_subtype = -1;
 static int hf_hytec_group = -1;
 static int hf_hytec_identifier = -1;
@@ -509,6 +536,7 @@ static gint ett_org_spc_media_11 = -1;
 
 static gint ett_ex_avayaSubTypes_11 = -1;
 static gint ett_ex_avayaSubTypes_12 = -1;
+static gint ett_ex_avaya2SubTypes_4 = -1;
 static gint ett_org_spc_ProfinetSubTypes_1 = -1;
 static gint ett_org_spc_ProfinetSubTypes_2 = -1;
 static gint ett_org_spc_ProfinetSubTypes_3 = -1;
@@ -665,6 +693,10 @@ static const value_string ieee_802_1_subtypes[] = {
 	{ 0x0E, "CDCP" },				/* 802.1Q - D.2.14 */
 	{ 0x0F, "Port extension" },			/* 802.1BR - B.2 */
 	{ 0x10, "Application VLAN" },			/* 802.1Q - D.2.15 */
+	{ 0x11, "LRP ECP Discovery" },			/* 802.1CS - C.2.1 */
+	{ 0x12, "LRP TCP Discovery" },			/* 802.1CS - C.2.2 */
+	{ 0x13, "Congestion Isolation" },		/* 802.1Qcz - D.2.15 */
+	{ 0x14, "Topology Recognition" },		/* 802.1Qcz - D.2.16 */
 	{ 0, NULL }
 };
 
@@ -742,12 +774,17 @@ static const value_string media_application_type[] = {
 
 /* PROFINET subtypes */
 static const value_string profinet_subtypes[] = {
-	{ 1, "Measured Delay Values" },
-	{ 2, "Port Status" },
-	{ 3, "Alias" },
-	{ 4, "MRP Port Status" },
-	{ 5, "Chassis MAC" },
-	{ 6, "PTCP Status" },
+	{ 1,  "Measured Delay Values" },
+	{ 2,  "Port Status" },
+	{ 3,  "Alias" },
+	{ 4,  "MRP Port Status" },
+	{ 5,  "Chassis MAC" },
+	{ 6,  "PTCP Status" },
+	{ 9,  "TSN Domain"},
+	{ 10, "TSN NME Management Address"},
+	{ 11, "TSN NME Name UUID"},
+	{ 12, "TSN NME Parameter UUID"},
+	{ 13, "TSN Time Domain data"},
 	{ 0, NULL }
 };
 /* extreme avaya ap subtypes */
@@ -756,6 +793,13 @@ static const value_string profinet_subtypes[] = {
 static const value_string ex_avaya_subtypes[] = {
 	{ EX_AVAYA_SUBTYPE_ELEMENT_TLV, "Extreme Fabric Attach Element TLV" },
 	{ EX_AVAYA_SUBTYPE_ASSIGNMENT_TLV, "Extreme Fabric Attach Assignment TLV" },
+	{ 0, NULL }
+};
+
+/* extreme avaya2 (fabric) subtypes */
+#define EX_AVAYA2_SUBTYPE_ZTFv2_FC_TLV 4
+static const value_string ex_avaya2_subtypes[] = {
+	{ EX_AVAYA2_SUBTYPE_ZTFv2_FC_TLV, "Extreme Zero Touch Fabric v2 Fabric Connect TLV" },
 	{ 0, NULL }
 };
 
@@ -780,21 +824,21 @@ static const value_string cisco_subtypes[] = {
 	{ 0xc9, "ACI Port State" },
 	{ 0xca, "ACI Node Role" },
 	{ 0xcb, "ACI Node ID" },
-	{ 0xcc, "ACI Unknown-CC" },
+	{ 0xcc, "ACI Spine Level" },
 	{ 0xcd, "ACI Pod ID" },
 	{ 0xce, "ACI Fabric Name" },
 	{ 0xcf, "ACI Appliance Vector" },
 	{ 0xd0, "ACI Node IP" },
-	{ 0xd1, "ACI Unknown-D1" },
+	{ 0xd1, "ACI Port Role" },
 	{ 0xd2, "ACI Firmware Version" },
 	{ 0xd3, "ACI Infra VLAN" },
 	{ 0xd4, "ACI Serial Number" },
 	{ 0xd6, "ACI Model" },
 	{ 0xd7, "ACI Node Name" },
 	{ 0xd8, "ACI Port Mode" },
-	{ 0xd9, "ACI Unknown D9" },
+	{ 0xd9, "ACI Authentication Cookie" },
 	{ 0xda, "ACI APIC-Mode" },
-	{ 0xdb, "ACI Unknown-DB" },
+	{ 0xdb, "ACI Fabric ID" },
 	{ 0, NULL }
 };
 
@@ -806,13 +850,24 @@ static const value_string cisco_portstate_vals[] = {
 	{ 0, NULL }
 };
 
+static const value_string cisco_portrole_vals[] = {
+	{ 1,	"Active" },
+	{ 2,	"Backup" },
+	{ 0, NULL }
+};
+static const value_string cisco_portmode_vals[] = {
+	{ 0,	"Normal" },
+	{ 1,	"Recovery Mode" },
+	{ 0, NULL }
+};
+
 /* Guessing here, the output of apic show commands only has leaf and spine, and
    those values are leaf=2, spine=3 (off by 1) */
 static const value_string cisco_noderole_vals[] = {
 	{ 0,	"APIC" },
 	{ 1,	"Leaf" },
 	{ 2,	"Spine" },
-	{ 3,	"Unknown" },
+	{ 3,	"vLeaf" },
 	{ 0, NULL }
 };
 
@@ -1018,7 +1073,7 @@ static const value_string operational_mau_type_values[] = {
 	{ 46,	"100BASE-LX10 - One single-mode fiber ONU, long wavelength, 10km" },
 	{ 47,	"1000BASE-BX10D - One single-mode fiber OLT, long wavelength, 10km" },
 	{ 48,	"1000BASE-BX10U - One single-mode fiber ONU, long wavelength, 10km" },
-	{ 49,	"1000BASE-LX10 - Two sigle-mode fiber, long wavelength, 10km" },
+	{ 49,	"1000BASE-LX10 - Two single-mode fiber, long wavelength, 10km" },
 	{ 50,	"1000BASE-PX10D - One single-mode fiber EPON OLT, 10km" },
 	{ 51,	"1000BASE-PX10U - One single-mode fiber EPON ONU, 10km" },
 	{ 52,	"1000BASE-PX20D - One single-mode fiber EPON OLT, 20km" },
@@ -1156,6 +1211,9 @@ static const value_string hytec_mc[] = {
 #define SYSTEM_CAPABILITY_TELEPHONE	0x0020
 #define SYSTEM_CAPABILITY_DOCSIS	0x0040
 #define SYSTEM_CAPABILITY_STATION	0x0080
+#define SYSTEM_CAPABILITY_CVLAN		0x0100
+#define SYSTEM_CAPABILITY_SVLAN		0x0200
+#define SYSTEM_CAPABILITY_TPMR		0x0400
 
 /* Media Capabilities */
 #define MEDIA_CAPABILITY_LLDP				0x0001
@@ -1191,7 +1249,7 @@ static const value_string hytec_mc[] = {
 
 /* Some vendors interpreted the standard to invert the bitorder:
  * according to a IEEE ruling, this is now officially wrong.
- * See https://bugs.wireshark.org/bugzilla/show_bug.cgi?id=1455
+ * See https://gitlab.com/wireshark/wireshark/-/issues/1455
  * for all the gory details
  */
 
@@ -1266,6 +1324,13 @@ static const value_string profinet_mrrt_port_status_vals[] = {
 	/* all other bits reserved */
 	{ 0,	NULL }
 };
+static const value_string profinet_time_domain_number_vals[] = {
+    { 0x0000, "Global Time" },
+    { 0x0001, "Global Time Redundant" },
+    { 0x0020, "Working Clock" },
+    { 0x0021, "Working Clock Redundant" },
+    { 0, NULL }
+};
 
 /* IEEE 802.1Qbg Subtypes */
 static const value_string ieee_802_1qbg_subtypes[] = {
@@ -1279,12 +1344,12 @@ static const unit_name_string units_m = { " m", NULL };
 
 static void
 mdi_power_base(gchar *buf, guint32 value) {
-	g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%u. Watt", value/10, value%10);
+	snprintf(buf, ITEM_LABEL_LENGTH, "%u.%u. Watt", value/10, value%10);
 }
 
 static void
 media_power_base(gchar *buf, guint32 value) {
-	g_snprintf(buf, ITEM_LABEL_LENGTH, "%u mW", value * 100);
+	snprintf(buf, ITEM_LABEL_LENGTH, "%u mW", value * 100);
 }
 
 /* Calculate Latitude and Longitude string */
@@ -1342,7 +1407,7 @@ get_latitude_or_longitude(gchar *buf, int option, guint64 unmasked_value)
 			direction = "East";
 	}
 
-	g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%04" G_GINT64_MODIFIER "u degrees %s (0x%010" G_GINT64_MODIFIER "X)",
+	snprintf(buf, ITEM_LABEL_LENGTH, "%u.%04" PRIu64 " degrees %s (0x%010" PRIX64 ")",
 	    integerPortion, tempValue, direction, value);
 }
 
@@ -1421,9 +1486,9 @@ dissect_lldp_chassis_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
 		}
 
 		idType="MA";
-		strPtr = tvb_ether_to_str(tvb, offset);
+		strPtr = tvb_ether_to_str(pinfo->pool, tvb, offset);
 		proto_tree_add_item(chassis_tree, hf_chassis_id_mac, tvb, offset, 6, ENC_NA);
-		pn_lldp_column_info->chassis_id_mac = wmem_strdup(wmem_packet_scope(), strPtr);
+		pn_lldp_column_info->chassis_id_mac = wmem_strdup(pinfo->pool, strPtr);
 		offset += (dataLen - 1);
 		break;
 	}
@@ -1441,7 +1506,7 @@ dissect_lldp_chassis_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
 		switch(addr_family){
 		case AFNUM_INET:
 			if (dataLen == 6){
-				strPtr = tvb_ip_to_str(tvb, offset);
+				strPtr = tvb_ip_to_str(pinfo->pool, tvb, offset);
 			}else{
 				expert_add_info_format(pinfo, lf, &ei_lldp_bad_length,
 					"Invalid Chassis ID Length (%u) for Type (%s, %s), expected (6)", dataLen, val_to_str_const(tlvsubType, chassis_id_subtypes, ""), val_to_str_const(addr_family, afn_vals, ""));
@@ -1453,7 +1518,7 @@ dissect_lldp_chassis_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
 			break;
 		case AFNUM_INET6:
 			if  (dataLen == 18){
-				strPtr = tvb_ip6_to_str(tvb, offset);
+				strPtr = tvb_ip6_to_str(pinfo->pool, tvb, offset);
 			}else{
 				expert_add_info_format(pinfo, lf, &ei_lldp_bad_length,
 					"Invalid Chassis ID Length (%u) for Type (%s, %s), expected (18)", dataLen, val_to_str_const(tlvsubType, chassis_id_subtypes, ""), val_to_str_const(addr_family, afn_vals, ""));
@@ -1464,7 +1529,7 @@ dissect_lldp_chassis_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
 
 			break;
 		default:
-			strPtr = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, (dataLen-2));
+			strPtr = tvb_bytes_to_str(pinfo->pool, tvb, offset, (dataLen-2));
 			proto_tree_add_item(chassis_tree, hf_chassis_id, tvb, offset, (dataLen-2), ENC_NA);
 
 			break;
@@ -1491,24 +1556,24 @@ dissect_lldp_chassis_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
 		{
 		case 2: /* Interface alias */
 			idType="IA";
-			strPtr = tvb_format_stringzpad(tvb, offset, (dataLen - 1));
+			strPtr = tvb_format_stringzpad(pinfo->pool, tvb, offset, (dataLen - 1));
 			break;
 		case 6: /* Interfae name */
 			idType="IN";
-			strPtr = tvb_format_stringzpad(tvb, offset, (dataLen - 1));
+			strPtr = tvb_format_stringzpad(pinfo->pool, tvb, offset, (dataLen - 1));
 			break;
 		case 7: /* Locally assigned */
 			idType="LA";
-			strPtr = tvb_format_stringzpad(tvb, offset, (dataLen-1));
-			pn_lldp_column_info->chassis_id_locally_assigned = wmem_strdup(wmem_packet_scope(), strPtr);
+			strPtr = tvb_format_stringzpad(pinfo->pool, tvb, offset, (dataLen-1));
+			pn_lldp_column_info->chassis_id_locally_assigned = wmem_strdup(pinfo->pool, strPtr);
 			break;
 		case 1: /* Chassis component */
 			idType="CC";
-			strPtr = tvb_format_stringzpad(tvb, offset, (dataLen - 1));
+			strPtr = tvb_format_stringzpad(pinfo->pool, tvb, offset, (dataLen - 1));
 			break;
 		case 3: /* Port component */
 			idType="PC";
-			strPtr = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, (dataLen-1));
+			strPtr = tvb_bytes_to_str(pinfo->pool, tvb, offset, (dataLen-1));
 
 			break;
 		default:
@@ -1596,7 +1661,7 @@ dissect_lldp_port_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint3
 		}
 
 		idType = "MA";
-		strPtr = tvb_ether_to_str(tvb, offset);
+		strPtr = tvb_ether_to_str(pinfo->pool, tvb, offset);
 		proto_tree_add_item(port_tree, hf_port_id_mac, tvb, offset, 6, ENC_NA);
 
 		offset += (dataLen - 1);
@@ -1614,7 +1679,7 @@ dissect_lldp_port_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint3
 		switch(addr_family){
 		case AFNUM_INET:
 			if (dataLen == 6){
-				strPtr = tvb_ip_to_str(tvb, offset);
+				strPtr = tvb_ip_to_str(pinfo->pool, tvb, offset);
 			}else{
 				expert_add_info_format(pinfo, lf, &ei_lldp_bad_length,
 					"Invalid Port ID Length (%u) for Type (%s, %s), expected (6)", dataLen, val_to_str_const(tlvsubType, port_id_subtypes, ""), val_to_str_const(addr_family, afn_vals, ""));
@@ -1626,7 +1691,7 @@ dissect_lldp_port_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint3
 			break;
 		case AFNUM_INET6:
 			if  (dataLen == 18){
-				strPtr = tvb_ip6_to_str(tvb, offset);
+				strPtr = tvb_ip6_to_str(pinfo->pool, tvb, offset);
 			}else{
 				expert_add_info_format(pinfo, lf, &ei_lldp_bad_length,
 					"Invalid Port ID Length (%u) for Type (%s, %s), expected (18)", dataLen, val_to_str_const(tlvsubType, port_id_subtypes, ""), val_to_str_const(addr_family, afn_vals, ""));
@@ -1637,8 +1702,8 @@ dissect_lldp_port_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint3
 
 			break;
 		default:
-			strPtr = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, (dataLen-2));
-			proto_tree_add_item(port_tree, hf_port_id, tvb, offset, (dataLen-2), ENC_ASCII|ENC_NA);
+			strPtr = tvb_bytes_to_str(pinfo->pool, tvb, offset, (dataLen-2));
+			proto_tree_add_item(port_tree, hf_port_id, tvb, offset, (dataLen-2), ENC_ASCII);
 
 			break;
 		}
@@ -1662,24 +1727,24 @@ dissect_lldp_port_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint3
 		{
 		case 1: /* Interface alias */
 			idType = "IA";
-			strPtr = tvb_format_stringzpad(tvb, offset, (dataLen - 1));
+			strPtr = tvb_format_stringzpad(pinfo->pool, tvb, offset, (dataLen - 1));
 			break;
 		case 2: /* Port component */
 			idType = "PC";
-			strPtr = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, (dataLen-1));
+			strPtr = tvb_bytes_to_str(pinfo->pool, tvb, offset, (dataLen-1));
 			break;
 		case 5: /* Interface name */
 			idType = "IN";
-			strPtr = tvb_format_stringzpad(tvb, offset, (dataLen - 1));
+			strPtr = tvb_format_stringzpad(pinfo->pool, tvb, offset, (dataLen - 1));
 			break;
 		case 6: /* Agent circuit ID */
 			idType = "AC";
-			strPtr = tvb_format_stringzpad(tvb, offset, (dataLen - 1));
+			strPtr = tvb_format_stringzpad(pinfo->pool, tvb, offset, (dataLen - 1));
 			break;
 		case 7: /* Locally assigned */
 			idType = "LA";
-			strPtr = tvb_format_stringzpad(tvb, offset, (dataLen-1));
-			pn_lldp_column_info->port_id_locally_assigned = wmem_strdup(wmem_packet_scope(), strPtr);
+			strPtr = tvb_format_stringzpad(pinfo->pool, tvb, offset, (dataLen-1));
+			pn_lldp_column_info->port_id_locally_assigned = wmem_strdup(pinfo->pool, strPtr);
 			break;
 		default:
 			idType = "Rs";
@@ -1687,7 +1752,7 @@ dissect_lldp_port_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint3
 			break;
 		}
 
-		proto_tree_add_item(port_tree, hf_port_id, tvb, offset, (dataLen-1), ENC_ASCII|ENC_NA);
+		proto_tree_add_item(port_tree, hf_port_id, tvb, offset, (dataLen-1), ENC_ASCII);
 
 		offset += (dataLen - 1);
 		break;
@@ -1742,7 +1807,7 @@ dissect_lldp_time_to_live(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, g
 	return offset;
 }
 
-/* Dissect End of LLDPDU TLV (Mandatory) */
+/* Dissect End of LLDPDU TLV */
 static gint32
 dissect_lldp_end_of_lldpdu(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, guint32 offset)
 {
@@ -1782,7 +1847,7 @@ dissect_lldp_port_desc(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
 	/* Get tlv length */
 	dataLen = TLV_INFO_LEN(tempShort);
 
-	strPtr = tvb_format_stringzpad(tvb, (offset+2), dataLen);
+	strPtr = tvb_format_stringzpad(pinfo->pool, tvb, (offset+2), dataLen);
 
 	/* Set port tree */
 	port_desc_tree = proto_tree_add_subtree_format(tree, tvb, offset, (dataLen + 2),
@@ -1793,7 +1858,7 @@ dissect_lldp_port_desc(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
 
 	offset += 2;
 	/* Display port description information */
-	proto_tree_add_item(port_desc_tree, hf_port_desc, tvb, offset, dataLen, ENC_ASCII|ENC_NA);
+	proto_tree_add_item(port_desc_tree, hf_port_desc, tvb, offset, dataLen, ENC_ASCII);
 
 	offset += dataLen;
 
@@ -1818,7 +1883,7 @@ dissect_lldp_system_name(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
 	/* Get tlv length */
 	dataLen = TLV_INFO_LEN(tempShort);
 
-	strPtr = tvb_format_stringzpad(tvb, (offset+2), dataLen);
+	strPtr = tvb_format_stringzpad(pinfo->pool, tvb, (offset+2), dataLen);
 
 	/* Set system name tree */
 	if (tlvsubType == SYSTEM_NAME_TLV_TYPE) {
@@ -1844,9 +1909,9 @@ dissect_lldp_system_name(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
 
 	/* Display system name information */
 	if (tlvsubType == SYSTEM_NAME_TLV_TYPE)
-		proto_tree_add_item(system_subtree, hf_lldp_tlv_system_name, tvb, offset, dataLen, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(system_subtree, hf_lldp_tlv_system_name, tvb, offset, dataLen, ENC_ASCII);
 	else
-		proto_tree_add_item(system_subtree, hf_lldp_tlv_system_desc, tvb, offset, dataLen, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(system_subtree, hf_lldp_tlv_system_desc, tvb, offset, dataLen, ENC_ASCII);
 
 	offset += dataLen;
 
@@ -1891,6 +1956,9 @@ dissect_lldp_system_capabilities(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tr
 	proto_tree_add_item(capabilities_summary_tree, hf_lldp_tlv_system_cap_telephone, tvb, offset, 2, ENC_BIG_ENDIAN);
 	proto_tree_add_item(capabilities_summary_tree, hf_lldp_tlv_system_cap_docsis_cable_device, tvb, offset, 2, ENC_BIG_ENDIAN);
 	proto_tree_add_item(capabilities_summary_tree, hf_lldp_tlv_system_cap_station_only, tvb, offset, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(capabilities_summary_tree, hf_lldp_tlv_system_cap_cvlan_component, tvb, offset, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(capabilities_summary_tree, hf_lldp_tlv_system_cap_svlan_component, tvb, offset, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(capabilities_summary_tree, hf_lldp_tlv_system_cap_tpmr_component, tvb, offset, 2, ENC_BIG_ENDIAN);
 
 	offset += 2;
 	/* Get enabled summary */
@@ -1906,6 +1974,9 @@ dissect_lldp_system_capabilities(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tr
 	proto_tree_add_item(capabilities_enabled_tree, hf_lldp_tlv_enable_system_cap_telephone, tvb, offset, 2, ENC_BIG_ENDIAN);
 	proto_tree_add_item(capabilities_enabled_tree, hf_lldp_tlv_enable_system_cap_docsis_cable_device, tvb, offset, 2, ENC_BIG_ENDIAN);
 	proto_tree_add_item(capabilities_enabled_tree, hf_lldp_tlv_enable_system_cap_station_only, tvb, offset, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(capabilities_summary_tree, hf_lldp_tlv_enable_system_cap_cvlan_component, tvb, offset, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(capabilities_summary_tree, hf_lldp_tlv_enable_system_cap_svlan_component, tvb, offset, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(capabilities_summary_tree, hf_lldp_tlv_enable_system_cap_tpmr_component, tvb, offset, 2, ENC_BIG_ENDIAN);
 
 	offset += 2;
 
@@ -2264,7 +2335,7 @@ dissect_ieee_802_1_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 
 		if (tempByte > 0)
 		{
-			proto_tree_add_item(tree, hf_ieee_802_1_vlan_name, tvb, offset, tempByte, ENC_ASCII|ENC_NA);
+			proto_tree_add_item(tree, hf_ieee_802_1_vlan_name, tvb, offset, tempByte, ENC_ASCII);
 
 			offset += tempByte;
 		}
@@ -2597,7 +2668,9 @@ static void
 dissect_oui_default_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 {
 	proto_tree_add_item(tree, hf_unknown_subtype, tvb, 0, 1, ENC_BIG_ENDIAN);
-	proto_tree_add_item(tree, hf_unknown_subtype_content, tvb, 1, -1, ENC_NA);
+	if (tvb_captured_length_remaining(tvb, 1) > 0) {
+		proto_tree_add_item(tree, hf_unknown_subtype_content, tvb, 1, -1, ENC_NA);
+	}
 }
 
 static void
@@ -2659,10 +2732,11 @@ dissect_ieee_802_1qbg_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tre
 
 /* Dissect extreme avaya ap tlv*/
 static int
-dissect_extreme_avaya_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, guint32 offset, guint16 dataLen)
+dissect_extreme_avaya_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, guint16 dataLen)
 {
 	guint8 subType;
 	guint32 i, loopCount;
+	guint32 offset = 0;
 
 	/*
 	Element TLV:
@@ -2718,6 +2792,47 @@ dissect_extreme_avaya_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tre
 	}
 	return offset;
 }
+
+/* Dissect extreme avaya ap tlv*/
+static int
+dissect_extreme_avaya2_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
+{
+	guint8 subType;
+	guint32 numbvlans, sysidlength;
+	guint32 offset = 0;
+
+	/*
+	Fabric TLV:
+	_________________________________________________________________________________________________
+	| TLV Type | TLV Length | Avaya OUI | Subtype | Num. BVLANs | BVLAN-ID*N | SysID Len | Sysid    |
+	-------------------------------------------------------------------------------------------------
+	| 7 bits   | 9 bits     | 3 octets  | 1 octet | 1 octet     | 2 octets*N | 1 octet   | octets*N |
+	-------------------------------------------------------------------------------------------------
+        */
+
+	/* Get subtype */
+	subType = tvb_get_guint8(tvb, offset);
+	proto_tree_add_item(tree, hf_ex_avaya2_tlv_subtype, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset++;
+	switch (subType) {
+	case EX_AVAYA2_SUBTYPE_ZTFv2_FC_TLV:  /* Zero Touch Fabric v2 Fabric Connect TLV */
+		proto_tree_add_item(tree, hf_ex_avaya2_fabric_connect, tvb, offset, 1, ENC_NA);
+		offset++;
+		proto_tree_add_item_ret_uint(tree, hf_ex_avaya2_fabric_numbvlans, tvb, offset, 1, ENC_NA, &numbvlans);
+		offset++;
+		while (numbvlans--) {
+			proto_tree_add_item(tree, hf_ex_avaya2_fabric_bvlanid, tvb, offset, 2, ENC_BIG_ENDIAN);
+			offset += 2;
+		}
+		proto_tree_add_item_ret_uint(tree, hf_ex_avaya2_fabric_sysidlength, tvb, offset, 1, ENC_NA, &sysidlength);
+		offset++;
+		proto_tree_add_item(tree, hf_ex_avaya2_fabric_sysid, tvb, offset, sysidlength, ENC_NA);
+		offset += sysidlength;
+		break;
+	}
+	return offset;
+}
+
 /* Dissect IEEE 802.3 TLVs */
 static int
 dissect_ieee_802_3_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
@@ -3203,7 +3318,7 @@ dissect_media_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				return;
 			}
 
-			proto_tree_add_item(tree, hf_media_civic_country, tvb, offset, 2, ENC_ASCII|ENC_NA);
+			proto_tree_add_item(tree, hf_media_civic_country, tvb, offset, 2, ENC_ASCII);
 
 			offset += 2;
 			LCI_Length -= 2;
@@ -3236,7 +3351,7 @@ dissect_media_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				if (tempByte > 0)
 				{
 					/* Get CA Value */
-					proto_tree_add_item(tree, hf_media_civic_addr_value, tvb, offset, tempByte, ENC_ASCII|ENC_NA);
+					proto_tree_add_item(tree, hf_media_civic_addr_value, tvb, offset, tempByte, ENC_ASCII);
 
 					offset += tempByte;
 					LCI_Length -= tempByte;
@@ -3249,7 +3364,7 @@ dissect_media_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		{
 			if (tlvLen > 0)
 			{
-				proto_tree_add_item(tree, hf_media_ecs, tvb, offset, tlvLen, ENC_ASCII|ENC_NA);
+				proto_tree_add_item(tree, hf_media_ecs, tvb, offset, tlvLen, ENC_ASCII);
 			}
 
 			break;
@@ -3435,7 +3550,7 @@ set_name_of_station_for_profinet_specialized_column_info
 			{
 				pn_lldp_column_info->is_nos_assigned = TRUE;
 				pn_lldp_column_info->is_port_id_assigned = TRUE;
-				lldpPortIdCombinedWithNameOfStation = wmem_strdup(wmem_packet_scope(), pn_lldp_column_info->port_id_locally_assigned);
+				lldpPortIdCombinedWithNameOfStation = wmem_strdup(pinfo->pool, pn_lldp_column_info->port_id_locally_assigned);
 				tokenPortId = strtok(lldpPortIdCombinedWithNameOfStation, delimForProfinetv23);
 				tokenNameOfStation = strtok(NULL, delimForProfinetv23);
 				col_append_fstr(pinfo->cinfo, COL_INFO, "NoS = %s ", tokenNameOfStation);
@@ -3599,6 +3714,61 @@ dissect_profinet_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, pr
 			hf_profinet_green_period_begin_valid, hf_profinet_green_period_begin_offset);
 		break;
 	}
+	case 9:		/* LLDP_PNIO_TSNDOMAIN */
+	{
+		/* DomainUUID */
+		proto_tree_add_item(tree, hf_profinet_tsn_domain_uuid, tvb, offset, 16, ENC_BIG_ENDIAN);
+		/*offset += 16;*/
+		break;
+	}
+	case 10:	/* LLDP_PNIO_TSNNMEManagementAddr */
+	{
+		guint8 management_string_length = 0;
+		management_string_length = tvb_get_guint8(tvb, offset);
+
+		/* Management Address String Length */
+		proto_tree_add_item(tree, hf_profinet_tsn_nme_management_addr_str_length, tvb, offset, 1, ENC_BIG_ENDIAN);
+		offset += 1;
+
+		/* Management Address Subtype */
+		proto_tree_add_item(tree, hf_profinet_tsn_nme_management_addr_subtype, tvb, offset, 1, ENC_BIG_ENDIAN);
+		offset += 1;
+		management_string_length -= 1;
+
+		/* Management Address */
+		proto_tree_add_item(tree, hf_profinet_tsn_nme_management_addr, tvb, offset, management_string_length, ENC_NA);
+		/*offset += management_string_length;*/
+		break;
+	}
+	case 11:	/* LLDP_PNIO_TSNNMENameUUID */
+	{
+		/* TSNNMENameUUID */
+		proto_tree_add_item(tree, hf_profinet_tsn_nme_name_uuid, tvb, offset, 16, ENC_BIG_ENDIAN);
+		/*offset += 16;*/
+		break;
+	}
+	case 12:	/* LLDP_PNIO_TSNNMEParameterUUID */
+	{
+		/* NMEParameterUUID */
+		proto_tree_add_item(tree, hf_profinet_tsn_nme_parameter_uuid, tvb, offset, 16, ENC_BIG_ENDIAN);
+		/*offset += 16;*/
+		break;
+	}
+	case 13:	/* LLDP_PNIO_TSNTimeDomain */
+	{
+		/*TimeDomainNumber*/
+		proto_tree_add_item(tree, hf_profinet_time_domain_number, tvb, offset, 2, ENC_BIG_ENDIAN);
+		offset += 2;
+
+		/*TimeDomainUUID*/
+		proto_tree_add_item(tree, hf_profinet_time_domain_uuid, tvb, offset, 16, ENC_BIG_ENDIAN);
+		offset += 16;
+
+		/*TimeDomainMasterIdentity*/
+		proto_tree_add_item(tree, hf_profinet_time_domain_master_identity, tvb, offset, 8, ENC_NA);
+		/*offset += 8;*/
+		break;
+	}
 	default:
 		proto_tree_add_item(tree, hf_unknown_subtype_content, tvb, offset, -1, ENC_NA);
 	}
@@ -3639,116 +3809,126 @@ dissect_cisco_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 		length--;
 		break;
 	/* ACI */
-	case 0xc9:
+	case 0xc9: // 201 port-state, uint8
 		tf = proto_tree_add_item(tree, hf_cisco_aci_portstate, tvb, offset, length, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
-		offset += length;
-		length -= length;
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
+		offset++;
+		length--;
 		break;
-	case 0xca:
+	case 0xca: // 202 node-role, uint8
 		tf = proto_tree_add_item(tree, hf_cisco_aci_noderole, tvb, offset, length, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
-		offset += length;
-		length -= length;
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
+		offset++;
+		length--;
 		break;
-	case 0xcb:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_nodeid, tvb, offset, length, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+	case 0xcb: // 203 node-id, uint32
+		tf = proto_tree_add_item(tree, hf_cisco_aci_nodeid, tvb, offset, length, ENC_BIG_ENDIAN);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += 4;
 		length -= 4;
 		break;
-	case 0xcc:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_unknowncc, tvb, offset, length, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
-		offset += length;
-		length -= length;
+	case 0xcc: // 204 spine-level, uint8
+		tf = proto_tree_add_item(tree, hf_cisco_aci_spinelevel, tvb, offset, length, ENC_NA);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
+		offset++;
+		length--;
 		break;
-	case 0xcd:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_pod, tvb, offset, 2, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+	case 0xcd: // 205 pod-id, uint16
+		tf = proto_tree_add_item(tree, hf_cisco_aci_podid, tvb, offset, 2, ENC_BIG_ENDIAN);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += 2;
 		length -= 2;
 		break;
-	case 0xce:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_fabricname, tvb, offset, length, ENC_ASCII|ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+	case 0xce: // 206 fabric-name, string
+		tf = proto_tree_add_item(tree, hf_cisco_aci_fabricname, tvb, offset, length, ENC_ASCII);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += length;
 		length -= length;
 		break;
-	case 0xcf:
+	case 0xcf: // 207 av (id, ip, uuid) (uint8, ipv4, string)
 		proto_tree_add_item(tree, hf_cisco_aci_apiclist, tvb, offset, length, ENC_NA);
 		while (length > 0) {
 			tf = proto_tree_add_item(tree, hf_cisco_aci_apicid, tvb, offset, 1, ENC_NA);
-			proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+			proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 			offset++;
 			length--;
 			proto_tree_add_item(tree, hf_cisco_aci_apicipv4, tvb, offset, 4, ENC_NA);
 			offset += 4;
 			length -= 4;
-			proto_tree_add_item(tree, hf_cisco_aci_apicuuid, tvb, offset, 36, ENC_ASCII|ENC_NA);
+			proto_tree_add_item(tree, hf_cisco_aci_apicuuid, tvb, offset, 36, ENC_ASCII);
 			offset += 36;
 			length -= 36;
 		}
 		break;
-	case 0xd0:
+	case 0xd0: // 208 node-ip, ipv4
 		tf = proto_tree_add_item(tree, hf_cisco_aci_nodeip, tvb, offset, length, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += 4;
 		length -= 4;
 		break;
-	case 0xd1:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_unknownd1, tvb, offset, length, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+	case 0xd1: // 209 port-role, uint8
+		tf = proto_tree_add_item(tree, hf_cisco_aci_portrole, tvb, offset, length, ENC_NA);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
+		offset++;
+		length--;
+		break;
+	case 0xd2: // 210 fw-ver, string
+		tf = proto_tree_add_item(tree, hf_cisco_aci_version, tvb, offset, length, ENC_ASCII);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += length;
 		length -= length;
 		break;
-	case 0xd2:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_version, tvb, offset, length, ENC_ASCII|ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
-		offset += length;
-		length -= length;
-		break;
-	case 0xd3:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_fabricvlan, tvb, offset, 2, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+	case 0xd3: // 211 infra-vlan, uint16
+		tf = proto_tree_add_item(tree, hf_cisco_aci_fabricvlan, tvb, offset, 2, ENC_BIG_ENDIAN);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += 2;
 		length -= 2;
 		break;
-	case 0xd4:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_serialno, tvb, offset, length, ENC_ASCII|ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+	case 0xd4: // 212 serial-number, string
+		tf = proto_tree_add_item(tree, hf_cisco_aci_serialno, tvb, offset, length, ENC_ASCII);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += length;
 		length -= length;
 		break;
-	case 0xd6:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_model, tvb, offset, length, ENC_ASCII|ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+#if 0
+	case 0xd5: // 213 unused
+		break;
+#endif
+	case 0xd6: // 214 model, string
+		tf = proto_tree_add_item(tree, hf_cisco_aci_model, tvb, offset, length, ENC_ASCII);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += length;
 		length -= length;
 		break;
-	case 0xd7:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_nodename, tvb, offset, length, ENC_ASCII|ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+	case 0xd7: // 215 name, string
+		tf = proto_tree_add_item(tree, hf_cisco_aci_nodename, tvb, offset, length, ENC_ASCII);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += length;
 		length -= length;
 		break;
-	case 0xd8:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_portmode, tvb, offset, length, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
+	case 0xd8: // 216 port-mode, uint16
+		tf = proto_tree_add_item(tree, hf_cisco_aci_portmode, tvb, offset, length, ENC_BIG_ENDIAN);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
+		offset += 2;
+		length -= 2;
+		break;
+	case 0xd9: // 217 authenticate-cookie, bytes
+		tf = proto_tree_add_item(tree, hf_cisco_aci_authcookie, tvb, offset, length, ENC_NA);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
 		offset += length;
 		length -= length;
 		break;
-	case 0xd9:
-		tf = proto_tree_add_item(tree, hf_cisco_aci_unknownd9, tvb, offset, length, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
-		offset += length;
-		length -= length;
-		break;
-	case 0xda:
+	case 0xda: // 218 standby-apic, uint8
 		tf = proto_tree_add_item(tree, hf_cisco_aci_apicmode, tvb, offset, length, ENC_NA);
-		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(wmem_packet_scope(), tf));
-		offset += length;
-		length -= length;
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
+		offset++;
+		length--;
+		break;
+	case 0xdb: // 219 fabric-id, uint16
+		tf = proto_tree_add_item(tree, hf_cisco_aci_fabricid, tvb, offset, length, ENC_BIG_ENDIAN);
+		proto_item_append_text(parent_item, ": %s", proto_item_get_display_repr(pinfo->pool, tf));
+		offset += 2;
+		length -= 2;
 		break;
 	default:
 		if (length > 0) {
@@ -3806,7 +3986,7 @@ dissect_hytec_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 			case HYTEC_TID__VENDOR_PRODUCT_REVISION:
 				maximum_data_length = 64;
 				if(0 < msg_len && msg_len <= maximum_data_length)
-					proto_tree_add_item(tree, hf_hytec_transceiver_vendor_product_revision, tvb, offset, msg_len, ENC_ASCII|ENC_NA);
+					proto_tree_add_item(tree, hf_hytec_transceiver_vendor_product_revision, tvb, offset, msg_len, ENC_ASCII);
 				else
 				{ /* unexpected length */
 					expert_add_info_format(pinfo, tree, &ei_lldp_bad_length, "%s length (%d) is beyond valid range (1-%d)", val_to_str_const(identifier, hytec_tid, ""), msg_len, maximum_data_length);
@@ -3980,7 +4160,7 @@ dissect_hytec_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 				break;
 			case HYTEC_MC__NAME_OF_REPLYING_DEVICE:
 				maximum_data_length = 64;
-				if(0 < msg_len && msg_len <= maximum_data_length) proto_tree_add_item(tree, hf_hytec_name_of_replying_device, tvb, offset, msg_len, ENC_ASCII|ENC_NA);
+				if(0 < msg_len && msg_len <= maximum_data_length) proto_tree_add_item(tree, hf_hytec_name_of_replying_device, tvb, offset, msg_len, ENC_ASCII);
 				else
 				{ /* unexpected length */
 					expert_add_info_format(pinfo, tree, &ei_lldp_bad_length, "%s length (%d) is beyond valid range (1-%d)", val_to_str_const(identifier, hytec_mc, ""), msg_len, maximum_data_length);
@@ -3989,7 +4169,7 @@ dissect_hytec_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 				break;
 			case HYTEC_MC__OUTGOING_PORT_NAME:
 				maximum_data_length = 64;
-				if(0 < msg_len && msg_len <= maximum_data_length) proto_tree_add_item(tree, hf_hytec_outgoing_port_name, tvb, offset, msg_len, ENC_ASCII|ENC_NA);
+				if(0 < msg_len && msg_len <= maximum_data_length) proto_tree_add_item(tree, hf_hytec_outgoing_port_name, tvb, offset, msg_len, ENC_ASCII);
 				else
 				{ /* unexpected length */
 					expert_add_info_format(pinfo, tree, &ei_lldp_bad_length, "%s length (%d) is beyond valid range (1-%d)", val_to_str_const(identifier, hytec_mc, ""), msg_len, maximum_data_length);
@@ -4025,7 +4205,7 @@ dissect_hytec_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 				break;
 			case HYTEC_MC__INCOMING_PORT_NAME:
 				maximum_data_length = 64;
-				if(0 < msg_len && msg_len <= maximum_data_length) proto_tree_add_item(tree, hf_hytec_incoming_port_name, tvb, offset, msg_len, ENC_ASCII|ENC_NA);
+				if(0 < msg_len && msg_len <= maximum_data_length) proto_tree_add_item(tree, hf_hytec_incoming_port_name, tvb, offset, msg_len, ENC_ASCII);
 				else
 				{ /* unexpected length */
 					expert_add_info_format(pinfo, tree, &ei_lldp_bad_length, "%s length (%d) is beyond valid range (1-%d)", val_to_str_const(identifier, hytec_mc, ""), msg_len, maximum_data_length);
@@ -4138,7 +4318,7 @@ dissect_iana_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 	{
 	case 0x01: /* MUDURL */
 		if ( msg_len > 0 )
-			proto_tree_add_item(tree, hf_iana_mudurl, tvb, offset, msg_len, ENC_ASCII|ENC_NA);
+			proto_tree_add_item(tree, hf_iana_mudurl, tvb, offset, msg_len, ENC_ASCII);
 		break;
 
 	default:
@@ -4161,10 +4341,10 @@ dissect_onos_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 	switch (subType)
 	{
 	case ONOS_CHASSIS_TLV_TYPE:
-		proto_tree_add_item(tree, hf_onos_chassis, tvb, offset, msg_len, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(tree, hf_onos_chassis, tvb, offset, msg_len, ENC_ASCII);
 		break;
 	case ONOS_PORT_TLV_TYPE:
-		proto_tree_add_item(tree, hf_onos_port, tvb, offset, msg_len, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(tree, hf_onos_port, tvb, offset, msg_len, ENC_ASCII);
 		break;
 	case ONOS_TTL_TLV_TYPE:
 		proto_tree_add_item(tree, hf_onos_ttl, tvb, offset, msg_len, ENC_NA);
@@ -4326,6 +4506,14 @@ dissect_organizational_specific_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tre
 			break;
 		}
 		break;
+	case OUI_AVAYA_EXTREME2:
+		subTypeStr = val_to_str(subType, ex_avaya2_subtypes, "Unknown subtype 0x%x");
+		switch(subType)
+		{
+		case EX_AVAYA2_SUBTYPE_ZTFv2_FC_TLV: tempTree = ett_ex_avaya2SubTypes_4;
+			break;
+		}
+		break;
 	case OUI_HYTEC_GER:
 		subTypeStr = val_to_str(subType, hytec_subtypes, "Unknown subtype (0x%x)");
 		switch(subType)
@@ -4345,8 +4533,11 @@ dissect_organizational_specific_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tre
 	case OUI_ONOS:
 		subTypeStr = val_to_str(subType, onos_subtypes, "Unknown subtype (0x%x)");
 		break;
+	case OUI_ODVA:
+		subTypeStr = val_to_str(subType, lldp_cip_subtypes, "Unknown subtype (0x%x)");
+		break;
 	default:
-		subTypeStr = wmem_strdup_printf(wmem_packet_scope(), "Unknown (%d)",subType);
+		subTypeStr = wmem_strdup_printf(pinfo->pool, "Unknown (%d)",subType);
 		break;
 	}
 
@@ -4400,10 +4591,16 @@ dissect_organizational_specific_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tre
 		dissect_iana_tlv(vendor_tvb, pinfo, org_tlv_tree);
 		break;
 	case OUI_AVAYA_EXTREME:
-		dissect_extreme_avaya_tlv(tvb, pinfo, org_tlv_tree, (offset + 5),dataLen );
+		dissect_extreme_avaya_tlv(vendor_tvb, pinfo, org_tlv_tree, dataLen );
+		break;
+	case OUI_AVAYA_EXTREME2:
+		dissect_extreme_avaya2_tlv(vendor_tvb, pinfo, org_tlv_tree);
 		break;
 	case OUI_ONOS:
 		dissect_onos_tlv(vendor_tvb, pinfo, org_tlv_tree);
+		break;
+	case OUI_ODVA:
+		dissect_lldp_cip_tlv(vendor_tvb, pinfo, org_tlv_tree);
 		break;
 	default:
 		dissect_oui_default_tlv(vendor_tvb, pinfo, org_tlv_tree);
@@ -4451,7 +4648,7 @@ dissect_lldp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 	gint32 rtnValue = 0;
 	guint16 tempShort;
 	guint8 tlvType;
-	gboolean reachedEnd = FALSE;
+	guint32 tvbLen;
 	profinet_lldp_column_info *pn_lldp_column_info = NULL;
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "LLDP");
 
@@ -4466,7 +4663,7 @@ dissect_lldp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 	new_tvb = tvb_new_subset_length(tvb, offset, TLV_INFO_LEN(tempShort)+2);
 
 	/* allocation */
-	pn_lldp_column_info = wmem_new0(wmem_packet_scope(), profinet_lldp_column_info);
+	pn_lldp_column_info = wmem_new0(pinfo->pool, profinet_lldp_column_info);
 
 	rtnValue = dissect_lldp_chassis_id(new_tvb, pinfo, lldp_tree, 0, pn_lldp_column_info);
 	if (rtnValue < 0)
@@ -4503,9 +4700,9 @@ dissect_lldp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 
 	offset += rtnValue;
 
-
-	/* Dissect optional tlv's until end-of-lldpdu is reached */
-	while (!reachedEnd)
+	tvbLen = tvb_captured_length(tvb);
+	/* Dissect optional tlv info that contained in data packets */
+	while (offset < tvbLen)
 	{
 		tempShort = tvb_get_ntohs(tvb, offset);
 		tlvType = TLV_TYPE(tempShort);
@@ -4562,8 +4759,8 @@ dissect_lldp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 		}
 
 		if (rtnValue < 0) {
-			reachedEnd = TRUE;
 			set_actual_length(tvb, offset + rtnValue);
+			break;
 		}
 		else
 			offset += rtnValue;
@@ -4625,6 +4822,18 @@ proto_register_lldp(void)
 			{ "Station only", "lldp.tlv.system_cap.station_only", FT_BOOLEAN, 16,
 			TFS(&tfs_capable_not_capable), SYSTEM_CAPABILITY_STATION, NULL, HFILL }
 		},
+		{ &hf_lldp_tlv_system_cap_cvlan_component,
+			{ "C-VLAN component", "lldp.tlv.system_cap.cvlan", FT_BOOLEAN, 16,
+			TFS(&tfs_capable_not_capable), SYSTEM_CAPABILITY_CVLAN, NULL, HFILL }
+		},
+		{ &hf_lldp_tlv_system_cap_svlan_component,
+			{ "S-VLAN component", "lldp.tlv.system_cap.svlan", FT_BOOLEAN, 16,
+			TFS(&tfs_capable_not_capable), SYSTEM_CAPABILITY_SVLAN, NULL, HFILL }
+		},
+		{ &hf_lldp_tlv_system_cap_tpmr_component,
+			{ "TPMR component", "lldp.tlv.system_cap.tpmr", FT_BOOLEAN, 16,
+			TFS(&tfs_capable_not_capable), SYSTEM_CAPABILITY_TPMR, NULL, HFILL }
+		},
 		{ &hf_lldp_tlv_system_name,
 			{ "System Name", "lldp.tlv.system.name", FT_STRING, BASE_NONE,
 			NULL, 0, NULL, HFILL }
@@ -4668,6 +4877,18 @@ proto_register_lldp(void)
 		{ &hf_lldp_tlv_enable_system_cap_station_only,
 			{ "Station only", "lldp.tlv.enable_system_cap.station_only", FT_BOOLEAN, 16,
 			TFS(&tfs_capable_not_capable), SYSTEM_CAPABILITY_STATION, NULL, HFILL }
+		},
+		{ &hf_lldp_tlv_enable_system_cap_cvlan_component,
+			{ "C-VLAN component", "lldp.tlv.enable_system_cap.cvlan", FT_BOOLEAN, 16,
+			TFS(&tfs_capable_not_capable), SYSTEM_CAPABILITY_CVLAN, NULL, HFILL }
+		},
+		{ &hf_lldp_tlv_enable_system_cap_svlan_component,
+			{ "S-VLAN component", "lldp.tlv.enable_system_cap.svlan", FT_BOOLEAN, 16,
+			TFS(&tfs_capable_not_capable), SYSTEM_CAPABILITY_SVLAN, NULL, HFILL }
+		},
+		{ &hf_lldp_tlv_enable_system_cap_tpmr_component,
+			{ "TPMR component", "lldp.tlv.enable_system_cap.tpmr", FT_BOOLEAN, 16,
+			TFS(&tfs_capable_not_capable), SYSTEM_CAPABILITY_TPMR, NULL, HFILL }
 		},
 		{ &hf_chassis_id_subtype,
 			{ "Chassis Id Subtype", "lldp.chassis.subtype", FT_UINT8, BASE_DEC,
@@ -4807,7 +5028,7 @@ proto_register_lldp(void)
 		},
 		{ &hf_dcbx_feature_pgid_reserved,
 			{ "Reserved", "lldp.dcbx.feature.pg.reserved", FT_UINT8, BASE_HEX,
-			NULL, 0xF000, 0, HFILL }
+			NULL, 0xFE, 0, HFILL }
 		},
 		{ &hf_dcbx_feature_pgid_prio_0,
 			{ "PGID for Prio 0", "lldp.dcbx.feature.pg.pgid_prio0", FT_UINT16, BASE_DEC,
@@ -4815,15 +5036,15 @@ proto_register_lldp(void)
 		},
 		{ &hf_dcbx_feature_pgid_prio_1,
 			{ "PGID for Prio 1", "lldp.dcbx.feature.pg.pgid_prio1", FT_UINT16, BASE_DEC,
-			NULL, 0xF00, 0, HFILL }
+			NULL, 0x0F00, 0, HFILL }
 		},
 		{ &hf_dcbx_feature_pgid_prio_2,
 			{ "PGID for Prio 2", "lldp.dcbx.feature.pg.pgid_prio2", FT_UINT16, BASE_DEC,
-			NULL, 0xF0, 0, HFILL }
+			NULL, 0x00F0, 0, HFILL }
 		},
 		{ &hf_dcbx_feature_pgid_prio_3,
 			{ "PGID for Prio 3", "lldp.dcbx.feature.pg.pgid_prio3", FT_UINT16, BASE_DEC,
-			NULL, 0xF, 0, HFILL }
+			NULL, 0x000F, 0, HFILL }
 		},
 		{ &hf_dcbx_feature_pgid_prio_4,
 			{ "PGID for Prio 4", "lldp.dcbx.feature.pg.pgid_prio4", FT_UINT16, BASE_DEC,
@@ -4831,15 +5052,15 @@ proto_register_lldp(void)
 		},
 		{ &hf_dcbx_feature_pgid_prio_5,
 			{ "PGID for Prio 5", "lldp.dcbx.feature.pg.pgid_prio5", FT_UINT16, BASE_DEC,
-			NULL, 0xF00, 0, HFILL }
+			NULL, 0x0F00, 0, HFILL }
 		},
 		{ &hf_dcbx_feature_pgid_prio_6,
 			{ "PGID for Prio 6", "lldp.dcbx.feature.pg.pgid_prio6", FT_UINT16, BASE_DEC,
-			NULL, 0xF0, 0, HFILL }
+			NULL, 0x00F0, 0, HFILL }
 		},
 		{ &hf_dcbx_feature_pgid_prio_7,
 			{ "PGID for Prio 7", "lldp.dcbx.feature.pg.pgid_prio7", FT_UINT16, BASE_DEC,
-			NULL, 0xF, 0, HFILL }
+			NULL, 0x000F, 0, HFILL }
 		},
 		{ &hf_dcbx_feature_pg_per_0,
 			{ "Bandwidth for PGID 0", "lldp.dcbx.feature.pg.per0", FT_UINT8, BASE_DEC,
@@ -5595,11 +5816,11 @@ proto_register_lldp(void)
 		},
 		{ &hf_media_l2_prio,
 			{ "L2 Priority", "lldp.media.l2_prio", FT_UINT24, BASE_DEC,
-			NULL, 0x1C0, NULL, HFILL }
+			NULL, 0x0001C0, NULL, HFILL }
 		},
 		{ &hf_media_dscp,
 			{ "DSCP Priority", "lldp.media.dscp", FT_UINT24, BASE_DEC,
-			NULL, 0x3F, NULL, HFILL }
+			NULL, 0x00003F, NULL, HFILL }
 		},
 		{ &hf_media_loc_data_format,
 			{ "Location Data Format", "lldp.media.loc.data_format", FT_UINT8, BASE_DEC,
@@ -5631,7 +5852,7 @@ proto_register_lldp(void)
 		},
 		{ &hf_media_loc_alt,
 			{ "Altitude", "lldp.media.loc.altitude", FT_UINT32, BASE_DEC,
-			NULL, 0x03FFFFFFF, NULL, HFILL }
+			NULL, 0x3FFFFFFF, NULL, HFILL }
 		},
 		{ &hf_media_loc_datum,
 			{ "Datum", "lldp.media.loc.datum", FT_UINT8, BASE_DEC,
@@ -5755,8 +5976,44 @@ proto_register_lldp(void)
 			VALS(profinet_port3_status_PreambleLength), 0x2000, NULL, HFILL }
 		},
 		{ &hf_profinet_mrp_domain_uuid,
-			{ "MRP DomainUUID",	"lldp.profinet.mrp_domain_uuid", FT_GUID, BASE_NONE,
+			{ "MRP DomainUUID", "lldp.profinet.mrp_domain_uuid", FT_GUID, BASE_NONE,
 			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_profinet_tsn_domain_uuid,
+			{ "TSN DomainUUID", "lldp.profinet.tsn_domain_uuid", FT_GUID, BASE_NONE,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_profinet_tsn_nme_management_addr,
+			{ "TSN NME Management Address",	"lldp.profinet.tsn_nme_management_addr", FT_BYTES, BASE_NONE,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_profinet_tsn_nme_management_addr_str_length,
+			{ "TSN NME Management Address String Length", "lldp.profinet.tsn_nme_management_addr_str_length", FT_UINT8, BASE_HEX,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_profinet_tsn_nme_management_addr_subtype,
+			{ "TSN NME Management Address Subtype",	"lldp.profinet.tsn_nme_management_addr_subtype", FT_UINT8, BASE_HEX,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_profinet_tsn_nme_name_uuid,
+			{ "TSN NME Name UUID", "lldp.profinet.tsn_nme_name_uuid", FT_GUID, BASE_NONE,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_profinet_tsn_nme_parameter_uuid,
+			{ "TSN NME Parameter UUID", "lldp.profinet.tsn_nme_parameter_uuid", FT_GUID, BASE_NONE,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_profinet_time_domain_number,
+			{ "Time Domain Number",	"lldp.profinet.time_domain_number", FT_UINT16, BASE_HEX,
+			VALS(profinet_time_domain_number_vals), 0x0, NULL, HFILL }
+		},
+		{ &hf_profinet_time_domain_uuid,
+			{ "Time Domain UUID", "lldp.profinet.time_domain_uuid", FT_GUID, BASE_NONE,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_profinet_time_domain_master_identity,
+			{ "Time Domain Master Identity", "lldp.profinet.time_domain_master_identity", FT_BYTES, BASE_NONE,
+			0x0, 0x0, NULL, HFILL }
 		},
 		{ &hf_profinet_mrrt_port_status,
 			{ "MRRT PortStatus",	"lldp.profinet.mrrt_port_status", FT_UINT16, BASE_HEX,
@@ -5810,6 +6067,7 @@ proto_register_lldp(void)
 			{ "GreenPeriodBegin.Offset",	"lldp.profinet.green_period_begin_offset", FT_UINT32, BASE_DEC,
 			NULL, 0x7FFFFFFF, "Unrestricted period, offset to cycle begin in nanoseconds", HFILL }
 		},
+	/* Cisco generic */
 		{ &hf_cisco_subtype,
 			{ "Cisco Subtype",	"lldp.cisco.subtype", FT_UINT8, BASE_HEX,
 			VALS(cisco_subtypes), 0x0, NULL, HFILL }
@@ -5834,6 +6092,7 @@ proto_register_lldp(void)
 			{ "PSE Spare Pair PoE", "lldp.cisco.upoe.pse_altb_oper", FT_BOOLEAN, 8,
 			TFS(&tfs_enabled_disabled), 0x08, "PSE ALT-B Pair Operational State", HFILL }
 		},
+	/* Cisco ACI */
 		{ &hf_cisco_aci_portstate,
 			{ "Port State", "lldp.cisco.portstate", FT_UINT8, BASE_NONE,
 			VALS(cisco_portstate_vals), 0x0, NULL, HFILL }
@@ -5846,12 +6105,12 @@ proto_register_lldp(void)
 			{ "Node ID", "lldp.cisco.nodeid", FT_UINT32, BASE_DEC,
 			NULL, 0x0, NULL, HFILL }
 		},
-		{ &hf_cisco_aci_unknowncc,
-			{ "Unknown 0xCC", "lldp.cisco.unknowncc", FT_BYTES, BASE_NONE,
+		{ &hf_cisco_aci_spinelevel,
+			{ "Spine Level", "lldp.cisco.spinelevel", FT_UINT8, BASE_DEC,
 			NULL, 0x0, NULL, HFILL }
 		},
-		{ &hf_cisco_aci_pod,
-			{ "Pod", "lldp.cisco.pod", FT_UINT16, BASE_DEC,
+		{ &hf_cisco_aci_podid,
+			{ "Pod ID", "lldp.cisco.podid", FT_UINT16, BASE_DEC,
 			NULL, 0x0, NULL, HFILL }
 		},
 		{ &hf_cisco_aci_fabricname,
@@ -5878,9 +6137,9 @@ proto_register_lldp(void)
 			{ "Node IP", "lldp.cisco.nodeip", FT_IPv4, BASE_NONE,
 			NULL, 0x0, NULL, HFILL }
 		},
-		{ &hf_cisco_aci_unknownd1,
-			{ "Unknown 0xD1", "lldp.cisco.unknownd1", FT_BYTES, BASE_NONE,
-			NULL, 0x0, NULL, HFILL }
+		{ &hf_cisco_aci_portrole,
+			{ "Port Role", "lldp.cisco.portrole", FT_UINT8, BASE_NONE,
+			VALS(cisco_portrole_vals), 0x0, NULL, HFILL }
 		},
 		{ &hf_cisco_aci_version,
 			{ "Version", "lldp.cisco.version", FT_STRING, BASE_NONE,
@@ -5903,17 +6162,22 @@ proto_register_lldp(void)
 			NULL, 0x0, NULL, HFILL }
 		},
 		{ &hf_cisco_aci_portmode,
-			{ "Port Mode", "lldp.cisco.portmode", FT_BYTES, BASE_NONE,
-			NULL, 0x0, NULL, HFILL }
+			{ "Port Mode", "lldp.cisco.portmode", FT_UINT8, BASE_NONE,
+			VALS(cisco_portmode_vals), 0x0, NULL, HFILL }
 		},
-		{ &hf_cisco_aci_unknownd9,
-			{ "Unknown 0xD9", "lldp.cisco.unknownd9", FT_BYTES, BASE_NONE,
+		{ &hf_cisco_aci_authcookie,
+			{ "Authentication Cookie", "lldp.cisco.authcookie", FT_BYTES, BASE_NONE,
 			NULL, 0x0, NULL, HFILL }
 		},
 		{ &hf_cisco_aci_apicmode,
-			{ "APIC Mode", "lldp.cisco.apicmode", FT_UINT8, BASE_NONE,
+			{ "APIC Mode", "lldp.cisco.apicmode", FT_UINT8, BASE_DEC,
 			VALS(cisco_apicmode_vals), 0x0, NULL, HFILL }
 		},
+		{ &hf_cisco_aci_fabricid,
+			{ "Fabric ID", "lldp.cisco.fabricd", FT_UINT16, BASE_DEC,
+			NULL, 0x0, NULL, HFILL }
+		},
+	/* Hytec */
 		{ &hf_hytec_tlv_subtype,
 			{ "Hytec Subtype",	"lldp.hytec.tlv_subtype", FT_UINT8, BASE_DEC,
 			VALS(hytec_subtypes), 0x0, NULL, HFILL }
@@ -6116,11 +6380,11 @@ proto_register_lldp(void)
 		},
 		{ &hf_ex_avaya_mgnt_vlan,
 			{ "Mgmt VLAN", "lldp.extreme_avaya_ap.mgnt_vlan", FT_UINT24, BASE_DEC,
-			NULL, 0xfff, NULL, HFILL }
+			NULL, 0x000fff, NULL, HFILL }
 		},
 		{ &hf_ex_avaya_vlan,
-			{ "VLAN", "lldp.extreme_avaya_ap.mgnt_vlan", FT_UINT16, BASE_DEC,
-			NULL, 0xfff, NULL, HFILL }
+			{ "VLAN", "lldp.extreme_avaya_ap.vlan", FT_UINT16, BASE_DEC,
+			NULL, 0x0fff, NULL, HFILL }
 		},
 		{ &hf_ex_avaya_rsvd,
 			{ "Reserved", "lldp.extreme_avaya_ap.rsvd", FT_UINT8, BASE_DEC,
@@ -6136,6 +6400,30 @@ proto_register_lldp(void)
 		},
 		{ &hf_ex_avaya_i_sid,
 			{ "I-SID", "lldp.extreme_avaya_ap.i_sid", FT_UINT24, BASE_DEC,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_ex_avaya2_tlv_subtype,
+			{ "Subtype", "lldp.extreme_avaya.fabric.subtype", FT_UINT8, BASE_DEC,
+			VALS(ex_avaya2_subtypes), 0x0, NULL, HFILL }
+		},
+		{ &hf_ex_avaya2_fabric_connect,
+			{ "FC Capability", "lldp.extreme_avaya.fabric.fabric_connect", FT_BOOLEAN, BASE_NONE,
+			TFS(&tfs_enabled_disabled), 0x0, "Fabric Connect aka auto-sense", HFILL }
+		},
+		{ &hf_ex_avaya2_fabric_numbvlans,
+			{ "Number B-VLANs", "lldp.extreme_avaya.fabric.numbvlans", FT_UINT8, BASE_DEC,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_ex_avaya2_fabric_bvlanid,
+			{ "B-VLAN ID", "lldp.extreme_avaya.fabric.bvlanid", FT_UINT16, BASE_DEC,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_ex_avaya2_fabric_sysidlength,
+			{ "SysID Length", "lldp.extreme_avaya.fabric.sysidlength", FT_UINT8, BASE_DEC,
+			NULL, 0x0, NULL, HFILL }
+		},
+		{ &hf_ex_avaya2_fabric_sysid,
+			{ "System ID", "lldp.extreme_avaya.fabric.sysid", FT_SYSTEM_ID, BASE_NONE,
 			NULL, 0x0, NULL, HFILL }
 		},
 	};
@@ -6219,7 +6507,8 @@ proto_register_lldp(void)
 		&ett_org_spc_hytec_trace_request,
 		&ett_org_spc_hytec_trace_reply,
 		&ett_ex_avayaSubTypes_11,
-		&ett_ex_avayaSubTypes_12
+		&ett_ex_avayaSubTypes_12,
+		&ett_ex_avaya2SubTypes_4
 	};
 
 	static ei_register_info ei[] = {
@@ -6237,6 +6526,7 @@ proto_register_lldp(void)
 
 	/* Register the protocol name and description */
 	proto_lldp = proto_register_protocol("Link Layer Discovery Protocol", "LLDP", "lldp");
+	lldp_handle = register_dissector("lldp", dissect_lldp, proto_lldp);
 
 	/* Register preferences */
 	lldp_module = prefs_register_protocol(proto_lldp, NULL);
@@ -6261,9 +6551,6 @@ proto_register_lldp(void)
 void
 proto_reg_handoff_lldp(void)
 {
-	dissector_handle_t lldp_handle;
-
-	lldp_handle = create_dissector_handle(dissect_lldp,proto_lldp);
 	dissector_add_uint("ethertype", ETHERTYPE_LLDP, lldp_handle);
 	dissector_add_uint("ethertype", ETHERTYPE_ONOS, lldp_handle);
 }

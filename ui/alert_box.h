@@ -1,4 +1,5 @@
-/* alert_box.h
+/** @file
+ *
  * Routines to put up various "standard" alert boxes used in multiple
  * places
  *
@@ -39,11 +40,13 @@ extern void cfile_open_failure_alert_box(const char *filename, int err,
 /*
  * Alert box for a failed attempt to open a capture file for writing.
  * "filename" is the name of the file being opened; "err" is assumed
- * to be a UNIX-style errno or a WTAP_ERR_ value; "file_type_subtype"
- * is a WTAP_FILE_TYPE_SUBTYPE_ value for the type and subtype of file
- * being opened.
+ * to be a UNIX-style errno or a WTAP_ERR_ value; "err_info" is assumed
+ * to be a string giving further information for some WTAP_ERR_ values;
+ * "file_type_subtype" is a WTAP_FILE_TYPE_SUBTYPE_ value for the type
+ * and subtype of file being opened.
  */
 extern void cfile_dump_open_failure_alert_box(const char *filename, int err,
+                                              gchar *err_info,
                                               int file_type_subtype);
 
 /*
@@ -74,7 +77,9 @@ extern void cfile_write_failure_alert_box(const char *in_filename,
 
 /*
  * Alert box for a failed attempt to close a capture file.
- * "err" is assumed to be a UNIX-style errno or a WTAP_ERR_ value.
+ * "err" is assumed to be a UNIX-style errno or a WTAP_ERR_ value;
+ * "err_info" is assumed to be a string giving further information for
+ * some WTAP_ERR_ values.
  *
  * When closing a capture file:
  *
@@ -94,7 +99,8 @@ extern void cfile_write_failure_alert_box(const char *in_filename,
  *
  * so we have to check for write errors here.
  */
-extern void cfile_close_failure_alert_box(const char *filename, int err);
+extern void cfile_close_failure_alert_box(const char *filename, int err,
+                                          gchar *err_info);
 
 /*
  * Alert box for a failed attempt to open or create a file.
@@ -122,16 +128,3 @@ extern void write_failure_alert_box(const char *filename, int err);
 #endif /* __cplusplus */
 
 #endif /* __ALERT_BOX_H__ */
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

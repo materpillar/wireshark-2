@@ -1,4 +1,5 @@
-/* file.h
+/** @file
+ *
  * Definitions for file structures and routines
  *
  * Wireshark - Network traffic analyzer
@@ -11,11 +12,10 @@
 #ifndef __FILE_H__
 #define __FILE_H__
 
-#include <errno.h>
-
 #include <wiretap/wtap.h>
 #include <epan/epan.h>
 #include <epan/print.h>
+#include <epan/fifo_string_cache.h>
 #include <ui/packet_range.h>
 
 #ifdef __cplusplus
@@ -81,6 +81,14 @@ typedef struct {
 } match_data;
 
 /**
+ * Set maximum number of records per capture file.
+ *
+ * @param max_records maximum number of records to support.
+ */
+extern void
+cf_set_max_records(guint max_records);
+
+/**
  * Add a capture file event callback.
  *
  * @param func The function to be called for each event.
@@ -127,17 +135,18 @@ void cf_close(capture_file *cf);
  * Reload a capture file.
  *
  * @param cf the capture file to be reloaded
+ * @return one of cf_status_t
  */
-void cf_reload(capture_file *cf);
+cf_status_t cf_reload(capture_file *cf);
 
 /**
  * Read all packets of a capture file into the internal structures.
  *
  * @param cf the capture file to be read
- * @param from_save reread asked from cf_save_records
+ * @param reloading reread asked for from cf_save_records()
  * @return one of cf_read_status_t
  */
-cf_read_status_t cf_read(capture_file *cf, gboolean from_save);
+cf_read_status_t cf_read(capture_file *cf, gboolean reloading);
 
 /**
  * Read the metadata and raw data for a record.  It will pop
@@ -179,7 +188,8 @@ gboolean cf_read_current_record(capture_file *cf);
  * @return one of cf_read_status_t
  */
 cf_read_status_t cf_continue_tail(capture_file *cf, volatile int to_read,
-                                  wtap_rec *rec, Buffer *buf, int *err);
+                                  wtap_rec *rec, Buffer *buf, int *err,
+                                  fifo_string_cache_t *frame_dup_cache, GChecksum *frame_cksum);
 
 /**
  * Fake reading packets from the "end" of a capture file.
@@ -198,7 +208,8 @@ void cf_fake_continue_tail(capture_file *cf);
  * @return one of cf_read_status_t
  */
 cf_read_status_t cf_finish_tail(capture_file *cf, wtap_rec *rec,
-                                Buffer *buf, int *err);
+                                Buffer *buf, int *err,
+                                fifo_string_cache_t *frame_dup_cache, GChecksum *frame_cksum);
 
 /**
  * Determine whether this capture file (or a range of it) can be written
@@ -387,7 +398,8 @@ void cf_set_rfcode(capture_file *cf, dfilter_t *rfcode);
 cf_status_t cf_filter_packets(capture_file *cf, gchar *dfilter, gboolean force);
 
 /**
- * At least one "Refence Time" flag has changed, rescan all packets.
+ * Scan through all frame data and recalculate the ref time
+ * without rereading the file.
  *
  * @param cf the capture file
  */
@@ -413,13 +425,6 @@ void cf_redissect_packets(capture_file *cf);
  */
 cf_read_status_t cf_retap_packets(capture_file *cf);
 
-/**
- * Adjust timestamp precision if auto is selected.
- *
- * @param cf the capture file
- */
-void cf_timestamp_auto_precision(capture_file *cf);
-
 /* print_range, enum which frames should be printed */
 typedef enum {
     print_range_selected_only,    /* selected frame(s) only (currently only one) */
@@ -441,6 +446,7 @@ typedef struct {
     print_dissections_e print_dissections;
     gboolean print_hex;           /* TRUE if we should print hex data;
                                    * FALSE if we should print only if not dissected. */
+    guint hexdump_options;        /* Hexdump options if print_hex is TRUE. */
     gboolean print_formfeed;      /* TRUE if a formfeed should be printed before
                                    * each new packet */
 } print_args_t;
@@ -513,15 +519,14 @@ gboolean cf_find_packet_protocol_tree(capture_file *cf, const char *string,
                                       search_direction dir);
 
 /**
- * Find field with a label that contains text string cfile->sfilter.
+ * Find field with a label that contains the text string cfile->sfilter in
+ * a protocol tree.
  *
  * @param cf the capture file
  * @param tree the protocol tree
- * @param mdata the first field (mdata->finfo) that matched the string
- * @return TRUE if a packet was found, FALSE otherwise
+ * @return The first field in the tree that matched the string if found, NULL otherwise
  */
-extern gboolean cf_find_string_protocol_tree(capture_file *cf, proto_tree *tree,
-                                             match_data *mdata);
+extern field_info* cf_find_string_protocol_tree(capture_file *cf, proto_tree *tree);
 
 /**
  * Find packet whose summary line contains a specified text string.
@@ -610,9 +615,9 @@ gboolean cf_goto_framenum(capture_file *cf);
  * Select the packet in the given row.
  *
  * @param cf the capture file
- * @param row the row to select
+ * @param frame the frame to be selected
  */
-void cf_select_packet(capture_file *cf, int row);
+void cf_select_packet(capture_file *cf, frame_data *frame);
 
 /**
  * Unselect all packets, if any.
@@ -667,7 +672,7 @@ void cf_unignore_frame(capture_file *cf, frame_data *frame);
  * @return one of cf_status_t
  */
 cf_status_t
-cf_merge_files_to_tempfile(gpointer pd_window, char **out_filenamep,
+cf_merge_files_to_tempfile(gpointer pd_window, const char *temp_dir, char **out_filenamep,
                            int in_file_count, const char *const *in_filenames,
                            int file_type, gboolean do_append);
 
@@ -681,24 +686,28 @@ cf_merge_files_to_tempfile(gpointer pd_window, char **out_filenamep,
 void cf_update_section_comment(capture_file *cf, gchar *comment);
 
 /*
- * Get the comment on a packet (record).
- * If the comment has been edited, it returns the result of the edit,
- * otherwise it returns the comment from the file.
+ * Get the packet block for a packet (record).
+ * If the block has been edited, it returns the result of the edit,
+ * otherwise it returns the block from the file.
  *
  * @param cf the capture file
  * @param fd the frame_data structure for the frame
- * @returns A comment (use g_free to free) or NULL if there is none.
+ * @returns A block (use wtap_block_unref to free) or NULL if there is none.
  */
-char *cf_get_packet_comment(capture_file *cf, const frame_data *fd);
+wtap_block_t cf_get_packet_block(capture_file *cf, const frame_data *fd);
 
 /**
- * Update(replace) the comment on a capture from a frame
+ * Update(replace) the block on a capture from a frame
  *
  * @param cf the capture file
  * @param fd the frame_data structure for the frame
- * @param new_comment the string replacing the old comment
+ * @param new_block the block replacing the old block
+ *
+ * @return TRUE if the block is modified for the first time. FALSE if
+ * the block was already modified before, in which case the caller is
+ * responsible for updating the comment count.
  */
-gboolean cf_set_user_packet_comment(capture_file *cf, frame_data *fd, const gchar *new_comment);
+gboolean cf_set_modified_block(capture_file *cf, frame_data *fd, const wtap_block_t new_block);
 
 /**
  * What types of comments does this file have?
@@ -723,16 +732,3 @@ gboolean cf_add_ip_name_from_string(capture_file *cf, const char *addr, const ch
 #endif /* __cplusplus */
 
 #endif /* file.h */
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

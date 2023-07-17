@@ -27,19 +27,27 @@
 #include <epan/follow.h>
 #include <epan/addr_resolv.h>
 #include <epan/uat.h>
+#include <epan/charsets.h>
 #include <epan/strutil.h>
 #include <epan/stats_tree.h>
 #include <epan/to_str.h>
 #include <epan/req_resp_hdrs.h>
 #include <epan/proto_data.h>
 #include <epan/export_object.h>
+#include <epan/exceptions.h>
+#include <epan/show_exception.h>
 
 #include "packet-http.h"
+#include "packet-http2.h"
 #include "packet-tcp.h"
 #include "packet-tls.h"
 #include "packet-acdr.h"
+#include "packet-media-type.h"
 
 #include <ui/tap-credentials.h>
+
+#define HTTP_PROTO_DATA_REQRES	0
+#define HTTP_PROTO_DATA_INFO	1
 
 void proto_register_http(void);
 void proto_reg_handoff_http(void);
@@ -71,6 +79,7 @@ static int hf_http_request_method = -1;
 static int hf_http_request_uri = -1;
 static int hf_http_request_full_uri = -1;
 static int hf_http_request_path = -1;
+static int hf_http_request_path_segment = -1;
 static int hf_http_request_query = -1;
 static int hf_http_request_query_parameter = -1;
 static int hf_http_request_version = -1;
@@ -93,6 +102,8 @@ static int hf_http_transfer_encoding = -1;
 static int hf_http_upgrade = -1;
 static int hf_http_user_agent = -1;
 static int hf_http_host = -1;
+static int hf_http_range = -1;
+static int hf_http_content_range = -1;
 static int hf_http_connection = -1;
 static int hf_http_cookie = -1;
 static int hf_http_cookie_pair = -1;
@@ -112,6 +123,7 @@ static int hf_http_sec_websocket_version = -1;
 static int hf_http_set_cookie = -1;
 static int hf_http_last_modified = -1;
 static int hf_http_x_forwarded_for = -1;
+static int hf_http_http2_settings = -1;
 static int hf_http_request_in = -1;
 static int hf_http_response_in = -1;
 static int hf_http_next_request_in = -1;
@@ -120,21 +132,25 @@ static int hf_http_prev_request_in = -1;
 static int hf_http_prev_response_in = -1;
 static int hf_http_time = -1;
 static int hf_http_chunk_size = -1;
+static int hf_http_chunk_data = -1;
 static int hf_http_chunk_boundary = -1;
 static int hf_http_chunked_trailer_part = -1;
 static int hf_http_file_data = -1;
 static int hf_http_unknown_header = -1;
+static int hf_http_http2_settings_uri = -1;
 
 static gint ett_http = -1;
 static gint ett_http_ntlmssp = -1;
 static gint ett_http_kerberos = -1;
 static gint ett_http_request = -1;
+static gint ett_http_request_uri = -1;
 static gint ett_http_request_path = -1;
 static gint ett_http_request_query = -1;
 static gint ett_http_chunked_response = -1;
 static gint ett_http_chunk_data = -1;
 static gint ett_http_encoded_entity = -1;
 static gint ett_http_header_item = -1;
+static gint ett_http_http2_settings_item = -1;
 
 static expert_field ei_http_chat = EI_INIT;
 static expert_field ei_http_te_and_length = EI_INIT;
@@ -142,7 +158,10 @@ static expert_field ei_http_te_unknown = EI_INIT;
 static expert_field ei_http_subdissector_failed = EI_INIT;
 static expert_field ei_http_tls_port = EI_INIT;
 static expert_field ei_http_leading_crlf = EI_INIT;
+static expert_field ei_http_excess_data = EI_INIT;
 static expert_field ei_http_bad_header_name = EI_INIT;
+static expert_field ei_http_decompression_failed = EI_INIT;
+static expert_field ei_http_decompression_disabled = EI_INIT;
 
 static dissector_handle_t http_handle;
 static dissector_handle_t http_tcp_handle;
@@ -154,6 +173,19 @@ static dissector_handle_t http2_handle;
 static dissector_handle_t sstp_handle;
 static dissector_handle_t ntlmssp_handle;
 static dissector_handle_t gssapi_handle;
+
+/* RFC 3986 Ch 2.2 Reserved characters*/
+/* patterns used for tvb_ws_mempbrk_pattern_guint8 */
+static ws_mempbrk_pattern pbrk_gen_delims;
+static ws_mempbrk_pattern pbrk_sub_delims;
+
+/* reassembly table for streaming chunk mode */
+static reassembly_table http_streaming_reassembly_table;
+
+REASSEMBLE_ITEMS_DEFINE(http_body, "HTTP Chunked Body");
+
+/* HTTP chunk virtual frame number (similar to HTTP2 frame num) */
+#define get_http_chunk_frame_num  get_virtual_frame_num64
 
 /* Stuff for generation/handling of fields for custom HTTP headers */
 typedef struct _header_field_t {
@@ -190,7 +222,7 @@ header_fields_update_cb(void *r, char **err)
 	 */
 	c = proto_check_field_name(rec->header_name);
 	if (c) {
-		*err = g_strdup_printf("Header name can't contain '%c'", c);
+		*err = ws_strdup_printf("Header name can't contain '%c'", c);
 		return FALSE;
 	}
 
@@ -265,15 +297,14 @@ static gboolean http_decompress_body = TRUE;
 #define SCTP_DEFAULT_RANGE "80"
 #define TLS_DEFAULT_RANGE "443"
 
-static range_t *global_http_sctp_range = NULL;
 static range_t *global_http_tls_range = NULL;
 
 static range_t *http_tcp_range = NULL;
 static range_t *http_sctp_range = NULL;
 static range_t *http_tls_range = NULL;
 
-typedef void (*ReqRespDissector)(tvbuff_t*, proto_tree*, int, const guchar*,
-				 const guchar*, http_conv_t *);
+typedef void (*ReqRespDissector)(packet_info*, tvbuff_t*, proto_tree*, int, const guchar*,
+				 const guchar*, http_conv_t *, http_req_res_t *);
 
 /**
  * Transfer codings from
@@ -305,45 +336,57 @@ typedef struct {
 	char    *upgrade;
 } headers_t;
 
+/* request or response streaming reassembly data */
+typedef struct {
+	/* reassembly information only for request or response with chunked and streaming data */
+	streaming_reassembly_info_t* streaming_reassembly_info;
+	/* subdissector handler for request or response with chunked and streaming data */
+	dissector_handle_t streaming_handle;
+	/* message being passed to subdissector if the request or response has chunked and streaming data */
+	media_content_info_t* content_info;
+	headers_t* main_headers;
+} http_streaming_reassembly_data_t;
+
+/* http request or response private data */
+typedef struct {
+	/* tcp forward flow of request message */
+	tcp_flow_t* req_fwd_flow;
+	/* request or response streaming reassembly data */
+	http_streaming_reassembly_data_t* req_streaming_reassembly_data;
+	http_streaming_reassembly_data_t* res_streaming_reassembly_data;
+} http_req_res_private_data_t;
+
 static gint parse_http_status_code(const guchar *line, const guchar *lineend);
-static int is_http_request_or_reply(const gchar *data, int linelen,
-				    http_type_t *type, ReqRespDissector
+static int is_http_request_or_reply(packet_info *pinfo, const gchar *data, int linelen,
+				    media_container_type_t *type, ReqRespDissector
 				    *reqresp_dissector, http_conv_t *conv_data);
 static guint chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
 					proto_tree *tree, int offset);
+static gboolean valid_header_name(const guchar *line, int header_len);
 static void process_header(tvbuff_t *tvb, int offset, int next_offset,
 			   const guchar *line, int linelen, int colon_offset,
 			   packet_info *pinfo, proto_tree *tree,
 			   headers_t *eh_ptr, http_conv_t *conv_data,
-			   http_type_t http_type);
+			   media_container_type_t http_type, wmem_map_t *header_value_map, gboolean streaming_chunk_mode);
 static gint find_header_hf_value(tvbuff_t *tvb, int offset, guint header_len);
 static gboolean check_auth_ntlmssp(proto_item *hdr_item, tvbuff_t *tvb,
 				   packet_info *pinfo, gchar *value);
 static gboolean check_auth_basic(proto_item *hdr_item, tvbuff_t *tvb,
 				 packet_info *pinfo, gchar *value);
 static gboolean check_auth_digest(proto_item* hdr_item, tvbuff_t* tvb, packet_info* pinfo _U_, gchar* value, int offset, int len);
-static gboolean check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb,
+static gboolean check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, packet_info *pinfo,
 				 gchar *value, int offset);
 static gboolean check_auth_kerberos(proto_item *hdr_item, tvbuff_t *tvb,
 				   packet_info *pinfo, const gchar *value);
 
 static dissector_table_t port_subdissector_table;
 static dissector_table_t media_type_subdissector_table;
+static dissector_table_t streaming_content_type_dissector_table;
 static dissector_table_t upgrade_subdissector_table;
 static heur_dissector_list_t heur_subdissector_list;
 
-/* Used for HTTP Export Object feature */
-typedef struct _http_eo_t {
-	guint32  pkt_num;
-	gchar   *hostname;
-	gchar   *filename;
-	gchar   *content_type;
-	guint32  payload_len;
-	const guint8 *payload_data;
-} http_eo_t;
-
 static tap_packet_status
-http_eo_packet(void *tapdata, packet_info *pinfo, epan_dissect_t *edt _U_, const void *data)
+http_eo_packet(void *tapdata, packet_info *pinfo, epan_dissect_t *edt _U_, const void *data, tap_flags_t flags _U_)
 {
 	export_object_list_t *object_list = (export_object_list_t *)tapdata;
 	const http_eo_t *eo_info = (const http_eo_t *)data;
@@ -355,11 +398,15 @@ http_eo_packet(void *tapdata, packet_info *pinfo, epan_dissect_t *edt _U_, const
 		entry = g_new(export_object_entry_t, 1);
 
 		entry->pkt_num = pinfo->num;
+		/* XXX: Should this remove the port, if any? It's only
+	         * for display, so probably not. */
 		entry->hostname = g_strdup(eo_info->hostname);
 		entry->content_type = g_strdup(eo_info->content_type);
+		/* XXX: Should this remove the query portion, if any, from
+	         * the path? (Or should that be done in the dissector?) */
 		entry->filename = eo_info->filename ? g_path_get_basename(eo_info->filename) : NULL;
-		entry->payload_len = eo_info->payload_len;
-		entry->payload_data = (guint8 *)g_memdup(eo_info->payload_data, eo_info->payload_len);
+		entry->payload_len = tvb_captured_length(eo_info->payload);
+		entry->payload_data = (guint8 *)tvb_memdup(NULL, eo_info->payload, 0, entry->payload_len);
 
 		object_list->add_entry(object_list->gui_data, entry);
 
@@ -457,6 +504,62 @@ static int st_node_reqs_by_srv_addr = -1;
 static int st_node_reqs_by_http_host = -1;
 static int st_node_resps_by_srv_addr = -1;
 
+/* Parse HTTP path sub components RFC3986 Ch 3.3, 3.4 */
+void
+http_add_path_components_to_tree(tvbuff_t* tvb, packet_info* pinfo _U_, proto_item* item, int offset, int length)
+{
+	proto_item* ti;
+	proto_tree* uri_tree;
+	int end_offset, end_path_offset, query_offset, path_len, query_len, parameter_offset;
+	end_offset = offset + length;
+	/* The Content-Location (and Referer) headers in HTTP 1.1, and the
+	 * :path header in HTTP/2 can be an absolute-URI or a partial-URI;
+	 * i.e. that they can include a path and a query, but not a fragment.
+	 * RFC 7230 2.7 Uniform Request Identifiers, RFC 7231 Appendices C and D,
+	 * RFC 7540 8.1.2.3. Request Pseudo-Header Fields
+	 * Look for a ? to mark a query.
+	 */
+	query_offset = tvb_find_guint8(tvb, offset, length, '?');
+	end_path_offset = (query_offset == -1) ? end_offset : query_offset;
+	parameter_offset = tvb_ws_mempbrk_pattern_guint8(tvb, offset + 1, end_path_offset - offset - 1, &pbrk_sub_delims, NULL);
+	if (query_offset == -1 && parameter_offset == -1) {
+		/* Nothing interesting, no need to split. */
+		return;
+	}
+	uri_tree = proto_item_add_subtree(item, ett_http_request_uri);
+	path_len = end_path_offset - offset;
+	proto_tree_add_item(uri_tree, hf_http_request_path, tvb, offset, path_len, ENC_ASCII);
+	parameter_offset = tvb_ws_mempbrk_pattern_guint8(tvb, offset + 1, end_path_offset - offset - 1, &pbrk_sub_delims, NULL);
+	if (parameter_offset != -1) {
+		proto_tree* path_tree = proto_item_add_subtree(item, ett_http_request_path);
+		while (offset < end_path_offset) {
+			parameter_offset = tvb_ws_mempbrk_pattern_guint8(tvb, offset + 1, end_path_offset - offset - 1, &pbrk_sub_delims, NULL);
+			if (parameter_offset == -1) {
+				parameter_offset = end_path_offset;
+			}
+			proto_tree_add_item(path_tree, hf_http_request_path_segment, tvb, offset, parameter_offset - offset, ENC_ASCII);
+			offset = parameter_offset + 1;
+		}
+	}
+	if (query_offset == -1) {
+		return;
+	}
+	/* Skip past the delimiter. */
+	query_offset++;
+	query_len = end_offset - query_offset;
+	offset = query_offset;
+	ti = proto_tree_add_item(uri_tree, hf_http_request_query, tvb, query_offset, query_len, ENC_ASCII);
+	proto_tree *query_tree = proto_item_add_subtree(ti, ett_http_request_query);
+	while (offset < end_offset) {
+		parameter_offset = tvb_ws_mempbrk_pattern_guint8(tvb, offset + 1, end_offset - offset - 1, &pbrk_sub_delims, NULL);
+		if (parameter_offset == -1) {
+			parameter_offset = end_offset;
+		}
+		proto_tree_add_item(query_tree, hf_http_request_query_parameter, tvb, offset, parameter_offset - offset, ENC_ASCII);
+		offset = parameter_offset + 1;
+	}
+}
+
 /* HTTP/Load Distribution stats init function */
 static void
 http_reqs_stats_tree_init(stats_tree* st)
@@ -469,7 +572,7 @@ http_reqs_stats_tree_init(stats_tree* st)
 
 /* HTTP/Load Distribution stats packet function */
 static tap_packet_status
-http_reqs_stats_tree_packet(stats_tree* st, packet_info* pinfo, epan_dissect_t* edt _U_, const void* p)
+http_reqs_stats_tree_packet(stats_tree* st, packet_info* pinfo, epan_dissect_t* edt _U_, const void* p, tap_flags_t flags _U_)
 {
 	const http_info_value_t* v = (const http_info_value_t*)p;
 	int reqs_by_this_host;
@@ -531,7 +634,7 @@ http_req_stats_tree_init(stats_tree* st)
 
 /* HTTP/Requests stats packet function */
 static tap_packet_status
-http_req_stats_tree_packet(stats_tree* st, packet_info* pinfo _U_, epan_dissect_t* edt _U_, const void* p)
+http_req_stats_tree_packet(stats_tree* st, packet_info* pinfo _U_, epan_dissect_t* edt _U_, const void* p, tap_flags_t flags _U_)
 {
 	const http_info_value_t* v = (const http_info_value_t*)p;
 	int reqs_by_this_host;
@@ -594,7 +697,7 @@ http_stats_tree_init(stats_tree* st)
 
 /* HTTP/Packet Counter stats packet function */
 static tap_packet_status
-http_stats_tree_packet(stats_tree* st, packet_info* pinfo _U_, epan_dissect_t* edt _U_, const void* p)
+http_stats_tree_packet(stats_tree* st, packet_info* pinfo _U_, epan_dissect_t* edt _U_, const void* p, tap_flags_t flags _U_)
 {
 	const http_info_value_t* v = (const http_info_value_t*)p;
 	guint i = v->response_code;
@@ -629,7 +732,7 @@ http_stats_tree_packet(stats_tree* st, packet_info* pinfo _U_, epan_dissect_t* e
 
 		tick_stat_node(st, resp_str, st_node_responses, FALSE);
 
-		g_snprintf(str, sizeof(str), "%u %s", i,
+		snprintf(str, sizeof(str), "%u %s", i,
 			   val_to_str(i, vals_http_status_code, "Unknown (%d)"));
 		tick_stat_node(st, str, resp_grp, FALSE);
 	} else if (v->request_method) {
@@ -762,7 +865,7 @@ http_seq_stats_tick_request(stats_tree* st, const gchar* arg_full_uri, gint refe
 }
 
 static gchar*
-determine_http_location_target(const gchar *base_url, const gchar * location_url)
+determine_http_location_target(wmem_allocator_t *scope, const gchar *base_url, const gchar * location_url)
 {
 	/* Resolving a base URI + relative URI to an absolute URI ("Relative Resolution")
 	is complicated. Because of that, we take shortcuts that may result in
@@ -781,7 +884,7 @@ determine_http_location_target(const gchar *base_url, const gchar * location_url
 
 	/* Empty Location */
 	if (location_url[0] == '\0') {
-		final_target = wmem_strdup(wmem_packet_scope(), base_url);
+		final_target = wmem_strdup(scope, base_url);
 		return final_target;
 	}
 	/* Protocol Relative */
@@ -790,13 +893,13 @@ determine_http_location_target(const gchar *base_url, const gchar * location_url
 		if (base_scheme == NULL) {
 			return NULL;
 		}
-		final_target = wmem_strdup_printf(wmem_packet_scope(), "%s:%s", base_scheme, location_url);
+		final_target = wmem_strdup_printf(scope, "%s:%s", base_scheme, location_url);
 		g_free(base_scheme);
 		return final_target;
 	}
 	/* Absolute URL*/
 	else if (strstr(location_url, "://") != NULL) {
-		final_target = wmem_strdup(wmem_packet_scope(), location_url);
+		final_target = wmem_strdup(scope, location_url);
 		return final_target;
 	}
 	/* Relative */
@@ -808,24 +911,24 @@ determine_http_location_target(const gchar *base_url, const gchar * location_url
 
 		/* Strip off the fragment (which should never be present)*/
 		if (start_fragment == NULL) {
-			base_url_no_fragment = wmem_strdup(wmem_packet_scope(), base_url);
+			base_url_no_fragment = wmem_strdup(scope, base_url);
 		}
 		else {
-			base_url_no_fragment = wmem_strndup(wmem_packet_scope(), base_url, start_fragment - base_url);
+			base_url_no_fragment = wmem_strndup(scope, base_url, start_fragment - base_url);
 		}
 
 		/* Strip off the query (Queries are stripped from all relative URIs) */
 		start_query = strstr(base_url_no_fragment, "?");
 		if (start_query == NULL) {
-			base_url_no_query = wmem_strdup(wmem_packet_scope(), base_url_no_fragment);
+			base_url_no_query = wmem_strdup(scope, base_url_no_fragment);
 		}
 		else {
-			base_url_no_query = wmem_strndup(wmem_packet_scope(), base_url_no_fragment, start_query - base_url_no_fragment);
+			base_url_no_query = wmem_strndup(scope, base_url_no_fragment, start_query - base_url_no_fragment);
 		}
 
 		/* A leading question mark (?) means to replace the old query with the new*/
 		if (g_str_has_prefix(location_url, "?")) {
-			final_target = wmem_strdup_printf(wmem_packet_scope(), "%s%s", base_url_no_query, location_url);
+			final_target = wmem_strdup_printf(scope, "%s%s", base_url_no_query, location_url);
 			return final_target;
 		}
 		/* A leading slash means to put the location after the netloc */
@@ -841,7 +944,7 @@ determine_http_location_target(const gchar *base_url, const gchar * location_url
 				return NULL;
 			}
 			netloc_length = (gint) (netloc_end - base_url_no_query);
-			final_target = wmem_strdup_printf(wmem_packet_scope(), "%.*s%s", netloc_length, base_url_no_query, location_url);
+			final_target = wmem_strdup_printf(scope, "%.*s%s", netloc_length, base_url_no_query, location_url);
 			return final_target;
 		}
 		/* Otherwise, it replaces the last element in the URI */
@@ -851,10 +954,10 @@ determine_http_location_target(const gchar *base_url, const gchar * location_url
 
 			if (end_of_path != NULL) {
 				gint base_through_path = (gint) (end_of_path - base_url_no_query);
-				final_target = wmem_strdup_printf(wmem_packet_scope(), "%.*s/%s", base_through_path, base_url_no_query, location_url);
+				final_target = wmem_strdup_printf(scope, "%.*s/%s", base_through_path, base_url_no_query, location_url);
 			}
 			else {
-				final_target = wmem_strdup_printf(wmem_packet_scope(), "%s/%s", base_url_no_query, location_url);
+				final_target = wmem_strdup_printf(scope, "%s/%s", base_url_no_query, location_url);
 			}
 
 			return final_target;
@@ -865,7 +968,7 @@ determine_http_location_target(const gchar *base_url, const gchar * location_url
 
 /* HTTP/Request Sequences stats packet function */
 static tap_packet_status
-http_seq_stats_tree_packet(stats_tree* st, packet_info* pinfo _U_, epan_dissect_t* edt _U_, const void* p)
+http_seq_stats_tree_packet(stats_tree* st, packet_info* pinfo, epan_dissect_t* edt _U_, const void* p, tap_flags_t flags _U_)
 {
 	const http_info_value_t* v = (const http_info_value_t*)p;
 
@@ -877,7 +980,7 @@ http_seq_stats_tree_packet(stats_tree* st, packet_info* pinfo _U_, epan_dissect_
 		gpointer current_node_id_p;
 		gchar *uri = NULL;
 
-		gchar *absolute_target = determine_http_location_target(v->location_base_uri, v->location_target);
+		gchar *absolute_target = determine_http_location_target(pinfo->pool, v->location_base_uri, v->location_target);
 		/* absolute_target is NULL if the resolution fails */
 		if (absolute_target != NULL) {
 			/* We assume the user makes the request to the absolute_target */
@@ -965,6 +1068,8 @@ get_http_conversation_data(packet_info *pinfo, conversation_t **conversation)
 	if(!conv_data) {
 		/* Setup the conversation structure itself */
 		conv_data = wmem_new0(wmem_file_scope(), http_conv_t);
+		conv_data->chunk_offsets_fwd = wmem_map_new(wmem_file_scope(), g_direct_hash, g_direct_equal);
+		conv_data->chunk_offsets_rev = wmem_map_new(wmem_file_scope(), g_direct_hash, g_direct_equal);
 
 		conversation_add_proto_data(*conversation, proto_http,
 					    conv_data);
@@ -977,7 +1082,8 @@ get_http_conversation_data(packet_info *pinfo, conversation_t **conversation)
  * create a new http_req_res_t and add it to the conversation.
  * @return the new allocated object which is already added to the linked list
  */
-static http_req_res_t* push_req_res(http_conv_t *conv_data)
+static http_req_res_t*
+push_req_res(http_conv_t *conv_data)
 {
 	http_req_res_t *req_res = wmem_new0(wmem_file_scope(), http_req_res_t);
 	nstime_set_unset(&(req_res->req_ts));
@@ -991,13 +1097,16 @@ static http_req_res_t* push_req_res(http_conv_t *conv_data)
 		conv_data->req_res_tail = req_res;
 	}
 
+	req_res->private_data = wmem_new0(wmem_file_scope(), http_req_res_private_data_t);
+
 	return req_res;
 }
 
 /**
  * push a request frame number and its time stamp to the conversation data.
  */
-static void push_req(http_conv_t *conv_data, packet_info *pinfo)
+static http_req_res_t*
+push_req(http_conv_t *conv_data, packet_info *pinfo)
 {
 	/* a request will always create a new http_req_res_t object */
 	http_req_res_t *req_res = push_req_res(conv_data);
@@ -1005,38 +1114,52 @@ static void push_req(http_conv_t *conv_data, packet_info *pinfo)
 	req_res->req_framenum = pinfo->num;
 	req_res->req_ts = pinfo->abs_ts;
 
-	p_add_proto_data(wmem_file_scope(), pinfo, proto_http, 0, req_res);
+	/* XXX: Using the same proto key for the frame doesn't work well
+         * with HTTP 1.1 pipelining, or other situations where more
+         * than one request can appear in a frame.
+         */
+	p_add_proto_data(wmem_file_scope(), pinfo, proto_http, HTTP_PROTO_DATA_REQRES, req_res);
+
+	return req_res;
 }
 
 /**
  * push a response frame number to the conversation data.
  */
-static void push_res(http_conv_t *conv_data, packet_info *pinfo)
+static http_req_res_t*
+push_res(http_conv_t *conv_data, packet_info *pinfo)
 {
 	/* a response will create a new http_req_res_t object: if no
-	   object exists, or if one exists for another response. In
-	   both cases the corresponding request was not
+	   object exists, or if the most recent one is already for
+	   a different response. (Exception: If the previous response
+	   code was in the Informational 1xx category, then it was
+	   an interim response, and this response could be for the same
+	   request.) In both cases the corresponding request was not
 	   detected/included in the conversation. In all other cases
 	   the http_req_res_t object created by the request is
 	   used. */
+	/* XXX: This finds the only most recent request and doesn't support
+         * HTTP 1.1 pipelining.
+         */
 	http_req_res_t *req_res = conv_data->req_res_tail;
-	if (!req_res || req_res->res_framenum > 0) {
+	if (!req_res || (req_res->res_framenum > 0 && req_res->response_code >= 200)) {
 		req_res = push_req_res(conv_data);
 	}
 	req_res->res_framenum = pinfo->num;
-	p_add_proto_data(wmem_file_scope(), pinfo, proto_http, 0, req_res);
-}
+	/* XXX: Using the same proto key for the frame doesn't work well
+         * with HTTP 1.1 pipelining, or other situations where more
+         * than one request can appear in a frame.
+         */
+	p_add_proto_data(wmem_file_scope(), pinfo, proto_http, HTTP_PROTO_DATA_REQRES, req_res);
 
-/*
- * TODO: remove this ugly global variable.
- * XXX: do we really want to have to pass this from one function to another?
- */
-static http_info_value_t	*stat_info;
+	return req_res;
+}
 
 static int
 dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		     proto_tree *tree, http_conv_t *conv_data,
-		     const char* proto_tag, int proto, gboolean end_of_stream)
+		     const char* proto_tag, int proto, gboolean end_of_stream,
+		     const guint32* const seq)
 {
 	proto_tree	*http_tree = NULL;
 	proto_item	*ti = NULL;
@@ -1044,19 +1167,19 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 	const guchar	*line, *firstline;
 	gint		next_offset;
 	const guchar	*linep, *lineend;
-	int		orig_offset;
+	int		orig_offset = offset;
 	int		first_linelen, linelen;
 	gboolean	is_request_or_reply, is_tls = FALSE;
 	gboolean	saw_req_resp_or_header;
-	http_type_t     http_type;
+	media_container_type_t     http_type;
 	proto_item	*hdr_item = NULL;
 	ReqRespDissector reqresp_dissector;
 	proto_tree	*req_tree;
 	int		colon_offset;
-	headers_t	headers;
+	headers_t	*headers = NULL;
 	int		datalen;
 	int		reported_datalen = -1;
-	dissector_handle_t handle;
+	dissector_handle_t handle = NULL;
 	gboolean	dissected = FALSE;
 	gboolean	first_loop = TRUE;
 	gboolean	have_seen_http = FALSE;
@@ -1067,7 +1190,69 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 	int reported_length;
 	guint16 word;
 	gboolean	leading_crlf = FALSE;
-	http_message_info_t message_info;
+	gboolean	excess_data = FALSE;
+	media_content_info_t* content_info = NULL;
+	wmem_map_t* header_value_map = NULL;
+	int 		chunk_offset = 0;
+	wmem_map_t	*chunk_map = NULL;
+	/*
+	 * For supporting dissecting chunked data in streaming reassembly mode.
+	 *
+	 * If a HTTP request or response is chunked encoding (the transfer-encoding
+	 * header is 'chunked') and its content-type matching a subdissector in
+	 * "streaming_content_type" dissector table, then we switch to dissect in
+	 * streaming chunk mode. In streaming chunk mode, we dissect the data as soon
+	 * as possible, unlike normal mode, we don't start reassembling until the end
+	 * of the request or response message or at the end of the TCP stream. In
+	 * streaming chunk mode, the first reassembled PDU contains HTTP headers
+	 * and at least one completed chunk of this request or response message. And
+	 * subsequent PDUs consist of one or more chunks:
+	 *
+	 * -----             +-- Reassembled Streaming Content PDU(s) --+-- Reassembled Streaming Content PDU(s) --+--- Reassembled ...
+	 * HLProtos          |              1*high-proto-pdu            |             1*high-proto-pdu             |   1*high-proto-pdu
+	 * -----             +-------------------------------------+----+--------------------------------+---------+-------------------
+	 *                   |           de-chunked-data           |            de-chunked-data          |        de-chunked-data
+	 * HTTP    +-------- First Reassembled HTTP PDU -----------+--- Second Reassembled HTTP PDU -----+- Third PDU -+  +- Fourth ---
+	 *         |            headers and 1*chunk                |               1*chunk               |   1*chunk   |  | 1*chunk ...
+	 * -----   +--------- TCP segment ---------+  +-----------TCP segment -----------+  +---- TCP segment ---------+  +------------
+	 * TCP     | headers | *chunk | part-chunk |  | part-chunk | *chunk | part-chunk |  | part-chunk |   1*chunk   |  | 1*chunk ...
+	 * -----   +---------+--------+------------+  +------------+--------+------------+  +------------+-------------+  +------------
+	 *
+	 * Notation:
+	 * - headers             HTTP headers of a request or response message.
+	 * - part-chunk          The front or rear part of a HTTP chunk.
+	 * - *chunk              Zero or more completed HTTP chunks of a HTTP message.
+	 * - 1*chunk             One or more completed HTTP chunks of a HTTP message.
+	 * - de-chunked-data     De-chunked HTTP body data based on one or more completed chunks.
+	 * - 1*high-proto-pdu    One or more high level protocol (on top of HTTP) PDUs.
+	 * - HLProtos            High Level Protocols like GRPC-Web.
+	 *
+	 * The headers and content_info of the req_res are allocated in file scope that
+	 * helps to provide information for dissecting subsequent PDUs which only
+	 * contains chunks without headers.
+	 */
+	gboolean streaming_chunk_mode = FALSE;
+	gboolean begin_with_chunk = FALSE;
+	http_streaming_reassembly_data_t* streaming_reassembly_data = NULL;
+	struct tcp_analysis* tcpd = get_tcp_conversation_data(NULL, pinfo);
+
+	conversation_t  *conversation;
+	http_req_res_t  *curr = (http_req_res_t *)p_get_proto_data(wmem_file_scope(), pinfo, proto_http, HTTP_PROTO_DATA_REQRES);
+	http_info_value_t *stat_info = NULL;
+	http_req_res_private_data_t* prv_data = curr ? (http_req_res_private_data_t*)curr->private_data : NULL;
+	http_req_res_private_data_t* tail_prv_data = NULL;
+
+	conversation = find_or_create_conversation(pinfo);
+	if (cmp_address(&pinfo->src, conversation_key_addr1(conversation->key_ptr)) == 0 && pinfo->srcport == conversation_key_port1(conversation->key_ptr)) {
+		chunk_map = conv_data->chunk_offsets_fwd;
+	} else if (cmp_address(&pinfo->dst, conversation_key_addr1(conversation->key_ptr)) == 0 && pinfo->destport == conversation_key_port1(conversation->key_ptr)) {
+		chunk_map = conv_data->chunk_offsets_rev;
+	}
+
+	if (seq && chunk_map) {
+		chunk_offset = GPOINTER_TO_INT(wmem_map_lookup(chunk_map, GUINT_TO_POINTER(*seq)));
+		/* Returns 0 when there is no entry in the map, as we want. */
+	}
 
 	reported_length = tvb_reported_length_remaining(tvb, offset);
 	if (reported_length < 1) {
@@ -1094,7 +1279,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 	 * actually HTTP (even if what we have here is part of a file being
 	 * transferred over HTTP).
 	 */
-	if (conv_data->request_uri)
+	if (conv_data->req_res_tail)
 		have_seen_http = TRUE;
 
 	/*
@@ -1104,15 +1289,35 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 	if (!g_ascii_isprint(tvb_get_guint8(tvb, offset))) {
 		/*
 		 * But, if we've seen some real HTTP then we're sure this is
-		 * an HTTP conversation.  Mark it as such.
+		 * an HTTP conversation, and this is binary file data.
+		 * Mark it as such.
 		 */
 		if (have_seen_http) {
+			tvbuff_t *next_tvb;
+			const gchar *file_data;
+
 			col_set_str(pinfo->cinfo, COL_PROTOCOL, proto_tag);
 			col_set_str(pinfo->cinfo, COL_INFO, "Continuation");
 			ti = proto_tree_add_item(tree, proto, tvb, offset, -1, ENC_NA);
 			http_tree = proto_item_add_subtree(ti, ett_http);
 
-			call_data_dissector(tvb, pinfo, http_tree);
+			next_tvb = tvb_new_subset_remaining(tvb, orig_offset);
+			/* If orig_offset > 0, this isn't the first message
+			 * dissected in this TCP segment, which means we had
+			 * a Content-Length, but more data after that body.
+			 */
+			if (orig_offset > 0) {
+				proto_tree_add_expert(http_tree, pinfo, &ei_http_excess_data, next_tvb, 0, tvb_captured_length(next_tvb));
+			}
+			/* Send it to Follow HTTP Stream and mark as file data */
+			if(have_tap_listener(http_follow_tap)) {
+				tap_queue_packet(http_follow_tap, pinfo, next_tvb);
+			}
+			file_data = tvb_get_string_enc(pinfo->pool, next_tvb, 0, tvb_captured_length(next_tvb), ENC_ASCII);
+			proto_tree_add_string_format_value(http_tree, hf_http_file_data,
+				next_tvb, 0, tvb_captured_length(next_tvb), file_data, "%u bytes", tvb_captured_length(next_tvb));
+
+			call_data_dissector(next_tvb, pinfo, http_tree);
 		}
 		return -1;
 	}
@@ -1133,11 +1338,40 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 * desegmentation if we're told to.
 		 */
 		if (!req_resp_hdrs_do_reassembly(tvb, offset, pinfo,
-		    http_desegment_headers, http_desegment_body, FALSE)) {
+		    http_desegment_headers, http_desegment_body, FALSE, &chunk_offset,
+			streaming_content_type_dissector_table, &handle)) {
 			/*
 			 * More data needed for desegmentation.
 			 */
 			return -1;
+		}
+	}
+
+	if (!PINFO_FD_VISITED(pinfo) && conv_data->req_res_tail && conv_data->req_res_tail->private_data) {
+		tail_prv_data = (http_req_res_private_data_t*) conv_data->req_res_tail->private_data;
+	}
+
+	/* Check whether the first line is the beginning of a chunk. If it is the beginning
+	 * of a chunk, the headers and at least one chunk of HTTP request or response should
+	 * be dissected in the previous packets, and now we are processing subsequent chunks.
+	 */
+	if (http_desegment_body && http_dechunk_body) {
+		begin_with_chunk = starts_with_chunk_size(tvb, offset, pinfo);
+
+		if (begin_with_chunk &&
+			((prv_data && (      /* This packet has been parsed */
+				/* and now we are in a HTTP request chunk stream */
+				(prv_data->req_fwd_flow == tcpd->fwd && prv_data->req_streaming_reassembly_data) ||
+				/* and now we are in a HTTP response chunk stream */
+				(prv_data->req_fwd_flow == tcpd->rev && prv_data->res_streaming_reassembly_data)))
+			||
+			(tail_prv_data && ( /* This packet has not been parsed and headers info in conv_data->req_res_tail */
+				/* and now we are in a HTTP request chunk stream */
+				(tail_prv_data->req_fwd_flow == tcpd->fwd && tail_prv_data->req_streaming_reassembly_data) ||
+				/* and now we are in a HTTP response chunk stream */
+				(tail_prv_data->req_fwd_flow == tcpd->rev && tail_prv_data->res_streaming_reassembly_data)))))
+		{
+			streaming_chunk_mode = TRUE;
 		}
 	}
 
@@ -1149,18 +1383,22 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 	 * "tvb_get_ptr()" call won't throw an exception.
 	 */
 	firstline = tvb_get_ptr(tvb, offset, first_linelen);
-	http_type = HTTP_OTHERS;	/* type not known yet */
-	is_request_or_reply = is_http_request_or_reply((const gchar *)firstline,
+	http_type = MEDIA_CONTAINER_HTTP_OTHERS;	/* type not known yet */
+	is_request_or_reply = is_http_request_or_reply(pinfo, (const gchar *)firstline,
 	    first_linelen, &http_type, NULL, conv_data);
-	if (is_request_or_reply) {
+	if (is_request_or_reply || streaming_chunk_mode) {
 		gboolean try_desegment_body;
 
-		/*
-		 * Yes, it's a request or response.
-		 * Put the first line from the buffer into the summary
-		 * (but leave out the line terminator).
-		 */
-		col_add_fstr(pinfo->cinfo, COL_INFO, "%s ", format_text(wmem_packet_scope(), firstline, first_linelen));
+		if (streaming_chunk_mode && begin_with_chunk) {
+			col_add_str(pinfo->cinfo, COL_INFO, "Chunk Stream ");
+		} else {
+			/*
+			 * Yes, it's a request or response.
+			 * Put the first line from the buffer into the summary
+			 * (but leave out the line terminator).
+			 */
+			col_add_fstr(pinfo->cinfo, COL_INFO, "%s ", format_text(pinfo->pool, firstline, first_linelen));
+		}
 
 		/*
 		 * Do header desegmentation if we've been told to,
@@ -1177,14 +1415,29 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 * will be added so disable body segmentation too in that case.
 		 */
 		try_desegment_body = (http_desegment_body && !end_of_stream);
-		if (try_desegment_body && http_type == HTTP_RESPONSE) {
+		if (try_desegment_body && http_type == MEDIA_CONTAINER_HTTP_RESPONSE && !streaming_chunk_mode) {
 			/*
-			 * conv_data->response_code is not yet set, so extract
+			 * The response_code is not yet set, so extract
 			 * the response code from the current line.
 			 */
 			gint response_code = parse_http_status_code(firstline, firstline + first_linelen);
-			if ((g_strcmp0(conv_data->request_method, "HEAD") == 0 ||
-				(response_code / 100 == 2 && g_strcmp0(conv_data->request_method, "CONNECT") == 0) ||
+			/*
+			 * On a second pass, we should have already associated
+			 * the response with the request. On a first sequential
+			 * pass, we haven't done so yet (as we don't know if we
+			 * need more data), so get the request method from the
+			 * most recent request, if it exists.
+			 */
+			char* request_method = NULL;
+			if (curr) {
+				request_method = curr->request_method;
+			} else if (!PINFO_FD_VISITED(pinfo) && conv_data->req_res_tail) {
+				request_method = conv_data->req_res_tail->request_method;
+			}
+			if ((g_strcmp0(request_method, "HEAD") == 0 ||
+				(response_code / 100 == 2 &&
+					(g_strcmp0(request_method, "CONNECT") == 0 ||
+					 g_strcmp0(request_method, "SSTP_DUPLEX_POST") == 0)) ||
 				response_code / 100 == 1 ||
 				response_code == 204 ||
 				response_code == 304)) {
@@ -1193,20 +1446,41 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			}
 		}
 		if (!req_resp_hdrs_do_reassembly(tvb, offset, pinfo,
-		    http_desegment_headers, try_desegment_body, http_type == HTTP_RESPONSE)) {
+		    http_desegment_headers, try_desegment_body, http_type == MEDIA_CONTAINER_HTTP_RESPONSE, &chunk_offset,
+			streaming_content_type_dissector_table, &handle)) {
 			/*
 			 * More data needed for desegmentation.
 			 */
+			if (seq && chunk_map && chunk_offset) {
+				wmem_map_insert(chunk_map, GUINT_TO_POINTER(*seq), GINT_TO_POINTER(chunk_offset));
+			}
 			return -1;
 		}
+
+		if (handle && http_desegment_body && http_dechunk_body) {
+			/* This handle is set because there is a header 'Transfer-Encoding: chunked', and
+			 * a streaming mode reassembly supported subdissector is found according to the
+			 * header of Content-Type.
+			 */
+			streaming_chunk_mode = TRUE;
+		}
 	} else if (have_seen_http) {
-		 /*
-		  * If we know this is HTTP then call it continuation.
-		  */
+		/*
+		 * If we know this is HTTP then call it continuation.
+		 */
+		/* If orig_offset > 0, this isn't the first message dissected
+		 * in this segment, which means we had a Content-Length, but
+		 * more data after the body. If this isn't a request or reply,
+		 * that's bogus, and probably means the Content-Length was
+		 * wrong.
+		 */
+		if (orig_offset > 0) {
+			excess_data = TRUE;
+		}
 		col_set_str(pinfo->cinfo, COL_INFO, "Continuation");
 	}
 
-	if (is_request_or_reply || have_seen_http) {
+	if (is_request_or_reply || have_seen_http || streaming_chunk_mode) {
 		/*
 		 * Now set COL_PROTOCOL and create the http tree for the
 		 * cases where we set COL_INFO above.
@@ -1218,11 +1492,45 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		if (leading_crlf) {
 			proto_tree_add_expert(http_tree, pinfo, &ei_http_leading_crlf, tvb, offset-2, 2);
 		}
+		if (excess_data) {
+			proto_tree_add_expert(http_tree, pinfo, &ei_http_excess_data, tvb, offset, tvb_captured_length_remaining(tvb, offset));
+		}
 	}
 
 	is_tls = proto_is_frame_protocol(pinfo->layers, "tls");
 
-	stat_info = wmem_new(wmem_packet_scope(), http_info_value_t);
+	if (!PINFO_FD_VISITED(pinfo) && begin_with_chunk
+		&& streaming_chunk_mode && conv_data->req_res_tail) {
+		/* point this packet beginning with a chunk to req_res info created in previous packet. */
+		curr = conv_data->req_res_tail;
+		prv_data = (http_req_res_private_data_t*)curr->private_data;
+		p_set_proto_data(wmem_file_scope(), pinfo, proto_http, HTTP_PROTO_DATA_REQRES, curr);
+	}
+
+	if (prv_data) {
+		if (prv_data->req_fwd_flow == tcpd->fwd && prv_data->req_streaming_reassembly_data) {
+			/* in request flow */
+			streaming_reassembly_data = prv_data->req_streaming_reassembly_data;
+		} else if (prv_data->req_fwd_flow == tcpd->rev && prv_data->res_streaming_reassembly_data) {
+			/* in response flow */
+			streaming_reassembly_data = prv_data->res_streaming_reassembly_data;
+		}
+
+		if (streaming_reassembly_data) {
+			streaming_chunk_mode = TRUE;
+			headers = streaming_reassembly_data->main_headers;
+			handle = streaming_reassembly_data->streaming_handle;
+			content_info = streaming_reassembly_data->content_info;
+			header_value_map = (wmem_map_t*) content_info->data;
+		}
+	}
+
+	if (streaming_chunk_mode && begin_with_chunk) {
+		datalen = reported_length;
+		goto dissecting_body;
+	}
+
+	stat_info = wmem_new(pinfo->pool, http_info_value_t);
 	stat_info->framenum = pinfo->num;
 	stat_info->response_code = 0;
 	stat_info->request_method = NULL;
@@ -1232,21 +1540,21 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 	stat_info->full_uri = NULL;
 	stat_info->location_target = NULL;
 	stat_info->location_base_uri = NULL;
-
-	orig_offset = offset;
+	p_set_proto_data(pinfo->pool, pinfo, proto_http, HTTP_PROTO_DATA_INFO, (void *)stat_info);
 
 	/*
 	 * Process the packet data, a line at a time.
 	 */
-	http_type = HTTP_OTHERS;	/* type not known yet */
-	headers.content_type = NULL;	/* content type not known yet */
-	headers.content_type_parameters = NULL;	/* content type parameters too */
-	headers.have_content_length = FALSE;	/* content length not known yet */
-	headers.content_length = 0;		/* content length set to 0 (avoid a gcc warning) */
-	headers.content_encoding = NULL; /* content encoding not known yet */
-	headers.transfer_encoding_chunked = FALSE;
-	headers.transfer_encoding = HTTP_TE_NONE;
-	headers.upgrade = NULL;         /* assume no upgrade header */
+	http_type = MEDIA_CONTAINER_HTTP_OTHERS;	/* type not known yet */
+	if (headers == NULL) {
+		DISSECTOR_ASSERT_HINT(!PINFO_FD_VISITED(pinfo) || (PINFO_FD_VISITED(pinfo) && !streaming_chunk_mode),
+			"The headers variable should not be NULL if it is in streaming mode during a non first scan.");
+		DISSECTOR_ASSERT_HINT(header_value_map == NULL, "The header_value_map variable should be NULL while headers is NULL.");
+
+		headers = wmem_new0((streaming_chunk_mode ? wmem_file_scope() : pinfo->pool), headers_t);
+		header_value_map = wmem_map_new((streaming_chunk_mode ? wmem_file_scope() : pinfo->pool), g_str_hash, g_str_equal);
+	}
+
 	saw_req_resp_or_header = FALSE;	/* haven't seen anything yet */
 	while (tvb_offset_exists(tvb, offset)) {
 		/*
@@ -1278,7 +1586,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 */
 		reqresp_dissector = NULL;
 		is_request_or_reply =
-		    is_http_request_or_reply((const gchar *)line,
+		    is_http_request_or_reply(pinfo, (const gchar *)line,
 		    linelen, &http_type, &reqresp_dissector, conv_data);
 		if (is_request_or_reply)
 			goto is_http;
@@ -1298,10 +1606,13 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		linep = (const guchar *)memchr(line, ':', linelen);
 		if (linep) {
 			/*
-			 * Colon found, assume it is a header.
+			 * Colon found, assume it is a header if we've seen a
+			 * valid line before. Check a little more if not.
 			 */
-			colon_offset += (int)(linep - line);
-			goto is_http;
+			if (saw_req_resp_or_header || valid_header_name(line, (int)(linep - line))) {
+				colon_offset += (int)(linep - line);
+				goto is_http;
+			}
 		}
 
 		/*
@@ -1374,23 +1685,35 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 */
 		saw_req_resp_or_header = TRUE;
 		if (is_request_or_reply) {
-			char *text = tvb_format_text(tvb, offset, next_offset - offset);
+			char *text = tvb_format_text(pinfo->pool, tvb, offset, next_offset - offset);
 
 			req_tree = proto_tree_add_subtree(http_tree, tvb,
 				    offset, next_offset - offset, ett_http_request, &hdr_item, text);
 
 			expert_add_info_format(pinfo, hdr_item, &ei_http_chat, "%s", text);
+			if (!PINFO_FD_VISITED(pinfo)) {
+				if (http_type == MEDIA_CONTAINER_HTTP_REQUEST) {
+					curr = push_req(conv_data, pinfo);
+					curr->request_method = wmem_strdup(wmem_file_scope(), stat_info->request_method);
+					prv_data = curr->private_data;
+					prv_data->req_fwd_flow = tcpd->fwd;
+				} else if (http_type == MEDIA_CONTAINER_HTTP_RESPONSE) {
+					curr = push_res(conv_data, pinfo);
+					prv_data = curr->private_data;
+					prv_data->req_fwd_flow = tcpd->rev;
+				}
+			}
 			if (reqresp_dissector) {
-				reqresp_dissector(tvb, req_tree, offset, line,
-						  lineend, conv_data);
+				reqresp_dissector(pinfo, tvb, req_tree, offset, line,
+						  lineend, conv_data, curr);
 			}
 		} else {
 			/*
 			 * Header.
 			 */
 			process_header(tvb, offset, next_offset, line, linelen,
-			    colon_offset, pinfo, http_tree, &headers, conv_data,
-			    http_type);
+			    colon_offset, pinfo, http_tree, headers, conv_data,
+			    http_type, header_value_map, streaming_chunk_mode);
 		}
 		offset = next_offset;
 	}
@@ -1400,16 +1723,18 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
 		if ((g_ascii_strncasecmp(stat_info->request_uri, "http://", 7) == 0) ||
 		    (g_ascii_strncasecmp(stat_info->request_uri, "https://", 8) == 0) ||
-		    (g_ascii_strncasecmp(conv_data->request_method, "CONNECT", 7) == 0)) {
-			uri = wmem_strdup(wmem_packet_scope(), stat_info->request_uri);
+		    (g_ascii_strncasecmp(stat_info->request_method, "CONNECT", 7) == 0)) {
+			uri = wmem_strdup(pinfo->pool, stat_info->request_uri);
 		}
 		else {
-			uri = wmem_strdup_printf(wmem_packet_scope(), "%s://%s%s",
+			uri = wmem_strdup_printf(pinfo->pool, "%s://%s%s",
 				    is_tls ? "https" : "http",
-				    g_strstrip(wmem_strdup(wmem_packet_scope(), stat_info->http_host)), stat_info->request_uri);
+				    g_strstrip(wmem_strdup(pinfo->pool, stat_info->http_host)), stat_info->request_uri);
 		}
-		stat_info->full_uri = wmem_strdup(wmem_packet_scope(), uri);
-		conv_data->full_uri = wmem_strdup(wmem_file_scope(), uri);
+		stat_info->full_uri = wmem_strdup(pinfo->pool, uri);
+		if (!PINFO_FD_VISITED(pinfo) && curr) {
+		        curr->full_uri = wmem_strdup(wmem_file_scope(), uri);
+		}
 		if (tree) {
 			e_ti = proto_tree_add_string(http_tree,
 					     hf_http_request_full_uri, tvb, 0,
@@ -1420,29 +1745,20 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		}
 	}
 
-	if (!PINFO_FD_VISITED(pinfo)) {
-		if (http_type == HTTP_REQUEST) {
-			push_req(conv_data, pinfo);
-		} else if (http_type == HTTP_RESPONSE) {
-			push_res(conv_data, pinfo);
-		}
-	}
-
 	if (tree) {
 		proto_item *pi;
-		http_req_res_t *curr = (http_req_res_t *)p_get_proto_data(wmem_file_scope(), pinfo, proto_http, 0);
 		http_req_res_t *prev = curr ? curr->prev : NULL;
 		http_req_res_t *next = curr ? curr->next : NULL;
 
 		switch (http_type) {
 
-		case HTTP_NOTIFICATION:
+		case MEDIA_CONTAINER_HTTP_NOTIFICATION:
 			hidden_item = proto_tree_add_boolean(http_tree,
 					    hf_http_notification, tvb, 0, 0, 1);
 			proto_item_set_hidden(hidden_item);
 			break;
 
-		case HTTP_RESPONSE:
+		case MEDIA_CONTAINER_HTTP_RESPONSE:
 			hidden_item = proto_tree_add_boolean(http_tree,
 					    hf_http_response, tvb, 0, 0, 1);
 			proto_item_set_hidden(hidden_item);
@@ -1483,19 +1799,14 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			/*
 			 * add the request URI to the response to allow filtering responses filtered by URI
 			 */
-			if (conv_data && (conv_data->full_uri || conv_data->request_uri)) {
-				if (conv_data->full_uri) {
-					pi = proto_tree_add_string(http_tree, hf_http_response_for_uri, tvb, 0, 0, conv_data->full_uri);
-				}
-				else {
-					pi = proto_tree_add_string(http_tree, hf_http_response_for_uri, tvb, 0, 0, conv_data->request_uri);
-				}
+			if (curr && curr->request_uri) {
+				pi = proto_tree_add_string(http_tree, hf_http_response_for_uri, tvb, 0, 0, curr->full_uri ? curr->full_uri : curr->request_uri);
 				proto_item_set_generated(pi);
 			}
 
 			break;
 
-		case HTTP_REQUEST:
+		case MEDIA_CONTAINER_HTTP_REQUEST:
 			hidden_item = proto_tree_add_boolean(http_tree,
 					    hf_http_request, tvb, 0, 0, 1);
 			proto_item_set_hidden(hidden_item);
@@ -1519,7 +1830,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
 			break;
 
-		case HTTP_OTHERS:
+		case MEDIA_CONTAINER_HTTP_OTHERS:
 		default:
 			break;
 		}
@@ -1527,7 +1838,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
 	/* Give the follw tap what we've currently dissected */
 	if(have_tap_listener(http_follow_tap)) {
-		tap_queue_packet(http_follow_tap, pinfo, tvb_new_subset_length(tvb, 0, offset));
+		tap_queue_packet(http_follow_tap, pinfo, tvb_new_subset_length(tvb, orig_offset, offset-orig_offset));
 	}
 
 	reported_datalen = tvb_reported_length_remaining(tvb, offset);
@@ -1564,10 +1875,10 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 	 * keep information about the request and associate that with
 	 * the response in order to handle that.
 	 */
-	if (headers.have_content_length &&
-	    headers.transfer_encoding == HTTP_TE_NONE) {
-		if (datalen > headers.content_length)
-			datalen = (int)headers.content_length;
+	if (headers->have_content_length &&
+	    headers->transfer_encoding == HTTP_TE_NONE) {
+		if (datalen > headers->content_length)
+			datalen = (int)headers->content_length;
 
 		/*
 		 * XXX - limit the reported length in the tvbuff we'll
@@ -1583,24 +1894,24 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 * "packet is malformed" (running past the reassembled
 		 * length).
 		 */
-		if (reported_datalen > headers.content_length)
-			reported_datalen = (int)headers.content_length;
+		if (reported_datalen > headers->content_length)
+			reported_datalen = (int)headers->content_length;
 	} else {
 		switch (http_type) {
 
-		case HTTP_REQUEST:
+		case MEDIA_CONTAINER_HTTP_REQUEST:
 			/*
 			 * Requests have no content if there's no
 			 * Content-Length header and no Transfer-Encoding
 			 * header.
 			 */
-			if (headers.transfer_encoding == HTTP_TE_NONE)
+			if (headers->transfer_encoding == HTTP_TE_NONE)
 				datalen = 0;
 			else
 				reported_datalen = -1;
 			break;
 
-		case HTTP_RESPONSE:
+		case MEDIA_CONTAINER_HTTP_RESPONSE:
 			if ((stat_info->response_code/100) == 1 ||
 			    stat_info->response_code == 204 ||
 			    stat_info->response_code == 304)
@@ -1618,12 +1929,43 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
 		default:
 			/*
-			 * XXX - what about HTTP_NOTIFICATION?
+			 * XXX - what about MEDIA_CONTAINER_HTTP_NOTIFICATION?
 			 */
 			reported_datalen = -1;
 			break;
 		}
 	}
+
+	if (!PINFO_FD_VISITED(pinfo) && streaming_chunk_mode && streaming_reassembly_data == NULL) {
+		DISSECTOR_ASSERT(!begin_with_chunk && handle && http_dechunk_body && http_desegment_body
+			&& headers && headers->content_type && header_value_map);
+
+		content_info = wmem_new0(wmem_file_scope(), media_content_info_t);
+		content_info->media_str = headers->content_type_parameters;
+		content_info->type = http_type;
+		content_info->data = header_value_map;
+
+		streaming_reassembly_data = wmem_new0(wmem_file_scope(), http_streaming_reassembly_data_t);
+		streaming_reassembly_data->streaming_handle = handle;
+		streaming_reassembly_data->streaming_reassembly_info = streaming_reassembly_info_new();
+		streaming_reassembly_data->content_info = content_info;
+		streaming_reassembly_data->main_headers = headers;
+
+		if (prv_data->req_fwd_flow == tcpd->fwd) {
+			prv_data->req_streaming_reassembly_data = streaming_reassembly_data;
+		} else {
+			prv_data->res_streaming_reassembly_data = streaming_reassembly_data;
+		}
+	}
+
+	if (content_info == NULL) {
+		content_info = wmem_new0(pinfo->pool, media_content_info_t);
+		content_info->media_str = headers->content_type_parameters;
+		content_info->type = http_type;
+		content_info->data = header_value_map;
+	}
+
+dissecting_body:
 
 	if (datalen > 0) {
 		/*
@@ -1631,7 +1973,6 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 */
 		tvbuff_t *next_tvb;
 		guint chunked_datalen = 0;
-		char *media_str = NULL;
 		const gchar *file_data;
 
 		/*
@@ -1654,9 +1995,10 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		/*
 		 * Handle *transfer* encodings.
 		 */
-		if (headers.transfer_encoding_chunked) {
+		if (headers->transfer_encoding_chunked) {
 			if (!http_dechunk_body) {
 				/* Chunking disabled, cannot dissect further. */
+				/* XXX: Should this be sent to the follow tap? */
 				call_data_dissector(next_tvb, pinfo, http_tree);
 				goto body_dissected;
 			}
@@ -1688,7 +2030,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			}
 		}
 		/* Handle other transfer codings after de-chunking. */
-		switch (headers.transfer_encoding) {
+		switch (headers->transfer_encoding) {
 		case HTTP_TE_COMPRESS:
 		case HTTP_TE_DEFLATE:
 		case HTTP_TE_GZIP:
@@ -1696,6 +2038,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			 * We currently can't handle, for example, "gzip",
 			 * "compress", or "deflate" as *transfer* encodings;
 			 * just handle them as data for now.
+			 * XXX: Should this be sent to the follow tap?
 			 */
 			call_data_dissector(next_tvb, pinfo, http_tree);
 			goto body_dissected;
@@ -1708,14 +2051,14 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 * At this point, any chunked *transfer* coding has been removed
 		 * (the entity body has been dechunked) so it can be presented
 		 * for the following operation (*content* encoding), or it has
-		 * been been handed off to the data dissector.
+		 * been handed off to the data dissector.
 		 *
 		 * Handle *content* encodings other than "identity" (which
 		 * shouldn't appear in a Content-Encoding header, but
 		 * we handle it in any case).
 		 */
-		if (headers.content_encoding != NULL &&
-		    g_ascii_strcasecmp(headers.content_encoding, "identity") != 0) {
+		if (headers->content_encoding != NULL &&
+		    g_ascii_strcasecmp(headers->content_encoding, "identity") != 0) {
 			/*
 			 * We currently don't handle, for example, "compress";
 			 * just handle them as data for now.
@@ -1731,10 +2074,10 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
 #ifdef HAVE_ZLIB
 			if (http_decompress_body &&
-			    (g_ascii_strcasecmp(headers.content_encoding, "gzip") == 0 ||
-			     g_ascii_strcasecmp(headers.content_encoding, "deflate") == 0 ||
-			     g_ascii_strcasecmp(headers.content_encoding, "x-gzip") == 0 ||
-			     g_ascii_strcasecmp(headers.content_encoding, "x-deflate") == 0))
+			    (g_ascii_strcasecmp(headers->content_encoding, "gzip") == 0 ||
+			     g_ascii_strcasecmp(headers->content_encoding, "deflate") == 0 ||
+			     g_ascii_strcasecmp(headers->content_encoding, "x-gzip") == 0 ||
+			     g_ascii_strcasecmp(headers->content_encoding, "x-deflate") == 0))
 			{
 				uncomp_tvb = tvb_child_uncompress(tvb, next_tvb, 0,
 				    tvb_captured_length(next_tvb));
@@ -1743,7 +2086,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
 #ifdef HAVE_BROTLI
 			if (http_decompress_body &&
-			    g_ascii_strcasecmp(headers.content_encoding, "br") == 0)
+			    g_ascii_strcasecmp(headers->content_encoding, "br") == 0)
 			{
 				uncomp_tvb = tvb_child_uncompress_brotli(tvb, next_tvb, 0,
 				    tvb_captured_length(next_tvb));
@@ -1756,7 +2099,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			e_tree = proto_tree_add_subtree_format(http_tree, next_tvb,
 					0, tvb_captured_length(next_tvb), ett_http_encoded_entity, &e_ti,
 					"Content-encoded entity body (%s): %u bytes",
-					headers.content_encoding,
+					headers->content_encoding,
 					tvb_captured_length(next_tvb));
 
 			if (uncomp_tvb != NULL) {
@@ -1776,7 +2119,15 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 				add_new_data_source(pinfo, next_tvb,
 				    "Uncompressed entity body");
 			} else {
-				proto_item_append_text(e_ti, " [Error: Decompression failed]");
+#if defined(HAVE_ZLIB) || defined(HAVE_BROTLI)
+				if (http_decompress_body) {
+					expert_add_info(pinfo, e_ti, &ei_http_decompression_failed);
+				}
+				else {
+					expert_add_info(pinfo, e_ti, &ei_http_decompression_disabled);
+				}
+#endif
+				/* XXX: Should this be sent to the follow tap? */
 				call_data_dissector(next_tvb, pinfo, e_tree);
 
 				goto body_dissected;
@@ -1790,25 +2141,28 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		/* Save values for the Export Object GUI feature if we have
 		 * an active listener to process it (which happens when
 		 * the export object window is open). */
+		/* XXX: Do we really want to send it to Export Object if we didn't
+		 * get the headers, so that this is just a fragment of Continuation
+		 * Data and not a complete object?
+		 */
 		if(have_tap_listener(http_eo_tap)) {
-			eo_info = wmem_new(wmem_packet_scope(), http_eo_t);
+			eo_info = wmem_new0(pinfo->pool, http_eo_t);
 
-			eo_info->hostname = conv_data->http_host;
-			eo_info->filename = conv_data->request_uri;
-			eo_info->content_type = headers.content_type;
-			eo_info->payload_len = tvb_captured_length(next_tvb);
-			eo_info->payload_data = tvb_get_ptr(next_tvb, 0, eo_info->payload_len);
+			if (curr) {
+				eo_info->hostname = curr->http_host;
+				eo_info->filename = curr->request_uri;
+			}
+			eo_info->content_type = headers->content_type;
+			eo_info->payload = next_tvb;
 
 			tap_queue_packet(http_eo_tap, pinfo, eo_info);
 		}
 
-		/* Save values for the Export Object GUI feature if we have
-		 * an active listener to process it (which happens when
-		 * the export object window is open). */
+		/* Send it to Follow HTTP Stream and mark as file data */
 		if(have_tap_listener(http_follow_tap)) {
 			tap_queue_packet(http_follow_tap, pinfo, next_tvb);
 		}
-		file_data = tvb_get_string_enc(wmem_packet_scope(), next_tvb, 0, tvb_captured_length(next_tvb), ENC_ASCII);
+		file_data = tvb_get_string_enc(pinfo->pool, next_tvb, 0, tvb_captured_length(next_tvb), ENC_ASCII);
 		proto_tree_add_string_format_value(http_tree, hf_http_file_data,
 			next_tvb, 0, tvb_captured_length(next_tvb), file_data, "%u bytes", tvb_captured_length(next_tvb));
 
@@ -1821,28 +2175,25 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 * First, if we have a Content-Type value, check whether
 		 * there's a subdissector for that media type.
 		 */
-		handle = NULL;
-		if (headers.content_type != NULL) {
+		if (headers->content_type != NULL && handle == NULL) {
 			/*
 			 * We didn't find any subdissector that
 			 * registered for the port, and we have a
 			 * Content-Type value.  Is there any subdissector
 			 * for that content type?
 			 */
-			if (headers.content_type_parameters)
-				media_str = wmem_strdup(wmem_packet_scope(), headers.content_type_parameters);
 
 			/*
 			 * Calling the string handle for the media type
 			 * dissector table will set pinfo->match_string
-			 * to headers.content_type for us.
+			 * to headers->content_type for us.
 			 */
-			pinfo->match_string = headers.content_type;
+			pinfo->match_string = headers->content_type;
 			handle = dissector_get_string_handle(
 			    media_type_subdissector_table,
-			    headers.content_type);
+			    headers->content_type);
 			if (handle == NULL &&
-			    strncmp(headers.content_type, "multipart/", sizeof("multipart/")-1) == 0) {
+			    strncmp(headers->content_type, "multipart/", sizeof("multipart/")-1) == 0) {
 				/* Try to decode the unknown multipart subtype anyway */
 				handle = dissector_get_string_handle(
 				    media_type_subdissector_table,
@@ -1858,17 +2209,43 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 * a media type and instead use a specified port.
 		 */
 		if (handle == NULL) {
-			handle = dissector_get_uint_handle(port_subdissector_table,
-			    pinfo->match_uint);
+			/* If the HTTP dissector was called heuristically
+			 * (or the HTTP dissector was called from the TLS
+			 * dissector, which was called heuristically), then
+			 * match_uint doesn't get set (or is likely set to
+			 * 6 for IP_PROTO_TCP.) Some protocols (e.g., IPP)
+			 * use the same specified port for both HTTP and
+			 * HTTP over TLS, and one will be a heuristic match.
+			 * In those cases, look at the src or dest port.
+			 */
+			if (pinfo->match_uint == pinfo->srcport || pinfo->match_uint == pinfo->destport) {
+				handle = dissector_get_uint_handle(port_subdissector_table,
+				    pinfo->match_uint);
+			} else if (http_type == MEDIA_CONTAINER_HTTP_REQUEST) {
+				handle = dissector_get_uint_handle(port_subdissector_table,
+				    pinfo->destport);
+			} else if (http_type == MEDIA_CONTAINER_HTTP_RESPONSE) {
+				handle = dissector_get_uint_handle(port_subdissector_table,
+				    pinfo->srcport);
+			}
 		}
 
-		message_info.type = http_type;
-		message_info.media_str = media_str;
 		if (handle != NULL) {
 			/*
 			 * We have a subdissector - call it.
 			 */
-			dissected = call_dissector_only(handle, next_tvb, pinfo, tree, &message_info);
+			if (streaming_chunk_mode) {
+				pinfo->match_string = headers->content_type;
+				/* reassemble and call subdissector */
+				dissected = reassemble_streaming_data_and_call_subdissector(next_tvb, pinfo, 0,
+					tvb_reported_length_remaining(next_tvb, 0), http_tree, proto_tree_get_parent_tree(tree),
+					http_streaming_reassembly_table, streaming_reassembly_data->streaming_reassembly_info,
+					get_http_chunk_frame_num(tvb, pinfo, offset), handle,
+					proto_tree_get_parent_tree(tree), content_info,
+					"HTTP", &http_body_fragment_items, hf_http_body_segment);
+			} else {
+				dissected = call_dissector_only(handle, next_tvb, pinfo, tree, content_info);
+			}
 			if (!dissected)
 				expert_add_info(pinfo, http_tree, &ei_http_subdissector_failed);
 		}
@@ -1879,7 +2256,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			 * dissect the payload - try the heuristic subdissectors.
 			 */
 			dissected = dissector_try_heuristic(heur_subdissector_list,
-							    next_tvb, pinfo, tree, &hdtbl_entry, NULL);
+							    next_tvb, pinfo, tree, &hdtbl_entry, content_info);
 		}
 
 		if (dissected) {
@@ -1891,12 +2268,12 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			if (ti != NULL)
 				proto_item_set_len(ti, offset);
 		} else {
-			if (headers.content_type != NULL) {
+			if (headers->content_type != NULL) {
 				/*
 				 * Calling the default media handle if there is a content-type that
 				 * wasn't handled above.
 				 */
-				call_dissector_with_data(media_handle, next_tvb, pinfo, tree, &message_info);
+				call_dissector_with_data(media_handle, next_tvb, pinfo, tree, content_info);
 			} else {
 				/* Call the default data dissector */
 				call_data_dissector(next_tvb, pinfo, http_tree);
@@ -1913,7 +2290,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 	}
 
 	/* Detect protocol changes after receiving full response headers. */
-	if (conv_data->request_method && http_type == HTTP_RESPONSE && pinfo->desegment_offset <= 0 && pinfo->desegment_len <= 0) {
+	if (http_type == MEDIA_CONTAINER_HTTP_RESPONSE && curr && pinfo->desegment_offset <= 0 && pinfo->desegment_len <= 0) {
 		dissector_handle_t next_handle = NULL;
 		gboolean server_acked = FALSE;
 
@@ -1921,7 +2298,7 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 * SSTP uses a special request method (instead of the Upgrade
 		 * header) and expects a 200 response to set up the session.
 		 */
-		if (strcmp(conv_data->request_method, "SSTP_DUPLEX_POST") == 0 && conv_data->response_code == 200) {
+		if (g_strcmp0(curr->request_method, "SSTP_DUPLEX_POST") == 0 && curr->response_code == 200) {
 			next_handle = sstp_handle;
 			server_acked = TRUE;
 		}
@@ -1930,14 +2307,14 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		 * An HTTP/1.1 upgrade only proceeds if the server responds
 		 * with 101 Switching Protocols. See RFC 7230 Section 6.7.
 		 */
-		if (headers.upgrade && conv_data->response_code == 101) {
-			next_handle = dissector_get_string_handle(upgrade_subdissector_table, headers.upgrade);
+		if (headers->upgrade && curr->response_code == 101) {
+			next_handle = dissector_get_string_handle(upgrade_subdissector_table, headers->upgrade);
 			if (!next_handle) {
-				char *slash_pos = strchr(headers.upgrade, '/');
+				char *slash_pos = strchr(headers->upgrade, '/');
 				if (slash_pos) {
 					/* Try again without version suffix. */
 					next_handle = dissector_get_string_handle(upgrade_subdissector_table,
-							wmem_strndup(wmem_packet_scope(), headers.upgrade, slash_pos - headers.upgrade));
+							wmem_strndup(pinfo->pool, headers->upgrade, slash_pos - headers->upgrade));
 				}
 			}
 			server_acked = TRUE;
@@ -1952,7 +2329,8 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		}
 	}
 
-	tap_queue_packet(http_tap, pinfo, stat_info);
+	if (stat_info)
+		tap_queue_packet(http_tap, pinfo, stat_info);
 
 	return offset - orig_offset;
 }
@@ -1963,24 +2341,22 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
  * protocol version into a sub-tree.
  */
 static void
-basic_request_dissector(tvbuff_t *tvb, proto_tree *tree, int offset,
-			const guchar *line, const guchar *lineend,
-			http_conv_t *conv_data)
+basic_request_dissector(packet_info *pinfo, tvbuff_t *tvb, proto_tree *tree,
+			int offset, const guchar *line, const guchar *lineend,
+			http_conv_t *conv_data _U_, http_req_res_t *curr)
 {
 	const guchar *next_token;
 	const gchar *request_uri;
-	gchar *query_str, *parameter_str, *path_str;
-	int request_uri_len, query_str_len, parameter_str_len;
-	int tokenlen, query_offset, path_len;
-	proto_item *ti, *tj;
-	proto_tree *query_tree, *path_tree;
+	int tokenlen;
+	proto_item* ti;
+	http_info_value_t *stat_info = p_get_proto_data(pinfo->pool, pinfo, proto_http, HTTP_PROTO_DATA_INFO);
 
 	/* The first token is the method. */
 	tokenlen = get_token_len(line, lineend, &next_token);
 	if (tokenlen == 0)
 		return;
 	proto_tree_add_item(tree, hf_http_request_method, tvb, offset, tokenlen,
-			    ENC_ASCII|ENC_NA);
+			    ENC_ASCII);
 	if ((next_token - line) > 2 && next_token[-1] == ' ' && next_token[-2] == ' ') {
 	  /* Two spaces in a now indicates empty URI, so roll back one here */
 	  next_token--;
@@ -1992,37 +2368,20 @@ basic_request_dissector(tvbuff_t *tvb, proto_tree *tree, int offset,
 	tokenlen = get_token_len(line, lineend, &next_token);
 
 	/* Save the request URI for various later uses */
-	request_uri = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, tokenlen, ENC_ASCII);
-	stat_info->request_uri = wmem_strdup(wmem_packet_scope(), request_uri);
-	conv_data->request_uri = wmem_strdup(wmem_file_scope(), request_uri);
-
-	tj = proto_tree_add_string(tree, hf_http_request_uri, tvb, offset, tokenlen, request_uri);
-	if (( query_str = strchr(request_uri, '?')) != NULL) {
-		if (strlen(query_str) > 1) {
-			query_str++;
-			query_str_len = (int)strlen(query_str);
-			request_uri_len = (int)strlen(request_uri);
-			path_len = request_uri_len - query_str_len;
-			query_offset = offset + path_len;
-			path_tree = proto_item_add_subtree(tj, ett_http_request_path);
-			path_str = wmem_strndup(wmem_packet_scope(), request_uri, path_len-1);
-			proto_tree_add_string(path_tree, hf_http_request_path, tvb, offset, path_len-1, path_str);
-			ti = proto_tree_add_string(path_tree, hf_http_request_query, tvb, query_offset, query_str_len, query_str);
-			query_tree = proto_item_add_subtree(ti, ett_http_request_query);
-			for ( parameter_str = strtok(query_str, "&"); parameter_str; parameter_str = strtok(NULL, "&") ) {
-				parameter_str_len = (int) strlen(parameter_str);
-				proto_tree_add_string(query_tree, hf_http_request_query_parameter, tvb, query_offset, parameter_str_len, parameter_str);
-				query_offset += parameter_str_len + 1;
-			}
-		}
+	request_uri = tvb_get_string_enc(pinfo->pool, tvb, offset, tokenlen, ENC_ASCII);
+	stat_info->request_uri = wmem_strdup(pinfo->pool, request_uri);
+	if (!PINFO_FD_VISITED(pinfo) && curr) {
+		curr->request_uri = wmem_strdup(wmem_file_scope(), request_uri);
 	}
+	ti = proto_tree_add_string(tree, hf_http_request_uri, tvb, offset, tokenlen, request_uri);
+	http_add_path_components_to_tree(tvb, pinfo, ti, offset, tokenlen);
 	offset += (int) (next_token - line);
 	line = next_token;
 
 	/* Everything to the end of the line is the version. */
 	tokenlen = (int) (lineend - line);
 	proto_tree_add_item(tree, hf_http_request_version, tvb, offset, tokenlen,
-	    ENC_ASCII|ENC_NA);
+	    ENC_ASCII);
 }
 
 static gint
@@ -2057,14 +2416,15 @@ parse_http_status_code(const guchar *line, const guchar *lineend)
 }
 
 static void
-basic_response_dissector(tvbuff_t *tvb, proto_tree *tree, int offset,
-			 const guchar *line, const guchar *lineend,
-			 http_conv_t *conv_data _U_)
+basic_response_dissector(packet_info *pinfo, tvbuff_t *tvb, proto_tree *tree,
+			int offset, const guchar *line, const guchar *lineend,
+			 http_conv_t *conv_data _U_, http_req_res_t *curr)
 {
 	const guchar *next_token;
 	int tokenlen;
 	gchar response_code_chars[4];
 	proto_item *r_ti;
+	http_info_value_t *stat_info = p_get_proto_data(pinfo->pool, pinfo, proto_http, HTTP_PROTO_DATA_INFO);
 
 	/*
 	 * The first token is the HTTP Version.
@@ -2073,7 +2433,7 @@ basic_response_dissector(tvbuff_t *tvb, proto_tree *tree, int offset,
 	if (tokenlen == 0)
 		return;
 	proto_tree_add_item(tree, hf_http_response_version, tvb, offset, tokenlen,
-			    ENC_ASCII|ENC_NA);
+			    ENC_ASCII);
 	/* Advance to the start of the next token. */
 	offset += (int) (next_token - line);
 	line = next_token;
@@ -2091,8 +2451,11 @@ basic_response_dissector(tvbuff_t *tvb, proto_tree *tree, int offset,
 	memcpy(response_code_chars, line, 3);
 	response_code_chars[3] = '\0';
 
-	stat_info->response_code = conv_data->response_code =
+	stat_info->response_code =
 		(guint)strtoul(response_code_chars, NULL, 10);
+	if (curr) {
+		curr->response_code = stat_info->response_code;
+	}
 
 	proto_tree_add_uint(tree, hf_http_response_code, tvb, offset, 3,
 			    stat_info->response_code);
@@ -2113,187 +2476,10 @@ basic_response_dissector(tvbuff_t *tvb, proto_tree *tree, int offset,
 	tokenlen = (int) (lineend - line);
 	if (tokenlen >= 1) {
 		proto_tree_add_item(tree, hf_http_response_phrase, tvb, offset,
-				tokenlen, ENC_ASCII|ENC_NA);
+				tokenlen, ENC_ASCII);
 	}
 }
 
-#if 0 /* XXX: Replaced by code creating the "Dechunked" tvb O(N) rather than O(N^2) */
-/*
- * Dissect the http data chunks and add them to the tree.
- */
-static int
-chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
-			   proto_tree *tree, int offset)
-{
-	guint8 *chunk_string = NULL;
-	guint32 chunk_size = 0;
-	gint chunk_offset = 0;
-	guint32 datalen = 0;
-	gint linelen = 0;
-	gint chunks_decoded = 0;
-	tvbuff_t *tvb = NULL;
-	tvbuff_t *new_tvb = NULL;
-	gint chunked_data_size = 0;
-	proto_tree *subtree;
-	proto_item *ti;
-
-	if (tvb_ptr == NULL || *tvb_ptr == NULL) {
-		return 0;
-	}
-
-	tvb = *tvb_ptr;
-
-	datalen = tvb_reported_length_remaining(tvb, offset);
-
-	subtree = proto_tree_add_subtree(tree, tvb, offset, datalen,
-					 ett_http_chunked_response, NULL, "HTTP chunked response");
-
-	while (datalen > 0) {
-		proto_item *chunk_ti = NULL, *chuck_size_item;
-		proto_tree *chunk_subtree = NULL;
-		tvbuff_t *data_tvb = NULL; /*  */
-		gchar *c = NULL;
-		guint8 *raw_data;
-		gint raw_len = 0;
-
-		linelen = tvb_find_line_end(tvb, offset, -1, &chunk_offset, TRUE);
-
-		if (linelen <= 0) {
-			/* Can't get the chunk size line */
-			break;
-		}
-
-		chunk_string = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, linelen, ENC_ASCII);
-
-		if (chunk_string == NULL) {
-			/* Can't get the chunk size line */
-			break;
-		}
-
-		c = (gchar*) chunk_string;
-
-		/*
-		 * We don't care about the extensions.
-		 */
-		if ((c = strchr(c, ';'))) {
-			*c = '\0';
-		}
-
-		chunk_size = (guint32)strtol((gchar*)chunk_string, NULL, 16);
-
-		if (chunk_size > datalen) {
-			/*
-			 * The chunk size is more than what's in the tvbuff,
-			 * so either the user hasn't enabled decoding, or all
-			 * of the segments weren't captured.
-			 */
-			chunk_size = datalen;
-		}
-#if 0
-		  else if (new_tvb == NULL) {
-			new_tvb = tvb_new_composite();
-		}
-
-
-
-		if (new_tvb != NULL && chunk_size != 0) {
-			tvbuff_t *chunk_tvb = NULL;
-
-			chunk_tvb = tvb_new_subset_length_caplen(tvb, chunk_offset,
-			    chunk_size, datalen);
-
-			tvb_composite_append(new_tvb, chunk_tvb);
-
-		}
-#endif
-
-		chunked_data_size += chunk_size;
-
-		raw_data = wmem_alloc(pinfo->pool, chunked_data_size);
-		raw_len = 0;
-
-		if (new_tvb != NULL) {
-			raw_len = tvb_captured_length_remaining(new_tvb, 0);
-			tvb_memcpy(new_tvb, raw_data, 0, raw_len);
-
-			tvb_free(new_tvb);
-		}
-
-		tvb_memcpy(tvb, (guint8 *)(raw_data + raw_len),
-			    chunk_offset, chunk_size);
-
-		/* Don't create a new tvb if we have a single chunk with
-		 * a size of zero (meaning it is the end of the chunks). */
-		if(chunked_data_size > 0) {
-			new_tvb = tvb_new_real_data(raw_data,
-			      chunked_data_size, chunked_data_size);
-		}
-
-
-		if (subtree) {
-			if(chunk_size == 0) {
-				chunk_subtree = proto_tree_add_subtree(subtree, tvb,
-					    offset, chunk_offset - offset + chunk_size + 2,
-					    ett_http_chunk_data, NULL, "End of chunked encoding");
-			} else {
-				chunk_subtree = proto_tree_add_subtree_format(subtree, tvb,
-					    offset,
-					    chunk_offset - offset + chunk_size + 2,
-					    ett_http_chunk_data, NULL, "Data chunk (%u octets)", chunk_size);
-			}
-
-			chuck_size_item = proto_tree_add_uint(chunk_subtree, hf_http_chunk_size, tvb, offset,
-			    1, chunk_size);
-			proto_item_set_len(chuck_size_item, chunk_offset - offset);
-
-			/*
-			 * XXX - just add the chunk's data as an item?
-			 *
-			 * Using the data dissector means that, in
-			 * TShark, you get the entire chunk dumped
-			 * out in hex, in addition to whatever
-			 * dissection is done on the reassembled data.
-			 */
-			data_tvb = tvb_new_subset_length(tvb, chunk_offset, chunk_size);
-			call_data_dissector(data_tvb, pinfo, chunk_subtree);
-
-			proto_tree_add_item(chunk_subtree, hf_http_chunked_boundary, tvb,
-								chunk_offset + chunk_size, 2, ENC_NA);
-		}
-
-		chunks_decoded++;
-		offset = chunk_offset + chunk_size + 2;
-		datalen = tvb_reported_length_remaining(tvb, offset);
-	}
-
-	if (new_tvb != NULL) {
-
-		/* Placeholder for the day that composite tvbuffer's will work.
-		tvb_composite_finalize(new_tvb);
-		/ * tvb_set_reported_length(new_tvb, chunked_data_size); * /
-		*/
-
-		/*
-		 * XXX - Don't free this, since the tvbuffer that was passed
-		 * may be used if the data spans multiple frames and reassembly
-		 * isn't enabled.
-		 *
-		tvb_free(*tvb_ptr);
-		 */
-		*tvb_ptr = new_tvb;
-
-	} else {
-		/*
-		 * We didn't create a new tvb, so don't allow sub dissectors
-		 * try to decode the non-existent entity body.
-		 */
-		chunks_decoded = -1;
-	}
-
-	return chunks_decoded;
-
-}
-#else
 /*
  * Dissect the http data chunks and add them to the tree.
  */
@@ -2309,6 +2495,8 @@ chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
 	proto_item	*pi_chunked = NULL;
 	guint8		*raw_data;
 	gint		 raw_len;
+	gint         chunk_counter = 0;
+	gint         last_chunk_id = -1;
 
 	if ((tvb_ptr == NULL) || (*tvb_ptr == NULL)) {
 		return 0;
@@ -2323,13 +2511,15 @@ chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
 					 "HTTP chunked response");
 
 	/* Dechunk the "chunked response" to a new memory buffer */
+	/* XXX: Composite tvbuffers do work now, so we should probably
+         * use that to avoid the memcpys unless necessary.
+         */
 	orig_datalen      = datalen;
 	raw_data	      = (guint8 *)wmem_alloc(pinfo->pool, datalen);
 	raw_len		      = 0;
 	chunked_data_size = 0;
 
 	while (datalen > 0) {
-		tvbuff_t *data_tvb;
 		guint32	  chunk_size;
 		gint	  chunk_offset;
 		guint8	 *chunk_string;
@@ -2343,7 +2533,7 @@ chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
 			break;
 		}
 
-		chunk_string = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, linelen, ENC_ASCII);
+		chunk_string = tvb_get_string_enc(pinfo->pool, tvb, offset, linelen, ENC_ASCII);
 
 		if (chunk_string == NULL) {
 			/* Can't get the chunk size line */
@@ -2376,6 +2566,8 @@ chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
 		tvb_memcpy(tvb, (guint8 *)(raw_data + raw_len), chunk_offset, chunk_size);
 		raw_len += chunk_size;
 
+		++chunk_counter;
+
 		if (subtree) {
 			proto_tree *chunk_subtree;
 			proto_item *chunk_size_item;
@@ -2386,6 +2578,7 @@ chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
 					    chunk_offset - offset + chunk_size + 2,
 					    ett_http_chunk_data, NULL,
 					    "End of chunked encoding");
+				last_chunk_id = chunk_counter - 1;
 			} else {
 				chunk_subtree = proto_tree_add_subtree_format(subtree, tvb,
 					    offset,
@@ -2401,16 +2594,12 @@ chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
 			/* last-chunk does not have chunk-data CRLF. */
 			if (chunk_size > 0) {
 				/*
-				 * XXX - just add the chunk's data as an item?
-				 *
-				 * Using the data dissector means that, in
+				 * Adding the chunk as FT_BYTES means that, in
 				 * TShark, you get the entire chunk dumped
 				 * out in hex, in addition to whatever
 				 * dissection is done on the reassembled data.
 				 */
-				data_tvb = tvb_new_subset_length(tvb, chunk_offset, chunk_size);
-				call_data_dissector(data_tvb, pinfo, chunk_subtree);
-
+				proto_tree_add_item(chunk_subtree, hf_http_chunk_data, tvb, chunk_offset, chunk_size, ENC_NA);
 				proto_tree_add_item(chunk_subtree, hf_http_chunk_boundary, tvb,
 									chunk_offset + chunk_size, 2, ENC_NA);
 			}
@@ -2437,7 +2626,7 @@ chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
 			if (trailer_len > 0) {
 				proto_tree_add_item(subtree,
 					hf_http_chunked_trailer_part,
-					tvb, offset, trailer_len, ENC_ASCII|ENC_NA);
+					tvb, offset, trailer_len, ENC_ASCII);
 				offset += trailer_len;
 				datalen -= trailer_len;
 			}
@@ -2461,10 +2650,21 @@ chunked_encoding_dissector(tvbuff_t **tvb_ptr, packet_info *pinfo,
 		*tvb_ptr = new_tvb;
 	}
 
+	if (chunk_counter > 0) {
+		proto_item* ti_http = proto_tree_get_parent(tree);
+		proto_item_append_text(ti_http, ", has %d chunk%s%s",
+			chunk_counter, plurality(chunk_counter, "", "s"),
+			(last_chunk_id < 0 ? "" : " (including last chunk)"));
+
+		if (last_chunk_id == 0) {
+			/* only append text to column while starting with last chunk */
+			col_append_sep_str(pinfo->cinfo, COL_INFO, " ", "[Last Chunk]");
+		}
+	}
+
 	/* Size of chunked-body or 0 if none was found. */
 	return orig_datalen - datalen;
 }
-#endif
 
 static gboolean
 conversation_dissector_is_http(conversation_t *conv, guint32 frame_num)
@@ -2494,7 +2694,7 @@ http_payload_subdissector(tvbuff_t *tvb, proto_tree *tree,
 		addresses_equal(&conv_data->server_addr, &pinfo->src);
 
 	/* Grab the destination port number from the request URI to find the right subdissector */
-	strings = wmem_strsplit(wmem_packet_scope(), conv_data->request_uri, ":", 2);
+	strings = wmem_strsplit(pinfo->pool, conv_data->req_res_tail->request_uri, ":", 2);
 
 	if(strings[0] != NULL && strings[1] != NULL) {
 		/*
@@ -2524,7 +2724,7 @@ http_payload_subdissector(tvbuff_t *tvb, proto_tree *tree,
 			destport = pinfo->destport;
 		}
 
-		conv = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst, ENDPOINT_TCP, srcport, destport, 0);
+		conv = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst, CONVERSATION_TCP, srcport, destport, 0);
 
 		/* We may get stuck in a recursion loop if we let process_tcp_payload() call us.
 		 * So, if the port in the URI is one we're registered for or we have set up a
@@ -2565,10 +2765,11 @@ http_payload_subdissector(tvbuff_t *tvb, proto_tree *tree,
  * anyway.
  */
 static int
-is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
+is_http_request_or_reply(packet_info *pinfo, const gchar *data, int linelen, media_container_type_t *type,
 			 ReqRespDissector *reqresp_dissector,
-			 http_conv_t *conv_data)
+			 http_conv_t *conv_data _U_)
 {
+	http_info_value_t *stat_info = p_get_proto_data(pinfo->pool, pinfo, proto_http, HTTP_PROTO_DATA_INFO);
 	int isHttpRequestOrReply = FALSE;
 
 	/*
@@ -2591,7 +2792,7 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 	 */
 	if ((linelen >= 5 && strncmp(data, "HTTP/", 5) == 0) ||
 		(linelen >= 3 && strncmp(data, "ICY", 3) == 0)) {
-		*type = HTTP_RESPONSE;
+		*type = MEDIA_CONTAINER_HTTP_RESPONSE;
 		isHttpRequestOrReply = TRUE;	/* response */
 		if (reqresp_dissector)
 			*reqresp_dissector = basic_response_dissector;
@@ -2615,7 +2816,7 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 		case 3:
 			if (strncmp(data, "GET", indx) == 0 ||
 			    strncmp(data, "PUT", indx) == 0) {
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
@@ -2627,7 +2828,7 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 			    strncmp(data, "MOVE", indx) == 0 ||
 			    strncmp(data, "POLL", indx) == 0 ||
 			    strncmp(data, "POST", indx) == 0) {
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
@@ -2640,7 +2841,7 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 				strncmp(data, "PATCH", indx) == 0 ||  /* RFC 5789 */
 				strncmp(data, "LABEL", indx) == 0 ||  /* RFC 3253 8.2 */
 				strncmp(data, "MERGE", indx) == 0) {  /* RFC 3253 11.2 */
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
@@ -2651,11 +2852,11 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 				strncmp(data, "UNLOCK", indx) == 0 ||
 				strncmp(data, "REPORT", indx) == 0 ||  /* RFC 3253 3.6 */
 				strncmp(data, "UPDATE", indx) == 0) {  /* RFC 3253 7.1 */
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			else if (strncmp(data, "NOTIFY", indx) == 0) {
-				*type = HTTP_NOTIFICATION;
+				*type = MEDIA_CONTAINER_HTTP_NOTIFICATION;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
@@ -2665,7 +2866,7 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 			    strncmp(data, "CONNECT", indx) == 0 ||
 			    strncmp(data, "OPTIONS", indx) == 0 ||
 			    strncmp(data, "CHECKIN", indx) == 0) {  /* RFC 3253 4.4, 9.4 */
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
@@ -2674,18 +2875,18 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 			if (strncmp(data, "PROPFIND", indx) == 0 ||
 			    strncmp(data, "CHECKOUT", indx) == 0 || /* RFC 3253 4.3, 9.3 */
 			    strncmp(data, "CCM_POST", indx) == 0) {
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
 
 		case 9:
 			if (strncmp(data, "SUBSCRIBE", indx) == 0) {
-				*type = HTTP_NOTIFICATION;
+				*type = MEDIA_CONTAINER_HTTP_NOTIFICATION;
 				isHttpRequestOrReply = TRUE;
 			} else if (strncmp(data, "PROPPATCH", indx) == 0 ||
 			    strncmp(data, "BPROPFIND", indx) == 0) {
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
@@ -2694,7 +2895,7 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 			if (strncmp(data, "BPROPPATCH", indx) == 0 ||
 				strncmp(data, "UNCHECKOUT", indx) == 0 ||  /* RFC 3253 4.5 */
 				strncmp(data, "MKACTIVITY", indx) == 0) {  /* RFC 3253 13.5 */
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
@@ -2703,34 +2904,34 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 			if (strncmp(data, "MKWORKSPACE", indx) == 0 || /* RFC 3253 6.3 */
 			    strncmp(data, "RPC_CONNECT", indx) == 0 || /* [MS-RPCH] 2.1.1.1.1 */
 			    strncmp(data, "RPC_IN_DATA", indx) == 0) { /* [MS-RPCH] 2.1.2.1.1 */
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			} else if (strncmp(data, "UNSUBSCRIBE", indx) == 0) {
-				*type = HTTP_NOTIFICATION;
+				*type = MEDIA_CONTAINER_HTTP_NOTIFICATION;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
 
 		case 12:
 			if (strncmp(data, "RPC_OUT_DATA", indx) == 0) { /* [MS-RPCH] 2.1.2.1.2 */
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
 
 		case 15:
 			if (strncmp(data, "VERSION-CONTROL", indx) == 0) {  /* RFC 3253 3.5 */
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
 
 		case 16:
 			if (strncmp(data, "BASELINE-CONTROL", indx) == 0) {  /* RFC 3253 12.6 */
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			} else if (strncmp(data, "SSTP_DUPLEX_POST", indx) == 0) {  /* MS SSTP */
-				*type = HTTP_REQUEST;
+				*type = MEDIA_CONTAINER_HTTP_REQUEST;
 				isHttpRequestOrReply = TRUE;
 			}
 			break;
@@ -2742,8 +2943,7 @@ is_http_request_or_reply(const gchar *data, int linelen, http_type_t *type,
 		if (isHttpRequestOrReply && reqresp_dissector) {
 			*reqresp_dissector = basic_request_dissector;
 
-			stat_info->request_method = wmem_strndup(wmem_packet_scope(), data, indx);
-			conv_data->request_method = wmem_strndup(wmem_file_scope(), data, indx);
+			stat_info->request_method = wmem_strndup(pinfo->pool, data, indx);
 		}
 
 
@@ -2776,6 +2976,7 @@ typedef struct {
 #define HDR_WEBSOCKET_EXTENSIONS	11
 #define HDR_REFERER			12
 #define HDR_LOCATION			13
+#define HDR_HTTP2_SETTINGS		14
 
 static const header_info headers[] = {
 	{ "Authorization", &hf_http_authorization, HDR_AUTHORIZATION },
@@ -2789,6 +2990,8 @@ static const header_info headers[] = {
 	{ "Upgrade", &hf_http_upgrade, HDR_UPGRADE },
 	{ "User-Agent",	&hf_http_user_agent, HDR_NO_SPECIAL },
 	{ "Host", &hf_http_host, HDR_HOST },
+	{ "Range", &hf_http_range, HDR_NO_SPECIAL },
+	{ "Content-Range", &hf_http_content_range, HDR_NO_SPECIAL },
 	{ "Connection", &hf_http_connection, HDR_NO_SPECIAL },
 	{ "Cookie", &hf_http_cookie, HDR_COOKIE },
 	{ "Accept", &hf_http_accept, HDR_NO_SPECIAL },
@@ -2807,6 +3010,7 @@ static const header_info headers[] = {
 	{ "Set-Cookie", &hf_http_set_cookie, HDR_NO_SPECIAL },
 	{ "Last-Modified", &hf_http_last_modified, HDR_NO_SPECIAL },
 	{ "X-Forwarded-For", &hf_http_x_forwarded_for, HDR_NO_SPECIAL },
+	{ "HTTP2-Settings", &hf_http_http2_settings, HDR_HTTP2_SETTINGS },
 };
 
 /*
@@ -2872,7 +3076,7 @@ header_fields_post_update_cb(void)
 
 			dynamic_hf[i].p_id = hf_id;
 			dynamic_hf[i].hfinfo.name = header_name;
-			dynamic_hf[i].hfinfo.abbrev = g_strdup_printf("http.header.%s", header_name);
+			dynamic_hf[i].hfinfo.abbrev = ws_strdup_printf("http.header.%s", header_name);
 			dynamic_hf[i].hfinfo.type = FT_STRING;
 			dynamic_hf[i].hfinfo.display = BASE_NONE;
 			dynamic_hf[i].hfinfo.strings = NULL;
@@ -2965,11 +3169,38 @@ is_token_char(char c)
 	return strchr("!#$%&\\:*+-.^_`|~", c) || g_ascii_isalnum(c);
 }
 
+static gboolean
+valid_header_name(const guchar *line, int header_len)
+{
+
+	/*
+	 * Validate the header name. This allows no space between the field name
+	 * and colon (RFC 7230, Section. 3.2.4).
+	 */
+	if (header_len == 0) {
+		return FALSE;
+	}
+	for (int i = 0; i < header_len; i++) {
+		/*
+		 * NUL is not a valid character; treat it specially
+		 * due to C's notion that strings are NUL-terminated.
+		 */
+		if (line[i] == '\0') {
+			return FALSE;
+		}
+		if (!is_token_char(line[i])) {
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
 static void
 process_header(tvbuff_t *tvb, int offset, int next_offset,
 	       const guchar *line, int linelen, int colon_offset,
 	       packet_info *pinfo, proto_tree *tree, headers_t *eh_ptr,
-	       http_conv_t *conv_data, http_type_t http_type)
+	       http_conv_t *conv_data, media_container_type_t http_type, wmem_map_t *header_value_map,
+	       gboolean streaming_chunk_mode)
 {
 	int len;
 	int line_end_offset;
@@ -2977,7 +3208,8 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 	gint hf_index;
 	guchar c;
 	int value_offset;
-	int value_len;
+	int value_len, value_bytes_len;
+	guint8 *value_bytes;
 	char *value;
 	char *header_name;
 	char *p;
@@ -2986,45 +3218,28 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 	int i;
 	int* hf_id;
 	tap_credential_t* auth;
+	http_req_res_t  *curr_req_res = (http_req_res_t *)p_get_proto_data(wmem_file_scope(), pinfo, proto_http, HTTP_PROTO_DATA_REQRES);
+	http_info_value_t *stat_info = p_get_proto_data(pinfo->pool, pinfo, proto_http, HTTP_PROTO_DATA_INFO);
+	wmem_allocator_t *scope = (!PINFO_FD_VISITED(pinfo) && streaming_chunk_mode) ? wmem_file_scope() :
+		                      ((PINFO_FD_VISITED(pinfo) && streaming_chunk_mode) ? NULL : pinfo->pool);
 
 	len = next_offset - offset;
 	line_end_offset = offset + linelen;
 	header_len = colon_offset - offset;
 
-	/*
-	 * Validate the header name. This allows no space between the field name
-	 * and colon (RFC 7230, Section. 3.2.4).
-	 */
-	gboolean valid_header_name = header_len != 0;
-	if (valid_header_name) {
-		for (i = 0; i < header_len; i++) {
-			/*
-			 * NUL is not a valid character; treat it specially
-			 * due to C's notion that strings are NUL-terminated.
-			 */
-			if (line[i] == '\0') {
-				valid_header_name = FALSE;
-				break;
-			}
-			if (!is_token_char(line[i])) {
-				valid_header_name = FALSE;
-				break;
-			}
-		}
-	}
 	/**
 	 * Not a valid header name? Just add a line plus expert info.
 	 */
-	if (!valid_header_name) {
-		if (http_type == HTTP_REQUEST) {
+	if (!valid_header_name(line, header_len)) {
+		if (http_type == MEDIA_CONTAINER_HTTP_REQUEST) {
 			hf_index = hf_http_request_line;
-		} else if (http_type == HTTP_RESPONSE) {
+		} else if (http_type == MEDIA_CONTAINER_HTTP_RESPONSE) {
 			hf_index = hf_http_response_line;
 		} else {
 			hf_index = hf_http_unknown_header;
 		}
 		it = proto_tree_add_item(tree, hf_index, tvb, offset, len, ENC_NA|ENC_ASCII);
-		proto_item_set_text(it, "%s", format_text(wmem_packet_scope(), line, len));
+		proto_item_set_text(it, "%s", format_text(pinfo->pool, line, len));
 		expert_add_info(pinfo, it, &ei_http_bad_header_name);
 		return;
 	}
@@ -3033,7 +3248,7 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 	 * Make a null-terminated, all-lower-case version of the header
 	 * name.
 	 */
-	header_name = wmem_ascii_strdown(wmem_packet_scope(), &line[0], header_len);
+	header_name = wmem_ascii_strdown(pinfo->pool, &line[0], header_len);
 
 	hf_index = find_header_hf_value(tvb, offset, header_len);
 
@@ -3048,18 +3263,46 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 	/*
 	 * Fetch the value.
 	 *
-	 * XXX - the line may well have a NUL in it.  Wireshark should
-	 * really treat strings extracted from packets as counted
-	 * strings, so that NUL isn't any different from any other
-	 * character.  For now, we just allocate a buffer that's
-	 * value_len+1 bytes long, copy value_len bytes, and stick
-	 * in a NUL terminator, so that the buffer for value actually
-	 * has value_len bytes in it.
+	 * XXX - RFC 9110 5.5 "Specification for newly defined fields
+	 * SHOULD limit their values to visible US-ASCII octets (VCHAR),
+	 * SP, and HTAB. A recipient SHOULD treat other allowed octets in
+	 * field content (i.e., obs-text [%x80-FF]) as opaque data...
+	 * Field values containing CR, LF, or NUL characters are invalid
+	 * and dangerous." (Up to RFC 7230, an obsolete "line-folding"
+	 * mechanism that included CRLF was allowed.)
+	 *
+	 * So NUL is not allowed, and we should have one or more
+	 * expert infos if the field value has anything other than
+	 * ASCII printable + TAB. (Possibly different severities
+	 * depending on whether it contains obsolete characters
+	 * like \x80-\xFF vs characters never allowed like NUL.)
+	 * All known field types respect this (using Base64, etc.)
+	 * Unknown field types (possibly including those registered
+	 * through the UAT) should be treated like FT_BYTES with
+	 * BASE_SHOW_ASCII_PRINTABLE instead of FT_STRING, but it's
+	 * more difficult to do that with the custom formatting
+	 * that uses the header name.
+	 *
+	 * Instead, for now for display purposes we will treat strings
+	 * as ASCII and pass the raw value to subdissectors via the
+	 * header_value_map. For the latter, we allocate a buffer that's
+	 * value_bytes_len+1 bytes long, copy value_bytes_len bytes, and
+	 * stick in a NUL terminator, so that the buffer for value actually
+	 * has value_bytes_len bytes in it.
 	 */
-	value_len = line_end_offset - value_offset;
-	value = (char *)wmem_alloc(wmem_packet_scope(), value_len+1);
-	memcpy(value, &line[value_offset - offset], value_len);
-	value[value_len] = '\0';
+	value_bytes_len = line_end_offset - value_offset;
+	value_bytes = (char *)wmem_alloc((scope ? scope : pinfo->pool), value_bytes_len+1);
+	memcpy(value_bytes, &line[value_offset - offset], value_bytes_len);
+	value_bytes[value_bytes_len] = '\0';
+	value = tvb_get_string_enc(pinfo->pool, tvb, value_offset, value_bytes_len, ENC_ASCII);
+	/* The length of the value might change after UTF-8 sanitization */
+	value_len = (int)strlen(value);
+
+	if (scope == pinfo->pool) {
+		wmem_map_insert(header_value_map, header_name, value_bytes);
+	} else if (scope) { /* (!PINFO_FD_VISITED(pinfo) && streaming_chunk_mode) */
+		wmem_map_insert(header_value_map, wmem_strdup(scope, header_name), value_bytes);
+	} /* else skip while (PINFO_FD_VISITED(pinfo) && streaming_chunk_mode) */
 
 	if (hf_index == -1) {
 		/*
@@ -3070,36 +3313,36 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 
 		if (tree) {
 			if (!hf_id) {
-				if (http_type == HTTP_REQUEST ||
-					http_type == HTTP_RESPONSE) {
+				if (http_type == MEDIA_CONTAINER_HTTP_REQUEST ||
+					http_type == MEDIA_CONTAINER_HTTP_RESPONSE) {
 					it = proto_tree_add_item(tree,
-						http_type == HTTP_RESPONSE ?
+						http_type == MEDIA_CONTAINER_HTTP_RESPONSE ?
 						hf_http_response_line :
 						hf_http_request_line,
 						tvb, offset, len,
 						ENC_NA|ENC_ASCII);
 					proto_item_set_text(it, "%s",
-							format_text(wmem_packet_scope(), line, len));
+							format_text(pinfo->pool, line, len));
 				} else {
-					gchar* str = format_text(wmem_packet_scope(), line, len);
+					gchar* str = format_text(pinfo->pool, line, len);
 					proto_tree_add_string_format(tree, hf_http_unknown_header, tvb, offset,
 						len, str, "%s", str);
 				}
 
 			} else {
 				proto_tree_add_string_format(tree,
-					*hf_id, tvb, offset, len,
-					value, "%s", format_text(wmem_packet_scope(), line, len));
-				if (http_type == HTTP_REQUEST ||
-					http_type == HTTP_RESPONSE) {
+					*hf_id, tvb, offset, len, value,
+					"%s", format_text(pinfo->pool, line, len));
+				if (http_type == MEDIA_CONTAINER_HTTP_REQUEST ||
+					http_type == MEDIA_CONTAINER_HTTP_RESPONSE) {
 					it = proto_tree_add_item(tree,
-						http_type == HTTP_RESPONSE ?
+						http_type == MEDIA_CONTAINER_HTTP_RESPONSE ?
 						hf_http_response_line :
 						hf_http_request_line,
 						tvb, offset, len,
 						ENC_NA|ENC_ASCII);
 					proto_item_set_text(it, "%s",
-							format_text(wmem_packet_scope(), line, len));
+							format_text(pinfo->pool, line, len));
 					proto_item_set_hidden(it);
 				}
 			}
@@ -3125,10 +3368,10 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 			case FT_INT32:
 				tmp=(guint32)strtol(value, NULL, 10);
 				hdr_item = proto_tree_add_uint(tree, *headers[hf_index].hf, tvb, offset, len, tmp);
-				if (http_type == HTTP_REQUEST ||
-					http_type == HTTP_RESPONSE) {
+				if (http_type == MEDIA_CONTAINER_HTTP_REQUEST ||
+					http_type == MEDIA_CONTAINER_HTTP_RESPONSE) {
 					it = proto_tree_add_item(tree,
-						http_type == HTTP_RESPONSE ?
+						http_type == MEDIA_CONTAINER_HTTP_RESPONSE ?
 						hf_http_response_line :
 						hf_http_request_line,
 						tvb, offset, len,
@@ -3140,17 +3383,18 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 			default:
 				hdr_item = proto_tree_add_string_format(tree,
 				    *headers[hf_index].hf, tvb, offset, len,
-				    value, "%s", format_text(wmem_packet_scope(), line, len));
-				if (http_type == HTTP_REQUEST ||
-					http_type == HTTP_RESPONSE) {
+				    value,
+				    "%s", format_text(pinfo->pool, line, len));
+				if (http_type == MEDIA_CONTAINER_HTTP_REQUEST ||
+					http_type == MEDIA_CONTAINER_HTTP_RESPONSE) {
 					it = proto_tree_add_item(tree,
-						http_type == HTTP_RESPONSE ?
+						http_type == MEDIA_CONTAINER_HTTP_RESPONSE ?
 						hf_http_response_line :
 						hf_http_request_line,
 						tvb, offset, len,
 						ENC_NA|ENC_ASCII);
 					proto_item_set_text(it, "%s",
-							format_text(wmem_packet_scope(), line, len));
+							format_text(pinfo->pool, line, len));
 					proto_item_set_hidden(it);
 				}
 			}
@@ -3168,17 +3412,17 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 				break;	/* dissected NTLMSSP */
 			if (check_auth_basic(hdr_item, tvb, pinfo, value))
 				break; /* dissected basic auth */
-			if (check_auth_citrixbasic(hdr_item, tvb, value, offset))
+			if (check_auth_citrixbasic(hdr_item, tvb, pinfo, value, offset))
 				break; /* dissected citrix basic auth */
 			if (check_auth_kerberos(hdr_item, tvb, pinfo, value))
 				break;
 			if (check_auth_digest(hdr_item, tvb, pinfo, value, offset, value_len))
 				break;/* dissected digest basic auth */
-			auth = wmem_new0(wmem_packet_scope(), tap_credential_t);
+			auth = wmem_new0(pinfo->pool, tap_credential_t);
 			auth->num = pinfo->num;
 			auth->password_hf_id = *headers[hf_index].hf;
 			auth->proto = "HTTP header auth";
-			auth->username = wmem_strdup(wmem_packet_scope(), TAP_CREDENTIALS_PLACEHOLDER);
+			auth->username = wmem_strdup(pinfo->pool, TAP_CREDENTIALS_PLACEHOLDER);
 			tap_queue_packet(credentials_tap, pinfo, auth);
 			break;
 
@@ -3189,7 +3433,10 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 			break;
 
 		case HDR_CONTENT_TYPE:
-			eh_ptr->content_type = (gchar*) wmem_memdup(wmem_packet_scope(), (guint8*)value,value_len + 1);
+			if (scope == NULL) { /* identical to (PINFO_FD_VISITED(pinfo) && streaming_chunk_mode) */
+				break; /* eh_ptr->content_type[_parameters] must have been set during first scan */
+			}
+			eh_ptr->content_type = wmem_strdup(scope, value);
 
 			for (i = 0; i < value_len; i++) {
 				c = value[i];
@@ -3231,6 +3478,7 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 			break;
 
 		case HDR_CONTENT_LENGTH:
+			DISSECTOR_ASSERT_HINT(!streaming_chunk_mode, "In streaming chunk mode, there will never be content-length header.");
 			errno = 0;
 			eh_ptr->content_length = g_ascii_strtoll(value, &p, 10);
 			up = (guchar *)p;
@@ -3261,7 +3509,10 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 			break;
 
 		case HDR_CONTENT_ENCODING:
-			eh_ptr->content_encoding = wmem_strndup(wmem_packet_scope(), value, value_len);
+			if (scope == NULL) { /* identical to (PINFO_FD_VISITED(pinfo) && streaming_chunk_mode) */
+				break; /* eh_ptr->content_encoding must have been set during first scan */
+			}
+			eh_ptr->content_encoding = wmem_strndup(scope, value, value_len);
 			break;
 
 		case HDR_TRANSFER_ENCODING:
@@ -3274,12 +3525,17 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 			break;
 
 		case HDR_HOST:
-			stat_info->http_host = wmem_strndup(wmem_packet_scope(), value, value_len);
-			conv_data->http_host = wmem_strndup(wmem_file_scope(), value, value_len);
+			stat_info->http_host = wmem_strndup(pinfo->pool, value, value_len);
+			if (!PINFO_FD_VISITED(pinfo) && curr_req_res) {
+				curr_req_res->http_host = wmem_strndup(wmem_file_scope(), value, value_len);
+			}
 			break;
 
 		case HDR_UPGRADE:
-			eh_ptr->upgrade = wmem_ascii_strdown(wmem_packet_scope(), value, value_len);
+			if (scope == NULL) { /* identical to (PINFO_FD_VISITED(pinfo) && streaming_chunk_mode) */
+				break;
+			}
+			eh_ptr->upgrade = wmem_ascii_strdown(scope, value, value_len);
 			break;
 
 		case HDR_COOKIE:
@@ -3315,27 +3571,41 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 			break;
 
 		case HDR_WEBSOCKET_PROTOCOL:
-			if (http_type == HTTP_RESPONSE) {
+			if (http_type == MEDIA_CONTAINER_HTTP_RESPONSE) {
 				conv_data->websocket_protocol = wmem_strndup(wmem_file_scope(), value, value_len);
 			}
 			break;
 
 		case HDR_WEBSOCKET_EXTENSIONS:
-			if (http_type == HTTP_RESPONSE) {
+			if (http_type == MEDIA_CONTAINER_HTTP_RESPONSE) {
 				conv_data->websocket_extensions = wmem_strndup(wmem_file_scope(), value, value_len);
 			}
 			break;
 
 		case HDR_REFERER:
-			stat_info->referer_uri = wmem_strndup(wmem_packet_scope(), value, value_len);
+			stat_info->referer_uri = wmem_strndup(pinfo->pool, value, value_len);
 			break;
 
 		case HDR_LOCATION:
-			if (conv_data->request_uri){
-				stat_info->location_target = wmem_strndup(wmem_packet_scope(), value, value_len);
-				stat_info->location_base_uri = wmem_strdup(wmem_packet_scope(), conv_data->full_uri);
+			if (curr_req_res && curr_req_res->request_uri){
+				stat_info->location_target = wmem_strndup(pinfo->pool, value, value_len);
+				stat_info->location_base_uri = wmem_strdup(pinfo->pool, curr_req_res->full_uri);
 			}
 			break;
+		case HDR_HTTP2_SETTINGS:
+		{
+			proto_tree* settings_tree = proto_item_add_subtree(hdr_item, ett_http_http2_settings_item);
+			tvbuff_t* new_tvb = base64uri_tvb_to_new_tvb(tvb, value_offset, value_bytes_len);
+			add_new_data_source(pinfo, new_tvb, "Base64uri decoded");
+			TRY{
+				dissect_http2_settings_ext(new_tvb, pinfo, settings_tree, 0);
+			} CATCH_ALL{
+				show_exception(tvb, pinfo, settings_tree, EXCEPT_CODE, GET_MESSAGE);
+			}
+			ENDTRY;
+
+			break;
+		}
 		}
 	}
 }
@@ -3392,7 +3662,7 @@ check_auth_ntlmssp(proto_item *hdr_item, tvbuff_t *tvb, packet_info *pinfo, gcha
 }
 
 static tap_credential_t*
-basic_auth_credentials(gchar* str)
+basic_auth_credentials(wmem_allocator_t *scope, const gchar* str)
 {
 	gchar **tokens = g_strsplit(str, ":", -1);
 
@@ -3401,9 +3671,9 @@ basic_auth_credentials(gchar* str)
 		return NULL;
 	}
 
-	tap_credential_t* auth = wmem_new0(wmem_packet_scope(), tap_credential_t);
+	tap_credential_t* auth = wmem_new0(scope, tap_credential_t);
 
-	auth->username = wmem_strdup(wmem_packet_scope(), tokens[0]);
+	auth->username = wmem_strdup(scope, tokens[0]);
 	auth->proto = "HTTP basic auth";
 
 	g_strfreev(tokens);
@@ -3423,8 +3693,9 @@ check_auth_basic(proto_item *hdr_item, tvbuff_t *tvb, packet_info *pinfo, gchar 
 	};
 	const char **header;
 	size_t hdrlen;
+	const guint8 *decoded_value;
 	proto_tree *hdr_tree;
-	gsize len;
+	tvbuff_t *auth_tvb;
 
 	for (header = &basic_headers[0]; *header != NULL; header++) {
 		hdrlen = strlen(*header);
@@ -3436,13 +3707,17 @@ check_auth_basic(proto_item *hdr_item, tvbuff_t *tvb, packet_info *pinfo, gchar 
 				hdr_tree = NULL;
 			value += hdrlen;
 
-			if (strlen(value) > 1) {
-				g_base64_decode_inplace(value, &len);
-				value[len] = 0;
-			}
-			proto_tree_add_string(hdr_tree, hf_http_basic, tvb,
-			    0, 0, value);
-			tap_credential_t* auth = basic_auth_credentials(value);
+			auth_tvb = base64_to_tvb(tvb, value);
+			add_new_data_source(pinfo, auth_tvb, "Basic Credentials");
+			/* RFC 7617 says that the character encoding is only
+			 * known to be UTF-8 if the 'charset' parameter was
+			 * used. Otherwise, after Base64 decoding it could be
+			 * any character encoding.
+			 * XXX: Perhaps the field should be a FT_BYTES with
+			 * BASE_SHOW_UTF_8_PRINTABLE?
+			 */
+			proto_tree_add_item_ret_string(hdr_tree, hf_http_basic, auth_tvb, 0, tvb_reported_length(auth_tvb), ENC_UTF_8, pinfo->pool, &decoded_value);
+			tap_credential_t* auth = basic_auth_credentials(pinfo->pool, decoded_value);
 			if (auth) {
 				auth->num = auth->username_num = pinfo->num;
 				auth->password_hf_id = hf_http_basic;
@@ -3492,7 +3767,7 @@ check_auth_digest(proto_item* hdr_item, tvbuff_t* tvb, packet_info* pinfo _U_, g
  * Dissect HTTP CitrixAGBasic authorization.
  */
 static gboolean
-check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int offset)
+check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, packet_info *pinfo, gchar *value, int offset)
 {
 	static const char *basic_headers[] = {
 		"CitrixAGBasic ",
@@ -3503,10 +3778,10 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 	proto_tree *hdr_tree;
 	char *ch_ptr;
 	int data_len;
-	char *data_val;
+	tvbuff_t *data_tvb;
 	proto_item *hidden_item;
 	proto_item *pi;
-	gsize len;
+	const guint8 *user = NULL, *passwd = NULL;
 
 	for (header = &basic_headers[0]; *header != NULL; header++) {
 		hdrlen = strlen(*header);
@@ -3527,17 +3802,18 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 				offset += 10;
 				ch_ptr = strchr(value, '"');
 				if ( ch_ptr != NULL ) {
-					data_len = (int)(ch_ptr - value + 1);
-					data_val = wmem_strndup(wmem_packet_scope(), value, data_len);
-					if (data_len > 1) {
-						g_base64_decode_inplace(data_val, &len);
-						data_val[len] = 0;
+					data_len = (int)(ch_ptr - value);
+					if (data_len) {
+						data_tvb = base64_tvb_to_new_tvb(tvb, offset, data_len);
+						add_new_data_source(pinfo, data_tvb, "Username");
+						/* XXX: We don't know for certain the string encoding here. */
+						pi = proto_tree_add_item_ret_string(hdr_tree, hf_http_citrix_user, data_tvb, 0, tvb_reported_length(data_tvb), ENC_UTF_8, pinfo->pool, &user);
+					} else {
+						pi = proto_tree_add_string(hdr_tree, hf_http_citrix_user, tvb, offset, 0, "");
 					}
-					pi = proto_tree_add_string(hdr_tree, hf_http_citrix_user, tvb,
-					    offset , data_len - 1, data_val);
 					proto_item_set_generated(pi);
-					value += data_len;
-					offset += data_len;
+					value += data_len + 1;
+					offset += data_len + 1;
 				}
 			}
 			if(strncmp(value, "; domain=\"", 10) == 0) {
@@ -3545,17 +3821,17 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 				offset += 10;
 				ch_ptr = strchr(value, '"');
 				if ( ch_ptr != NULL ) {
-					data_len = (int)(ch_ptr - value + 1);
-					data_val = wmem_strndup(wmem_packet_scope(), value, data_len);
-					if (data_len > 1) {
-						g_base64_decode_inplace(data_val, &len);
-						data_val[len] = 0;
+					data_len = (int)(ch_ptr - value);
+					if (data_len) {
+						data_tvb = base64_tvb_to_new_tvb(tvb, offset, data_len);
+						add_new_data_source(pinfo, data_tvb, "Domain");
+						pi = proto_tree_add_item(hdr_tree, hf_http_citrix_domain, data_tvb, 0, tvb_reported_length(data_tvb), ENC_UTF_8);
+					} else {
+						pi = proto_tree_add_string(hdr_tree, hf_http_citrix_domain, tvb, offset, 0, "");
 					}
-					pi = proto_tree_add_string(hdr_tree, hf_http_citrix_domain, tvb,
-					    offset, data_len - 1, data_val);
 					proto_item_set_generated(pi);
-					value += data_len;
-					offset += data_len;
+					value += data_len + 1;
+					offset += data_len + 1;
 				}
 			}
 			if(strncmp(value, "; password=\"", 12) == 0) {
@@ -3563,17 +3839,17 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 				offset += 12;
 				ch_ptr = strchr(value, '"');
 				if ( ch_ptr != NULL ) {
-					data_len = (int)(ch_ptr - value + 1);
-					data_val = wmem_strndup(wmem_packet_scope(), value, data_len);
-					if (data_len > 1) {
-						g_base64_decode_inplace(data_val, &len);
-						data_val[len] = 0;
+					data_len = (int)(ch_ptr - value);
+					if (data_len) {
+						data_tvb = base64_tvb_to_new_tvb(tvb, offset, data_len);
+						add_new_data_source(pinfo, data_tvb, "Password");
+						pi = proto_tree_add_item_ret_string(hdr_tree, hf_http_citrix_passwd, data_tvb, 0, tvb_reported_length(data_tvb), ENC_UTF_8, pinfo->pool, &passwd);
+					} else {
+						pi = proto_tree_add_string(hdr_tree, hf_http_citrix_passwd, tvb, offset, 0, "");
 					}
-					pi = proto_tree_add_string(hdr_tree, hf_http_citrix_passwd, tvb,
-					    offset, data_len - 1, data_val);
 					proto_item_set_generated(pi);
-					value += data_len;
-					offset += data_len;
+					value += data_len + 1;
+					offset += data_len + 1;
 				}
 			}
 			if(strncmp(value, "; AGESessionId=\"", 16) == 0) {
@@ -3581,16 +3857,27 @@ check_auth_citrixbasic(proto_item *hdr_item, tvbuff_t *tvb, gchar *value, int of
 				offset += 16;
 				ch_ptr = strchr(value, '"');
 				if ( ch_ptr != NULL ) {
-					data_len = (int)(ch_ptr - value + 1);
-					data_val = wmem_strndup(wmem_packet_scope(), value, data_len);
-					if (data_len > 1) {
-						g_base64_decode_inplace(data_val, &len);
-						data_val[len] = 0;
+					data_len = (int)(ch_ptr - value);
+					if (data_len) {
+						data_tvb = base64_tvb_to_new_tvb(tvb, offset, data_len);
+						add_new_data_source(pinfo, data_tvb, "Session ID");
+						pi = proto_tree_add_item(hdr_tree, hf_http_citrix_session, data_tvb, 0, tvb_reported_length(data_tvb), ENC_UTF_8);
+					} else {
+						pi = proto_tree_add_string(hdr_tree, hf_http_citrix_session, tvb,
+						    offset, 0, "");
 					}
-					pi = proto_tree_add_string(hdr_tree, hf_http_citrix_session, tvb,
-					    offset, data_len - 1, data_val);
 					proto_item_set_generated(pi);
 				}
+			}
+			if (user != NULL && passwd != NULL) {
+
+				tap_credential_t* auth = wmem_new0(pinfo->pool, tap_credential_t);
+
+				auth->username = wmem_strdup(pinfo->pool, user);
+				auth->proto = "HTTP CitrixAGBasic auth";
+				auth->num = auth->username_num = pinfo->num;
+				auth->password_hf_id = hf_http_citrix_passwd;
+				tap_queue_packet(credentials_tap, pinfo, auth);
 			}
 			return TRUE;
 		}
@@ -3617,7 +3904,7 @@ check_auth_kerberos(proto_item *hdr_item, tvbuff_t *tvb, packet_info *pinfo, con
 
 static void
 dissect_http_on_stream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
-    http_conv_t *conv_data, gboolean end_of_stream)
+    http_conv_t *conv_data, gboolean end_of_stream, const guint32 *seq)
 {
 	int		offset = 0;
 	int		len;
@@ -3647,7 +3934,7 @@ dissect_http_on_stream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 			}
 			break;
 		}
-		len = dissect_http_message(tvb, offset, pinfo, tree, conv_data, "HTTP", proto_http, end_of_stream);
+		len = dissect_http_message(tvb, offset, pinfo, tree, conv_data, "HTTP", proto_http, end_of_stream, seq);
 		if (len == -1)
 			break;
 		offset += len;
@@ -3684,11 +3971,13 @@ dissect_http_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
 	 * Check if this is proxied connection and if so, hand of dissection to the
 	 * payload-dissector.
 	 * Response code 200 means "OK" and strncmp() == 0 means the strings match exactly */
+	http_req_res_t *curr_req_res = conv_data->req_res_tail;
 	if(pinfo->num >= conv_data->startframe &&
-	   conv_data->response_code == 200 &&
-	   conv_data->request_method &&
-	   strncmp(conv_data->request_method, "CONNECT", 7) == 0 &&
-	   conv_data->request_uri) {
+	   curr_req_res &&
+	   curr_req_res->response_code == 200 &&
+	   curr_req_res->request_method &&
+	   strncmp(curr_req_res->request_method, "CONNECT", 7) == 0 &&
+	   curr_req_res->request_uri) {
 		if (conv_data->startframe == 0 && !PINFO_FD_VISITED(pinfo)) {
 			conv_data->startframe = pinfo->num;
 			conv_data->startoffset = 0;
@@ -3702,7 +3991,12 @@ dissect_http_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
 
 	/* XXX - how to detect end-of-stream without tcpinfo */
 	end_of_stream = (tcpinfo && IS_TH_FIN(tcpinfo->flags));
-	dissect_http_on_stream(tvb, pinfo, tree, conv_data, end_of_stream);
+	dissect_http_on_stream(tvb, pinfo, tree, conv_data, end_of_stream, tcpinfo ? &tcpinfo->seq : NULL);
+
+	/* XXX - If we haven't seen any HTTP yet even after dissecting above,
+	 * should we return 0 here so that heuristic dissectors can get a
+	 * chance?
+	 */
 	return tvb_captured_length(tvb);
 }
 
@@ -3740,14 +4034,50 @@ dissect_http_tls(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
 {
 	conversation_t *conversation;
 	http_conv_t *conv_data;
+	gboolean end_of_stream;
 
 	conv_data = get_http_conversation_data(pinfo, &conversation);
 
-	/*
-	 * XXX - we need to provide an end-of-stream indication.
-	 */
-	dissect_http_on_stream(tvb, pinfo, tree, conv_data, FALSE);
+	struct tlsinfo *tlsinfo = (struct tlsinfo *)data;
+	end_of_stream = (tlsinfo && tlsinfo->end_of_stream);
+	dissect_http_on_stream(tvb, pinfo, tree, conv_data, end_of_stream, tlsinfo ? &tlsinfo->seq : NULL);
 	return tvb_captured_length(tvb);
+}
+
+static gboolean
+dissect_http_heur_tls(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
+{
+	gint offset = 0, next_offset, linelen;
+	conversation_t  *conversation;
+	http_conv_t	*conv_data;
+
+	conversation = find_or_create_conversation(pinfo);
+	conv_data = (http_conv_t *)conversation_get_proto_data(conversation, proto_http);
+	/* A http conversation was previously started, assume it is still active */
+	if (conv_data) {
+		dissect_http_tls(tvb, pinfo, tree, data);
+		return TRUE;
+	}
+
+	/* Check if we have a line terminated by CRLF
+	 * Return the length of the line (not counting the line terminator at
+	 * the end), or, if we don't find a line terminator:
+	 *
+	 *	if "deseg" is true, return -1;
+	 */
+	linelen = tvb_find_line_end(tvb, offset, -1, &next_offset, TRUE);
+	if((linelen == -1)||(linelen == 8)){
+		return FALSE;
+	}
+
+	/* Check if the line start or ends with the HTTP token */
+	if((tvb_strncaseeql(tvb, linelen-8, "HTTP/1.", 7) != 0) && (tvb_strncaseeql(tvb, 0, "HTTP/1.", 7) != 0)) {
+	        /* we couldn't find the Magic Hello HTTP/1.X. */
+		return FALSE;
+	}
+
+	dissect_http_tls(tvb, pinfo, tree, data);
+	return TRUE;
 }
 
 static int
@@ -3761,7 +4091,7 @@ dissect_http_sctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dat
 	/*
 	 * XXX - we need to provide an end-of-stream indication.
 	 */
-	dissect_http_on_stream(tvb, pinfo, tree, conv_data, FALSE);
+	dissect_http_on_stream(tvb, pinfo, tree, conv_data, FALSE, NULL);
 	return tvb_captured_length(tvb);
 }
 
@@ -3777,7 +4107,7 @@ dissect_http(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 	 * XXX - what should be done about reassembly, pipelining, etc.
 	 * here?
 	 */
-	dissect_http_on_stream(tvb, pinfo, tree, conv_data, FALSE);
+	dissect_http_on_stream(tvb, pinfo, tree, conv_data, FALSE, NULL);
 	return tvb_captured_length(tvb);
 }
 
@@ -3788,7 +4118,7 @@ dissect_ssdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_
 	http_conv_t	*conv_data;
 
 	conv_data = get_http_conversation_data(pinfo, &conversation);
-	dissect_http_message(tvb, 0, pinfo, tree, conv_data, "SSDP", proto_ssdp, FALSE);
+	dissect_http_message(tvb, 0, pinfo, tree, conv_data, "SSDP", proto_ssdp, FALSE, NULL);
 	return tvb_captured_length(tvb);
 }
 
@@ -3805,10 +4135,7 @@ range_add_http_tls_callback(guint32 port, gpointer ptr _U_) {
 static void reinit_http(void) {
 	http_tcp_range = prefs_get_range_value("http", "tcp.port");
 
-	dissector_delete_uint_range("sctp.port", http_sctp_range, http_sctp_handle);
-	wmem_free(wmem_epan_scope(), http_sctp_range);
-	http_sctp_range = range_copy(wmem_epan_scope(), global_http_sctp_range);
-	dissector_add_uint_range("sctp.port", http_sctp_range, http_sctp_handle);
+	http_sctp_range = prefs_get_range_value("http", "sctp.port");
 
 	range_foreach(http_tls_range, range_delete_http_tls_callback, NULL);
 	wmem_free(wmem_epan_scope(), http_tls_range);
@@ -3871,19 +4198,23 @@ proto_register_http(void)
 		"HTTP Request Method", HFILL }},
 	    { &hf_http_request_uri,
 	      { "Request URI", "http.request.uri",
-		FT_STRING, STR_UNICODE, NULL, 0x0,
+		FT_STRING, BASE_NONE, NULL, 0x0,
 		"HTTP Request-URI", HFILL }},
 	    { &hf_http_request_path,
 	      { "Request URI Path", "http.request.uri.path",
-		FT_STRING, STR_UNICODE, NULL, 0x0,
+		FT_STRING, BASE_NONE, NULL, 0x0,
 		"HTTP Request-URI Path", HFILL }},
+	    { &hf_http_request_path_segment,
+	      { "Request URI Path Segment", "http.request.uri.path.segment",
+		FT_STRING, BASE_NONE, NULL, 0,
+		NULL, HFILL } },
 	    { &hf_http_request_query,
 	      { "Request URI Query", "http.request.uri.query",
-		FT_STRING, STR_UNICODE, NULL, 0x0,
+		FT_STRING, BASE_NONE, NULL, 0x0,
 		"HTTP Request-URI Query", HFILL }},
 	    { &hf_http_request_query_parameter,
 	      { "Request URI Query Parameter", "http.request.uri.query.parameter",
-		FT_STRING, STR_UNICODE, NULL, 0x0,
+		FT_STRING, BASE_NONE, NULL, 0x0,
 		"HTTP Request-URI Query Parameter", HFILL }},
 	    { &hf_http_request_version,
 	      { "Request Version", "http.request.version",
@@ -3899,7 +4230,7 @@ proto_register_http(void)
 		"The full requested URI (including host name)", HFILL }},
 	    { &hf_http_response_code,
 	      { "Status Code", "http.response.code",
-		FT_UINT16, BASE_DEC, NULL, 0x0,
+		FT_UINT24, BASE_DEC, NULL, 0x0,
 		"HTTP Response Status Code", HFILL }},
 	    { &hf_http_response_code_desc,
 	      { "Status Code Description", "http.response.code.desc",
@@ -3907,7 +4238,7 @@ proto_register_http(void)
 		"HTTP Response Status Code Description", HFILL }},
 	    { &hf_http_response_for_uri,
 	      { "Request URI", "http.response_for.uri",
-		FT_STRING, STR_UNICODE, NULL, 0x0,
+		FT_STRING, BASE_NONE, NULL, 0x0,
 		"HTTP Response For-URI", HFILL }},
 	    { &hf_http_response_phrase,
 	      { "Response Phrase", "http.response.phrase",
@@ -3969,6 +4300,14 @@ proto_register_http(void)
 	      { "Host", "http.host",
 		FT_STRING, BASE_NONE, NULL, 0x0,
 		"HTTP Host", HFILL }},
+	    { &hf_http_range,
+	      { "Range", "http.range",
+		FT_STRING, BASE_NONE, NULL, 0x0,
+		"HTTP Range", HFILL }},
+	    { &hf_http_content_range,
+	      { "Content-Range", "http.content_range",
+		FT_STRING, BASE_NONE, NULL, 0x0,
+		"HTTP Content-Range", HFILL }},
 	    { &hf_http_connection,
 	      { "Connection", "http.connection",
 		FT_STRING, BASE_NONE, NULL, 0x0,
@@ -4045,6 +4384,10 @@ proto_register_http(void)
 	      { "X-Forwarded-For", "http.x_forwarded_for",
 		FT_STRING, BASE_NONE, NULL, 0x0,
 		"HTTP X-Forwarded-For", HFILL }},
+	    { &hf_http_http2_settings,
+	      { "HTTP2-Settings", "http.http2_settings",
+		FT_STRING, BASE_NONE, NULL, 0x0,
+		NULL, HFILL }},
 	    { &hf_http_request_in,
 	      { "Request in frame", "http.request_in",
 		FT_FRAMENUM, BASE_NONE, FRAMENUM_TYPE(FT_FRAMENUM_REQUEST), 0,
@@ -4085,26 +4428,40 @@ proto_register_http(void)
 	      { "Chunk size", "http.chunk_size",
 		FT_UINT32, BASE_DEC|BASE_UNIT_STRING, &units_octet_octets, 0,
 		NULL, HFILL }},
+	    { &hf_http_chunk_data,
+	      { "Chunk data", "http.chunk_data",
+		FT_BYTES, BASE_NONE, NULL, 0,
+		NULL, HFILL }},
 	    { &hf_http_file_data,
 	      { "File Data", "http.file_data",
-		FT_STRING, STR_UNICODE, NULL, 0,
+		FT_STRING, BASE_NONE, NULL, 0,
 		NULL, HFILL }},
 	    { &hf_http_unknown_header,
 	      { "Unknown header", "http.unknown_header",
 		FT_STRING, BASE_NONE, NULL, 0,
 		NULL, HFILL }},
+	    { &hf_http_http2_settings_uri,
+	      { "HTTP2 Settings URI", "http.http2_settings_uri",
+		FT_BYTES, BASE_NONE, NULL, 0,
+		NULL, HFILL }},
+
+		/* Body fragments */
+	    REASSEMBLE_INIT_HF_ITEMS(http_body, "HTTP Chunked Body", "http.body"),
 	};
 	static gint *ett[] = {
 		&ett_http,
 		&ett_http_ntlmssp,
 		&ett_http_kerberos,
 		&ett_http_request,
+		&ett_http_request_uri,
 		&ett_http_request_path,
 		&ett_http_request_query,
 		&ett_http_chunked_response,
 		&ett_http_chunk_data,
 		&ett_http_encoded_entity,
-		&ett_http_header_item
+		&ett_http_header_item,
+		&ett_http_http2_settings_item,
+		REASSEMBLE_INIT_ETT_ITEMS(http_body),
 	};
 
 	static ei_register_info ei[] = {
@@ -4113,8 +4470,11 @@ proto_register_http(void)
 		{ &ei_http_te_unknown, { "http.te_unknown", PI_UNDECODED, PI_WARN, "Unknown transfer coding name in Transfer-Encoding header", EXPFILL }},
 		{ &ei_http_subdissector_failed, { "http.subdissector_failed", PI_MALFORMED, PI_NOTE, "HTTP body subdissector failed, trying heuristic subdissector", EXPFILL }},
 		{ &ei_http_tls_port, { "http.tls_port", PI_SECURITY, PI_WARN, "Unencrypted HTTP protocol detected over encrypted port, could indicate a dangerous misconfiguration.", EXPFILL }},
+		{ &ei_http_excess_data, { "http.excess_data", PI_PROTOCOL, PI_WARN, "Excess data after a body (not a new request/response), previous Content-Length bogus?", EXPFILL }},
 		{ &ei_http_leading_crlf, { "http.leading_crlf", PI_MALFORMED, PI_ERROR, "Leading CRLF previous message in the stream may have extra CRLF", EXPFILL }},
 		{ &ei_http_bad_header_name, { "http.bad_header_name", PI_PROTOCOL, PI_WARN, "Illegal characters found in header name", EXPFILL }},
+		{ &ei_http_decompression_failed, { "http.decompression_failed", PI_UNDECODED, PI_WARN, "Decompression failed", EXPFILL }},
+		{ &ei_http_decompression_disabled, { "http.decompression_disabled", PI_UNDECODED, PI_CHAT, "Decompression disabled", EXPFILL }},
 	};
 
 	/* UAT for header fields */
@@ -4140,6 +4500,8 @@ proto_register_http(void)
 	http_tcp_handle = register_dissector("http-over-tcp", dissect_http_tcp, proto_http);
 	http_tls_handle = register_dissector("http-over-tls", dissect_http_tls, proto_http); /* RFC 2818 */
 	http_sctp_handle = register_dissector("http-over-sctp", dissect_http_sctp, proto_http);
+
+	reassembly_table_register(&http_streaming_reassembly_table, &addresses_ports_reassembly_table_functions);
 
 	http_module = prefs_register_protocol(proto_http, reinit_http);
 	prefs_register_bool_preference(http_module, "desegment_headers",
@@ -4171,11 +4533,6 @@ proto_register_http(void)
 	    &http_decompress_body);
 #endif
 	prefs_register_obsolete_preference(http_module, "tcp_alternate_port");
-
-	range_convert_str(wmem_epan_scope(), &global_http_sctp_range, SCTP_DEFAULT_RANGE, 65535);
-	prefs_register_range_preference(http_module, "sctp.port", "SCTP Ports",
-					"SCTP Ports range",
-					&global_http_sctp_range, 65535);
 
 	range_convert_str(wmem_epan_scope(), &global_http_tls_range, TLS_DEFAULT_RANGE, 65535);
 	prefs_register_range_preference(http_module, "tls.port", "SSL/TLS Ports",
@@ -4218,19 +4575,10 @@ proto_register_http(void)
 	    "TCP port for protocols using HTTP", proto_http, FT_UINT16, BASE_DEC);
 
 	/*
-	 * Dissectors can register themselves in this table.
-	 * It's just "media_type", not "http.content_type", because
-	 * it's an Internet media type, usable by other protocols as well.
-	 */
-	media_type_subdissector_table =
-	    register_dissector_table("media_type",
-		"Internet media type", proto_http, FT_STRING, BASE_NONE);
-
-	/*
 	 * Maps the lowercase Upgrade header value.
 	 * https://tools.ietf.org/html/rfc7230#section-8.6
 	 */
-	upgrade_subdissector_table = register_dissector_table("http.upgrade", "HTTP Upgrade", proto_http, FT_STRING, BASE_NONE);
+	upgrade_subdissector_table = register_dissector_table("http.upgrade", "HTTP Upgrade", proto_http, FT_STRING, STRING_CASE_SENSITIVE);
 
 	/*
 	 * Heuristic dissectors SHOULD register themselves in
@@ -4247,8 +4595,15 @@ proto_register_http(void)
 	credentials_tap = register_tap("credentials"); /* credentials tap */
 
 	register_follow_stream(proto_http, "http_follow", tcp_follow_conv_filter, tcp_follow_index_filter, tcp_follow_address_filter,
-							tcp_port_to_display, follow_tvb_tap_listener);
+							tcp_port_to_display, follow_tvb_tap_listener,
+							get_tcp_stream_count, NULL);
 	http_eo_tap = register_export_object(proto_http, http_eo_packet, NULL);
+
+	/* compile patterns, excluding "/" */
+	ws_mempbrk_compile(&pbrk_gen_delims, ":?#[]@");
+	/* exclude "=", separating key and value should be done separately */
+	ws_mempbrk_compile(&pbrk_sub_delims, "!$&'()*+,;");
+
 }
 
 /*
@@ -4327,6 +4682,7 @@ proto_reg_handoff_http(void)
 	dissector_add_uint("acdr.tls_application_port", 443, http_handle);
 	dissector_add_uint("acdr.tls_application", TLS_APP_HTTP, http_handle);
 	dissector_add_uint("acdr.tls_application", TLS_APP_TR069, http_handle);
+	dissector_add_uint("ippusb", 0, http_tcp_handle);
 }
 
 /*
@@ -4388,10 +4744,19 @@ proto_reg_handoff_message_http(void)
 	dissector_add_string("media_type", "message/http", message_http_handle);
 
 	heur_dissector_add("tcp", dissect_http_heur_tcp, "HTTP over TCP", "http_tcp", proto_http, HEURISTIC_ENABLE);
+	heur_dissector_add("tls", dissect_http_heur_tls, "HTTP over TLS", "http_tls", proto_http, HEURISTIC_ENABLE);
 
 	proto_http2 = proto_get_id_by_filter_name("http2");
 
 	dissector_add_uint_range_with_preference("tcp.port", TCP_DEFAULT_RANGE, http_tcp_handle);
+	dissector_add_uint_range_with_preference("sctp.port", SCTP_DEFAULT_RANGE, http_sctp_handle);
+
+	/*
+	 * Get the content type and Internet media type table
+	 */
+	media_type_subdissector_table = find_dissector_table("media_type");
+
+	streaming_content_type_dissector_table = find_dissector_table("streaming_content_type");
 
 	reinit_http();
 }

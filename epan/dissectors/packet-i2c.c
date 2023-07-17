@@ -16,10 +16,13 @@
 #include <epan/capture_dissectors.h>
 #include <epan/prefs.h>
 #include <epan/decode_as.h>
-#include <wiretap/wtap.h>
 
 void proto_register_i2c(void);
 void proto_reg_handoff_i2c(void);
+
+static dissector_handle_t i2c_linux_handle;
+static capture_dissector_handle_t i2c_linux_cap_handle;
+static dissector_handle_t i2c_kontron_handle;
 
 static int proto_i2c = -1;
 static int proto_i2c_event = -1;
@@ -68,7 +71,7 @@ static dissector_handle_t ipmb_handle;
 
 static void i2c_prompt(packet_info *pinfo _U_, gchar* result)
 {
-	g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Interpret I2C messages as");
+	snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Interpret I2C messages as");
 }
 
 static gboolean
@@ -274,25 +277,22 @@ proto_register_i2c(void)
 	proto_i2c_event = proto_register_protocol_in_name_only("I2C Events", "I2C Events", "i2c_event", proto_i2c, FT_PROTOCOL);
 	proto_i2c_data = proto_register_protocol_in_name_only("I2C Data", "I2C Data", "i2c_data", proto_i2c, FT_PROTOCOL);
 
-	m = prefs_register_protocol(proto_i2c, NULL);
+	m = prefs_register_protocol_obsolete(proto_i2c);
 	prefs_register_obsolete_preference(m, "type");
 
 	subdissector_table = register_decode_as_next_proto(proto_i2c, "i2c.message", "I2C messages dissector", i2c_prompt);
+
+	i2c_linux_handle = register_dissector("i2c_linux", dissect_i2c_linux, proto_i2c);
+	i2c_linux_cap_handle = register_capture_dissector("i2c_linux", capture_i2c_linux, proto_i2c);
+	i2c_kontron_handle = register_dissector("i2c_kontron", dissect_i2c_kontron, proto_i2c);
 }
 
 void
 proto_reg_handoff_i2c(void)
 {
-	dissector_handle_t i2c_linux_handle;
-	capture_dissector_handle_t i2c_linux_cap_handle;
-	dissector_handle_t i2c_kontron_handle;
-
-	i2c_linux_handle = create_dissector_handle(dissect_i2c_linux, proto_i2c);
 	dissector_add_uint("wtap_encap", WTAP_ENCAP_I2C_LINUX, i2c_linux_handle);
-	i2c_linux_cap_handle = create_capture_dissector_handle(capture_i2c_linux, proto_i2c);
 	capture_dissector_add_uint("wtap_encap", WTAP_ENCAP_I2C_LINUX, i2c_linux_cap_handle);
 
-	i2c_kontron_handle = create_dissector_handle(dissect_i2c_kontron, proto_i2c);
 	dissector_add_uint("wtap_encap", WTAP_ENCAP_IPMB_KONTRON, i2c_kontron_handle);
 
 	ipmb_handle = find_dissector("ipmb");

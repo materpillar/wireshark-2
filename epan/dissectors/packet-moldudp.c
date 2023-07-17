@@ -20,6 +20,8 @@
 void proto_register_moldudp(void);
 void proto_reg_handoff_moldudp(void);
 
+static dissector_handle_t moldudp_handle;
+
 /* Initialize the protocol and registered fields */
 static int proto_moldudp       = -1;
 static int hf_moldudp_session  = -1;
@@ -48,7 +50,7 @@ static dissector_table_t moldudp_payload_table;
 
 static void moldudp_prompt(packet_info *pinfo _U_, gchar* result)
 {
-    g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Payload as");
+    snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Payload as");
 }
 
 /* Code to dissect a message block */
@@ -152,7 +154,7 @@ dissect_moldudp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
     moldudp_tree = proto_item_add_subtree(ti, ett_moldudp);
 
     proto_tree_add_item(moldudp_tree, hf_moldudp_session,
-                        tvb, offset, MOLDUDP_SESSION_LEN, ENC_ASCII|ENC_NA);
+                        tvb, offset, MOLDUDP_SESSION_LEN, ENC_ASCII);
     offset += MOLDUDP_SESSION_LEN;
 
     sequence = tvb_get_letohl(tvb, offset);
@@ -242,15 +244,15 @@ proto_register_moldudp(void)
     expert_register_field_array(expert_moldudp, ei, array_length(ei));
 
     moldudp_payload_table = register_decode_as_next_proto(proto_moldudp, "moldudp.payload", "MoldUDP Payload", moldudp_prompt);
+
+    /* Register the dissector */
+    moldudp_handle = register_dissector("moldudp", dissect_moldudp, proto_moldudp);
 }
 
 
 void
 proto_reg_handoff_moldudp(void)
 {
-    dissector_handle_t moldudp_handle;
-
-    moldudp_handle = create_dissector_handle(dissect_moldudp, proto_moldudp);
     dissector_add_for_decode_as_with_preference("udp.port", moldudp_handle);
 }
 

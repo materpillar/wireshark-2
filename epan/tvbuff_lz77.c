@@ -12,7 +12,7 @@
 #include <glib.h>
 #include <epan/exceptions.h>
 #include <epan/tvbuff.h>
-#include <epan/wmem/wmem.h>
+#include <epan/wmem_scopes.h>
 
 #define MAX_INPUT_SIZE (16*1024*1024) /* 16MB */
 
@@ -28,7 +28,7 @@ static gboolean do_uncompress(tvbuff_t *tvb, int offset, int in_size,
 	if (!tvb)
 		return FALSE;
 
-	if (in_size > MAX_INPUT_SIZE)
+	if (!in_size || in_size > MAX_INPUT_SIZE)
 		return FALSE;
 
 	while (1) {
@@ -38,7 +38,7 @@ static gboolean do_uncompress(tvbuff_t *tvb, int offset, int in_size,
 			buf_flag_count = 32;
 		}
 		buf_flag_count--;
-		if ((buf_flags & (1 << buf_flag_count)) == 0) {
+		if ((buf_flags & (1u << buf_flag_count)) == 0) {
 			guint8 v = tvb_get_guint8(tvb, offset+in_off);
 			wmem_array_append_one(obuf, v);
 			in_off++;

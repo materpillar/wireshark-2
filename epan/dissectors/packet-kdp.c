@@ -17,6 +17,8 @@
 void proto_register_kdp(void);
 void proto_reg_handoff_kdp(void);
 
+static dissector_handle_t kdp_handle;
+
 #define KDP_PORT 19948 /* Not IANA registered */
 #define BUFFER_SIZE 80
 static int proto_kdp = -1;
@@ -87,7 +89,7 @@ static int dissect_kdp(tvbuff_t *tvb,
   if (version != 2) {
     /* Version other than 2 is really SDDP in UDP */
     proto_tree_add_item(kdp_tree, hf_kdp_version, tvb, 0, 1, ENC_BIG_ENDIAN);
-    proto_tree_add_item(kdp_tree, hf_kdp_xml_body, tvb, 0, -1, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(kdp_tree, hf_kdp_xml_body, tvb, 0, -1, ENC_ASCII);
   } else {
     proto_tree *flags_tree;
     header_len = tvb_get_guint8(tvb, 1) * 4;
@@ -220,17 +222,17 @@ static int dissect_kdp(tvbuff_t *tvb,
       char src_flowid_string[BUFFER_SIZE];
 
       if (packet_flags & KDP_ACK_FLAG) {
-        g_snprintf(ack_string, sizeof(ack_string), "ACK=%x ", ack_number);
+        snprintf(ack_string, sizeof(ack_string), "ACK=%x ", ack_number);
       } else {
         ack_string[0] = '\0';
       }
       if (header_len > 4) {
-        g_snprintf(seq_num_string, sizeof(seq_num_string), "SEQ=%x ", sequence_number);
+        snprintf(seq_num_string, sizeof(seq_num_string), "SEQ=%x ", sequence_number);
       } else {
         seq_num_string[0] = '\0';
       }
       if (packet_flags & (KDP_SYN_FLAG | KDP_BCST_FLAG)) {
-        g_snprintf(src_flowid_string, sizeof(src_flowid_string), "SRC_FLOWID=%x ", src_flowid);
+        snprintf(src_flowid_string, sizeof(src_flowid_string), "SRC_FLOWID=%x ", src_flowid);
       } else {
         src_flowid_string[0] = '\0';
       }
@@ -388,12 +390,12 @@ void proto_register_kdp(void) {
                                       "kdp");           /* abbrev */
   proto_register_field_array(proto_kdp, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
+
+  kdp_handle = register_dissector("kdp", dissect_kdp, proto_kdp);
 }
 
 void
 proto_reg_handoff_kdp(void) {
-  dissector_handle_t kdp_handle;
-  kdp_handle = create_dissector_handle(dissect_kdp, proto_kdp);
   dissector_add_uint_with_preference("udp.port", KDP_PORT, kdp_handle);
 }
 

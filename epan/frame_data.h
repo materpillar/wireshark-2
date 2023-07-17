@@ -11,16 +11,15 @@
 #ifndef __FRAME_DATA_H__
 #define __FRAME_DATA_H__
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
-
 #include <ws_diag_control.h>
 #include <ws_symbol_export.h>
 #include <wsutil/nstime.h>
 
-#include <wiretap/wtap.h>
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
 
+typedef struct wtap_rec wtap_rec;
 struct _packet_info;
 struct epan_session;
 
@@ -71,6 +70,7 @@ typedef struct _frame_data {
      LLP64 (64-bit Windows) platforms.  Put them here, one after the
      other, so they don't require padding between them. */
   GSList      *pfd;          /**< Per frame proto data */
+  GHashTable  *dependent_frames;     /**< A hash table of frames which this one depends on */
   const struct _color_filter *color_filter;  /**< Per-packet matching color_filter_t object */
   guint16      subnum;       /**< subframe number, for protocols that require this */
   /* Keep the bitfields below to 16 bits, so this plus the previous field
@@ -84,14 +84,14 @@ typedef struct _frame_data {
   unsigned int ref_time         : 1; /**< 1 = marked as a reference time frame, 0 = normal */
   unsigned int ignored          : 1; /**< 1 = ignore this frame, 0 = normal */
   unsigned int has_ts           : 1; /**< 1 = has time stamp, 0 = no time stamp */
-  unsigned int has_phdr_comment : 1; /** 1 = there's comment for this packet */
-  unsigned int has_user_comment : 1; /** 1 = user set (also deleted) comment for this packet */
+  unsigned int has_modified_block : 1; /** 1 = block for this packet has been modified */
   unsigned int need_colorize    : 1; /**< 1 = need to (re-)calculate packet color */
   unsigned int tsprec           : 4; /**< Time stamp precision -2^tsprec gives up to femtoseconds */
   nstime_t     abs_ts;       /**< Absolute timestamp */
   nstime_t     shift_offset; /**< How much the abs_tm of the frame is shifted */
   guint32      frame_ref_num; /**< Previous reference frame (0 if this is one) */
   guint32      prev_dis_num; /**< Previous displayed frame (0 if first one) */
+  guint8       tcp_snd_manual_analysis;   /**< TCP SEQ Analysis Overriding, 0 = none, 1 = OOO, 2 = RET , 3 = Fast RET, 4 = Spurious RET */
 } frame_data;
 DIAG_ON_PEDANTIC
 

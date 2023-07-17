@@ -1,4 +1,4 @@
-/* expert_info_dialog.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -31,11 +31,10 @@ class ExpertInfoDialog : public WiresharkDialog
     Q_OBJECT
 
 public:
-    explicit ExpertInfoDialog(QWidget &parent, CaptureFile& capture_file);
+    explicit ExpertInfoDialog(QWidget &parent, CaptureFile& capture_file, QString displayFilter);
     ~ExpertInfoDialog();
 
     void clearAllData();
-    void setDisplayFilter(const QString &display_filter = QString());
 
     ExpertInfoTreeView* getExpertInfoView();
 
@@ -69,23 +68,10 @@ private slots:
     void collapseTree();
     void expandTree();
 
-    void on_limitCheckBox_toggled(bool);
+    void limitCheckBoxToggled(bool);
     void on_groupBySummaryCheckBox_toggled(bool);
     void on_searchLineEdit_textChanged(const QString &search_re);
     void on_buttonBox_helpRequested();
 };
 
 #endif // EXPERT_INFO_DIALOG_H
-
-/*
- * Editor modelines
- *
- * Local Variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * ex: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

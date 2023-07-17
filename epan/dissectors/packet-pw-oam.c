@@ -146,11 +146,11 @@ proto_register_pw_oam(void)
 
     {&hf_pw_oam_flags,
       {"Flags", "pw_oam.flags", FT_UINT8,
-        BASE_HEX, NULL, 0x0000, "OAM Flags", HFILL }},
+        BASE_HEX, NULL, 0x0, "OAM Flags", HFILL }},
 
     {&hf_pw_oam_flags_a,
       {"Acknowledgement", "pw_oam.flags_a",
-        FT_BOOLEAN, 8, NULL, 0x0080, "ACK bit", HFILL}
+        FT_BOOLEAN, 8, NULL, 0x80, "ACK bit", HFILL}
     },
 
     {&hf_pw_oam_tlv_reserved,
@@ -169,7 +169,7 @@ proto_register_pw_oam(void)
     },
 
     {&hf_pw_oam_code,
-      {"Status code", "pw_oam.code", FT_UINT16,
+      {"Status code", "pw_oam.code", FT_UINT32,
         BASE_HEX, VALS(pw_oam_code), 0x0, "PW Status Code", HFILL }
     },
 

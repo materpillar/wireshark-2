@@ -20,7 +20,9 @@
 #include <epan/tap.h>
 #include <epan/stat_tap_ui.h>
 
-#include <ui/cmdarg_err.h>
+#include <wsutil/cmdarg_err.h>
+
+static int pc_proto_id = -1;
 
 void register_tap_listener_protohierstat(void);
 
@@ -54,7 +56,7 @@ new_phs_t(phs_t *parent)
 
 
 static tap_packet_status
-protohierstat_packet(void *prs, packet_info *pinfo, epan_dissect_t *edt, const void *dummy _U_)
+protohierstat_packet(void *prs, packet_info *pinfo, epan_dissect_t *edt, const void *dummy _U_, tap_flags_t flags _U_)
 {
 	phs_t *rs = (phs_t *)prs;
 	phs_t *tmprs;
@@ -125,17 +127,27 @@ phs_draw(phs_t *rs, int indentation)
 		if (rs->protocol == -1) {
 			return;
 		}
+		/*
+		 * If the first child is a tree of comments, skip over it.
+		 * This keeps us from having a top-level "pkt_comment"
+		 * entry that represents a nonexistent protocol,
+		 * and matches how the GUI treats comments.
+		 */
+		if (G_UNLIKELY(rs->protocol == pc_proto_id)) {
+			phs_draw(rs->child, indentation);
+			continue;
+		}
 		str[0] = 0;
 		stroff = 0;
 		for (i=0; i<indentation; i++) {
 			if (i > 15) {
-				stroff += g_snprintf(str+stroff, MAXPHSLINE-stroff, "...");
+				stroff += snprintf(str+stroff, MAXPHSLINE-stroff, "...");
 				break;
 			}
-			stroff += g_snprintf(str+stroff, MAXPHSLINE-stroff, "  ");
+			stroff += snprintf(str+stroff, MAXPHSLINE-stroff, "  ");
 		}
-		g_snprintf(str+stroff, MAXPHSLINE-stroff, "%s", rs->proto_name);
-		printf("%-40s frames:%u bytes:%" G_GINT64_MODIFIER "u\n", str, rs->frames, rs->bytes);
+		snprintf(str+stroff, MAXPHSLINE-stroff, "%s", rs->proto_name);
+		printf("%-40s frames:%u bytes:%" PRIu64 "\n", str, rs->frames, rs->bytes);
 		phs_draw(rs->child, indentation+1);
 	}
 }
@@ -172,6 +184,8 @@ protohierstat_init(const char *opt_arg, void *userdata _U_)
 		cmdarg_err("invalid \"-z io,phs[,<filter>]\" argument");
 		exit(1);
 	}
+
+	pc_proto_id = proto_registrar_get_id_byname("pkt_comment");
 
 	rs = new_phs_t(NULL);
 	rs->filter = g_strdup(filter);

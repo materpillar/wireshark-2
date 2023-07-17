@@ -17,7 +17,7 @@
 INCLUDE(FindWSWinLibs)
 FindWSWinLibs("lua-5*" "LUA_HINTS")
 
-if(NOT WIN32)
+if(NOT USE_REPOSITORY)
   find_package(PkgConfig)
   pkg_search_module(LUA lua5.2 lua-5.2 lua52 lua5.1 lua-5.1 lua51)
   if(NOT LUA_FOUND)
@@ -99,6 +99,15 @@ IF(LUA_FOUND)
       CACHE FILEPATH "Lua DLL file name"
     )
     mark_as_advanced( LUA_DLL_DIR LUA_DLL )
+  endif()
+  if(LUA_DLL_DIR MATCHES ".*/lua-.*-unicode-.*")
+    # Do we have Lua with Unicode for Windows patches?
+    # https://github.com/Lekensteyn/lua-unicode
+    # XXX Would be better if it was possible to
+    # detect a Lua-unicode build from C and Lua code
+    # but upstream rejected patches for that so we do
+    # it here.
+    set(HAVE_LUA_UNICODE True)
   endif()
 ELSE(LUA_FOUND)
   SET( LUA_LIBRARIES )

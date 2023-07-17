@@ -14,6 +14,10 @@
 
 #include "logcat.h"
 
+static int logcat_file_type_subtype = -1;
+
+void register_logcat(void);
+
 /* Returns '?' for invalid priorities */
 static gchar get_priority(const guint8 priority) {
     static gchar priorities[] = "??VDIWEFS";
@@ -194,6 +198,7 @@ static gboolean logcat_read_packet(struct logcat_phdr *logcat, FILE_T fh,
     }
 
     rec->rec_type = REC_TYPE_PACKET;
+    rec->block = wtap_block_create(WTAP_BLOCK_PACKET);
     rec->presence_flags = WTAP_HAS_TS;
     rec->ts.secs = (time_t) GINT32_FROM_LE(log_entry->sec);
     rec->ts.nsecs = GINT32_FROM_LE(log_entry->nsec);
@@ -262,27 +267,26 @@ wtap_open_return_val logcat_open(wtap *wth, int *err, gchar **err_info)
             return WTAP_OPEN_ERROR; /* I/O error */
         if (tmp_version == 0)
             return WTAP_OPEN_NOT_MINE;  /* not a logcat file */
-        if (tmp_version != -2) {
-            /*
-             * we've read three packets and the first two have the same
-             * version; does the third have the same version?
-             */
-            if (tmp_version != version) {
-                /* no, so this is presumably not a logcat file */
-                return WTAP_OPEN_NOT_MINE;
-            }
+
+        /*
+         * we've read three packets and the first two have the same
+         * version; does the third have the same version?
+         */
+        if (tmp_version != version) {
+            /* no, so this is presumably not a logcat file */
+            return WTAP_OPEN_NOT_MINE;
         }
     }
 
     if (file_seek(wth->fh, 0, SEEK_SET, err) == -1)
         return WTAP_OPEN_ERROR;
 
-    logcat = (struct logcat_phdr *) g_malloc(sizeof(struct logcat_phdr));
+    logcat = g_new(struct logcat_phdr, 1);
     logcat->version = version;
 
     wth->priv = logcat;
 
-    wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_LOGCAT;
+    wth->file_type_subtype = logcat_file_type_subtype;
     wth->file_encap = WTAP_ENCAP_LOGCAT;
     wth->snapshot_length = 0;
 
@@ -301,7 +305,7 @@ wtap_open_return_val logcat_open(wtap *wth, int *err, gchar **err_info)
     return WTAP_OPEN_MINE;
 }
 
-int logcat_dump_can_write_encap(int encap)
+static int logcat_dump_can_write_encap(int encap)
 {
     if (encap == WTAP_ENCAP_PER_PACKET)
         return WTAP_ERR_ENCAP_PER_PACKET_UNSUPPORTED;
@@ -328,7 +332,7 @@ static gboolean logcat_binary_dump(wtap_dumper *wdh,
      * Make sure this packet doesn't have a link-layer type that
      * differs from the one for the file.
      */
-    if (wdh->encap != rec->rec_header.packet_header.pkt_encap) {
+    if (wdh->file_encap != rec->rec_header.packet_header.pkt_encap) {
         *err = WTAP_ERR_ENCAP_PER_PACKET_UNSUPPORTED;
         return FALSE;
     }
@@ -336,7 +340,7 @@ static gboolean logcat_binary_dump(wtap_dumper *wdh,
     caplen = rec->rec_header.packet_header.caplen;
 
     /* Skip EXPORTED_PDU*/
-    if (wdh->encap == WTAP_ENCAP_WIRESHARK_UPPER_PDU) {
+    if (wdh->file_encap == WTAP_ENCAP_WIRESHARK_UPPER_PDU) {
         gint skipped_length;
 
         skipped_length = logcat_exported_pdu_length(pd);
@@ -347,16 +351,40 @@ static gboolean logcat_binary_dump(wtap_dumper *wdh,
     if (!wtap_dump_file_write(wdh, pd, caplen, err))
         return FALSE;
 
-    wdh->bytes_dumped += caplen;
-
     return TRUE;
 }
 
-gboolean logcat_binary_dump_open(wtap_dumper *wdh, int *err _U_)
+static gboolean logcat_binary_dump_open(wtap_dumper *wdh, int *err _U_,
+    gchar **err_info _U_)
 {
     wdh->subtype_write = logcat_binary_dump;
 
     return TRUE;
+}
+
+static const struct supported_block_type logcat_blocks_supported[] = {
+    /*
+     * We support packet blocks, with no comments or other options.
+     */
+    { WTAP_BLOCK_PACKET, MULTIPLE_BLOCKS_SUPPORTED, NO_OPTIONS_SUPPORTED }
+};
+
+static const struct file_type_subtype_info logcat_info = {
+    "Android Logcat Binary format", "logcat", "logcat", NULL,
+    FALSE, BLOCKS_SUPPORTED(logcat_blocks_supported),
+    logcat_dump_can_write_encap, logcat_binary_dump_open, NULL
+};
+
+void register_logcat(void)
+{
+    logcat_file_type_subtype = wtap_register_file_type_subtype(&logcat_info);
+
+    /*
+     * Register name for backwards compatibility with the
+     * wtap_filetypes table in Lua.
+     */
+    wtap_register_backwards_compatibility_lua_name("LOGCAT",
+                                                   logcat_file_type_subtype);
 }
 
 /*

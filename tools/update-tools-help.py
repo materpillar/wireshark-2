@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 #
 # update-tools-help.py - Update the command line help output in docbook/wsug_src.
 #
@@ -24,10 +23,6 @@ import subprocess
 import sys
 
 def main():
-    if sys.version_info[0] < 3:
-        print("This requires Python 3")
-        sys.exit(2)
-
     parser = argparse.ArgumentParser(description='Update Wireshark tools help')
     parser.add_argument('-p', '--program-path', nargs=1, default=os.path.curdir, help='Path to Wireshark executables.')
     args = parser.parse_args()
@@ -71,10 +66,9 @@ def main():
 
         cur_lines = cur_help.splitlines()
         new_lines = new_help.splitlines()
-        if ' (v' in cur_lines[0]:
-            # Assume we have a version. Strip it.
-            cur_lines[0] = ' '.join(cur_lines[0].split()[:-1])
-            new_lines[0] = ' '.join(new_lines[0].split()[:-1])
+        # Assume we have an extended version. Strip it.
+        cur_lines[0] = re.split(' \(v\d+\.\d+\.\d+', cur_lines[0])[0]
+        new_lines[0] = re.split(' \(v\d+\.\d+\.\d+', new_lines[0])[0]
         diff = list(difflib.unified_diff(cur_lines, new_lines))
 
         if (len(diff) > 0):

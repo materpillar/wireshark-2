@@ -1,4 +1,4 @@
-/* packet_range_group_box.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -65,6 +65,7 @@ private slots:
     void on_capturedButton_toggled(bool checked);
     void on_displayedButton_toggled(bool checked);
     void on_ignoredCheckBox_toggled(bool checked);
+    void on_dependedCheckBox_toggled(bool checked);
 };
 
 #endif // PACKET_RANGE_GROUP_BOX_H

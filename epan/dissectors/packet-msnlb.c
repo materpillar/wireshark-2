@@ -18,6 +18,8 @@
 void proto_register_msnlb(void);
 void proto_reg_handoff_msnlb(void);
 
+static dissector_handle_t msnlb_handle;
+
 /* Initialize the protocol and registered fields */
 static int proto_msnlb = -1;
 
@@ -103,12 +105,12 @@ static const value_string nlb_address_family_vals[] = {
   { 0, NULL }
 };
 
-true_false_string tfs_reverse_normal = { "Reverse", "Normal" };
+static true_false_string tfs_reverse_normal = { "Reverse", "Normal" };
 
 static void
 version_base_custom(gchar *result, guint32 version)
 {
-  g_snprintf(result, ITEM_LABEL_LENGTH, "%d.%d", (version  >> 8) & 0xFF, (version & 0xFF));
+  snprintf(result, ITEM_LABEL_LENGTH, "%d.%d", (version  >> 8) & 0xFF, (version & 0xFF));
 }
 
 static int
@@ -270,7 +272,7 @@ dissect_msnlb(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
             offset += 2;
             proto_tree_add_item(hb_tree, hf_msnlb_reserved, tvb, offset, 4, ENC_NA);
             offset += 4;
-            offset = display_unicode_string(tvb, hb_tree, offset, hf_msnlb_host_name, &fqdn);
+            offset = display_unicode_string(tvb, pinfo, hb_tree, offset, hf_msnlb_host_name, &fqdn);
             offset += 6;
             proto_item_append_text(ti, ": %s", fqdn);
             }
@@ -289,12 +291,12 @@ dissect_msnlb(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U
             switch(address_family){
               case 0x2: /* IPv4 */
                 proto_tree_add_item(hb_tree, hf_msnlb_host_ipv4, tvb, offset, 4, ENC_BIG_ENDIAN);
-                proto_item_append_text(ti, ": %s", tvb_ip_to_str(tvb, offset));
+                proto_item_append_text(ti, ": %s", tvb_ip_to_str(pinfo->pool, tvb, offset));
                 offset += 4;
                 break;
               case 0x17: /* IPv6 */
                 proto_tree_add_item(hb_tree, hf_msnlb_host_ipv6, tvb, offset, 16, ENC_NA);
-                proto_item_append_text(ti, ": %s", tvb_ip6_to_str(tvb, offset));
+                proto_item_append_text(ti, ": %s", tvb_ip6_to_str(pinfo->pool, tvb, offset));
                 offset += 16;
                 break;
               default: /* Unknown */
@@ -554,7 +556,7 @@ proto_register_msnlb(void)
     },
     { &hf_msnlb_address_family,
       { "Address Family", "msnlb.address_family",
-        FT_UINT8, BASE_HEX_DEC,
+        FT_UINT16, BASE_HEX_DEC,
         VALS(nlb_address_family_vals), 0,
         NULL, HFILL }
     },
@@ -613,14 +615,13 @@ proto_register_msnlb(void)
   proto_msnlb = proto_register_protocol("MS Network Load Balancing", "MS NLB", "msnlb");
   proto_register_field_array(proto_msnlb, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
+
+  msnlb_handle = register_dissector("msnlb", dissect_msnlb, proto_msnlb);
 }
 
 void
 proto_reg_handoff_msnlb(void)
 {
-  dissector_handle_t msnlb_handle;
-
-  msnlb_handle = create_dissector_handle(dissect_msnlb, proto_msnlb);
   dissector_add_uint("ethertype", ETHERTYPE_MS_NLB_HEARTBEAT, msnlb_handle);
 }
 

@@ -1,11 +1,8 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-nbap.c                                                              */
-/* asn2wrs.py -p nbap -c ./nbap.cnf -s ./packet-nbap-template -D . -O ../.. NBAP-CommonDataTypes.asn NBAP-Constants.asn NBAP-Containers.asn NBAP-IEs.asn NBAP-PDU-Contents.asn NBAP-PDU-Descriptions.asn */
+/* asn2wrs.py -L -p nbap -c ./nbap.cnf -s ./packet-nbap-template -D . -O ../.. NBAP-CommonDataTypes.asn NBAP-Constants.asn NBAP-Containers.asn NBAP-IEs.asn NBAP-PDU-Contents.asn NBAP-PDU-Descriptions.asn */
 
-/* Input file: packet-nbap-template.c */
-
-#line 1 "./asn1/nbap/packet-nbap-template.c"
 /* packet-nbap-template.c
  * Routines for UMTS Node B Application Part(NBAP) packet dissection
  * Copyright 2005, 2009 Anders Broman <anders.broman@ericsson.com>
@@ -54,7 +51,7 @@
 #define DEBUG_NBAP 0
 #if DEBUG_NBAP
 #include <epan/to_str.h>
-#define nbap_debug(...) g_warning(__VA_ARGS__)
+#define nbap_debug(...) ws_warning(__VA_ARGS__)
 #else
 #define nbap_debug(...)
 #endif
@@ -65,9 +62,6 @@ void proto_reg_handoff_nbap(void);
 /* Protocol Handles */
 static dissector_handle_t fp_handle;
 
-
-/*--- Included file: packet-nbap-val.h ---*/
-#line 1 "./asn1/nbap/packet-nbap-val.h"
 #define maxPrivateIEs                  65535
 #define maxProtocolExtensions          65535
 #define maxProtocolIEs                 65535
@@ -1522,9 +1516,6 @@ typedef enum _ProtocolIE_ID_enum {
   id_Unallocated_1221 = 1221
 } ProtocolIE_ID_enum;
 
-/*--- End of included file: packet-nbap-val.h ---*/
-#line 61 "./asn1/nbap/packet-nbap-template.c"
-
 /* Initialize the protocol and registered fields */
 static int proto_nbap = -1;
 static int hf_nbap_transportLayerAddress_ipv4 = -1;
@@ -1532,9 +1523,6 @@ static int hf_nbap_transportLayerAddress_ipv6 = -1;
 static int hf_nbap_transportLayerAddress_nsap = -1;
 static int hf_nbap_reassembled_information_block = -1;
 
-
-/*--- Included file: packet-nbap-hf.c ---*/
-#line 1 "./asn1/nbap/packet-nbap-hf.c"
 static int hf_nbap_ActivationInformation_PDU = -1;  /* ActivationInformation */
 static int hf_nbap_Additional_EDCH_Setup_Info_PDU = -1;  /* Additional_EDCH_Setup_Info */
 static int hf_nbap_Additional_EDCH_Cell_Information_Response_List_PDU = -1;  /* Additional_EDCH_Cell_Information_Response_List */
@@ -3161,7 +3149,7 @@ static int hf_nbap_ganss_Navigation_Model_And_Time_Recovery = -1;  /* BOOLEAN */
 static int hf_nbap_ganss_Time_Model_GNSS_GNSS = -1;  /* BIT_STRING_SIZE_9 */
 static int hf_nbap_ganss_UTC_Model = -1;          /* BOOLEAN */
 static int hf_nbap_ganss_Almanac = -1;            /* BOOLEAN */
-static int hf_nbap_ganss_Real_Time_Integrity = -1;  /* BOOLEAN */
+static int hf_nbap_gANSS_GenericDataInfoReqItem_ganss_Real_Time_Integrity = -1;  /* BOOLEAN */
 static int hf_nbap_ganss_Data_Bit_Assistance_Req = -1;  /* GANSS_Data_Bit_Assistance_ReqItem */
 static int hf_nbap_GANSS_Generic_Data_item = -1;  /* GANSS_Generic_DataItem */
 static int hf_nbap_dganss_Correction = -1;        /* DGANSSCorrections */
@@ -3169,7 +3157,7 @@ static int hf_nbap_ganss_Navigation_Model_And_Time_Recovery_01 = -1;  /* GANSS_N
 static int hf_nbap_ganss_Time_Model = -1;         /* GANSS_Time_Model */
 static int hf_nbap_ganss_UTC_TIME = -1;           /* GANSS_UTC_Model */
 static int hf_nbap_ganss_Almanac_01 = -1;         /* GANSS_Almanac */
-static int hf_nbap_ganss_Real_Time_Integrity_01 = -1;  /* GANSS_Real_Time_Integrity */
+static int hf_nbap_ganss_Real_Time_Integrity = -1;  /* GANSS_Real_Time_Integrity */
 static int hf_nbap_ganss_Data_Bit_Assistance = -1;  /* GANSS_Data_Bit_Assistance */
 static int hf_nbap_gloTau = -1;                   /* BIT_STRING_SIZE_22 */
 static int hf_nbap_gloGamma = -1;                 /* BIT_STRING_SIZE_11 */
@@ -4827,18 +4815,12 @@ static int hf_nbap_RACH_SubChannelNumbers_subCh2 = -1;
 static int hf_nbap_RACH_SubChannelNumbers_subCh1 = -1;
 static int hf_nbap_RACH_SubChannelNumbers_subCh0 = -1;
 
-/*--- End of included file: packet-nbap-hf.c ---*/
-#line 70 "./asn1/nbap/packet-nbap-template.c"
-
 /* Initialize the subtree pointers */
 static int ett_nbap = -1;
 static int ett_nbap_TransportLayerAddress = -1;
 static int ett_nbap_TransportLayerAddress_nsap = -1;
 static int ett_nbap_ib_sg_data = -1;
 
-
-/*--- Included file: packet-nbap-ett.c ---*/
-#line 1 "./asn1/nbap/packet-nbap-ett.c"
 static gint ett_nbap_PrivateIE_ID = -1;
 static gint ett_nbap_ProcedureID = -1;
 static gint ett_nbap_TransactionID = -1;
@@ -6466,9 +6448,6 @@ static gint ett_nbap_SuccessfulOutcome = -1;
 static gint ett_nbap_UnsuccessfulOutcome = -1;
 static gint ett_nbap_Outcome = -1;
 
-/*--- End of included file: packet-nbap-ett.c ---*/
-#line 78 "./asn1/nbap/packet-nbap-template.c"
-
 static expert_field ei_nbap_no_find_port_info = EI_INIT;
 static expert_field ei_nbap_no_set_comm_context_id = EI_INIT;
 static expert_field ei_nbap_hsdsch_entity_not_specified = EI_INIT;
@@ -6575,7 +6554,7 @@ typedef struct nbap_ib_segment_t {
   guint8* data;
 } nbap_ib_segment_t;
 
-static nbap_ib_segment_t* nbap_parse_ib_sg_data_var1(tvbuff_t *tvb,gboolean is_short)
+static nbap_ib_segment_t* nbap_parse_ib_sg_data_var1(packet_info *pinfo, tvbuff_t *tvb,gboolean is_short)
 {
   guint8 bit_length;
   guint8* data;
@@ -6585,13 +6564,13 @@ static nbap_ib_segment_t* nbap_parse_ib_sg_data_var1(tvbuff_t *tvb,gboolean is_s
   }
   if (is_short) {
     bit_length = tvb_get_guint8(tvb,0) + 1;
-    data = (guint8*)tvb_memdup(wmem_packet_scope(),tvb,1,(bit_length+7)/8);
+    data = (guint8*)tvb_memdup(pinfo->pool,tvb,1,(bit_length+7)/8);
   }
   else {
     bit_length = NBAP_MAX_IB_SEGMENT_LENGTH;
-    data = (guint8*)tvb_memdup(wmem_packet_scope(),tvb,0,(bit_length+7)/8);
+    data = (guint8*)tvb_memdup(pinfo->pool,tvb,0,(bit_length+7)/8);
   }
-  output = wmem_new(wmem_packet_scope(), nbap_ib_segment_t);
+  output = wmem_new(pinfo->pool, nbap_ib_segment_t);
   output->bit_length = bit_length;
   output->data = data;
   return output;
@@ -6817,17 +6796,14 @@ static int dissect_SuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, pro
 static int dissect_UnsuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *);
 
 static guint32 calculate_setup_conv_key(const guint32 transaction_id, const guint32 dd_mode, const guint32 channel_id);
-static void add_setup_conv(const guint32 transaction_id, const guint32 dd_mode, const guint32 channel_id, const guint32 req_frame_number,
+static void add_setup_conv(const packet_info *pinfo _U_, const guint32 transaction_id, const guint32 dd_mode, const guint32 channel_id, const guint32 req_frame_number,
            const address *addr, const guint32 port, umts_fp_conversation_info_t * umts_fp_conversation_info, conversation_t *conv);
-static nbap_setup_conv_t* find_setup_conv(const guint32 transaction_id, const guint32 dd_mode, const guint32 channel_id);
+static nbap_setup_conv_t* find_setup_conv(const packet_info *pinfo _U_, const guint32 transaction_id, const guint32 dd_mode, const guint32 channel_id);
 static void delete_setup_conv(nbap_setup_conv_t *conv);
 
 /*Easy way to add hsdhsch binds for corner cases*/
 static void add_hsdsch_bind(packet_info * pinfo);
 
-
-/*--- Included file: packet-nbap-fn.c ---*/
-#line 1 "./asn1/nbap/packet-nbap-fn.c"
 
 static const value_string nbap_Criticality_vals[] = {
   {   0, "reject" },
@@ -6966,7 +6942,6 @@ static const value_string nbap_ProcedureCode_vals[] = {
 
 static int
 dissect_nbap_ProcedureCode(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 93 "./asn1/nbap/nbap.cnf"
   guint32 procedure_code;
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, &procedure_code, FALSE);
@@ -6975,7 +6950,6 @@ dissect_nbap_ProcedureCode(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
   col_add_fstr(actx->pinfo->cinfo, COL_INFO, "%s ",
                  val_to_str(procedure_code, nbap_ProcedureCode_vals,
                             "unknown message"));
-
 
 
   return offset;
@@ -7007,17 +6981,15 @@ static const per_sequence_t ProcedureID_sequence[] = {
 
 static int
 dissect_nbap_ProcedureID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 103 "./asn1/nbap/nbap.cnf"
   ProcedureID = NULL;
   nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_ProcedureID, ProcedureID_sequence);
 
-  ProcedureID = wmem_strdup_printf(wmem_packet_scope(), "%s/%s",
+  ProcedureID = wmem_strdup_printf(actx->pinfo->pool, "%s/%s",
                                  val_to_str(nbap_private_data->procedure_code, VALS(nbap_ProcedureCode_vals), "unknown(%u)"),
                                  val_to_str(nbap_private_data->dd_mode, VALS(nbap_DdMode_vals), "unknown(%u)"));
   nbap_private_data->crnc_context_present = FALSE; /*Reset CRNC Com context present flag.*/
-
 
 
   return offset;
@@ -8256,7 +8228,6 @@ static value_string_ext nbap_ProtocolIE_ID_vals_ext = VALUE_STRING_EXT_INIT(nbap
 
 static int
 dissect_nbap_ProtocolIE_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 80 "./asn1/nbap/nbap.cnf"
   guint32 protocol_ie_id;
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, maxProtocolIEs, &protocol_ie_id, FALSE);
@@ -8265,7 +8236,6 @@ dissect_nbap_ProtocolIE_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
   if (tree) {
     proto_item_append_text(proto_item_get_parent_nth(actx->created_item, 2), ": %s", val_to_str_ext(protocol_ie_id, &nbap_ProtocolIE_ID_vals_ext, "unknown (%d)"));
   }
-
 
   return offset;
 }
@@ -8551,7 +8521,6 @@ dissect_nbap_Multicell_EDCH_Transport_Bearer_Mode(tvbuff_t *tvb _U_, int offset 
 
 static int
 dissect_nbap_UL_ScramblingCodeNumber(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 981 "./asn1/nbap/nbap.cnf"
   guint32 ul_scrambling_code;
   guint32 com_context_id;
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
@@ -8562,7 +8531,6 @@ dissect_nbap_UL_ScramblingCodeNumber(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
   if(ul_scrambling_code != 0 && com_context_id != 0) {
     wmem_tree_insert32(nbap_scrambling_code_crncc_map,ul_scrambling_code,GUINT_TO_POINTER(com_context_id));
   }
-
 
 
   return offset;
@@ -8831,7 +8799,6 @@ dissect_nbap_E_DCH_MACdFlow_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 
 static int
 dissect_nbap_BindingID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 963 "./asn1/nbap/nbap.cnf"
   tvbuff_t *parameter_tvb=NULL;
   guint16 binding_id_port;
 
@@ -8849,7 +8816,6 @@ dissect_nbap_BindingID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, 
   }
 
 
-
   return offset;
 }
 
@@ -8857,7 +8823,6 @@ dissect_nbap_BindingID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, 
 
 static int
 dissect_nbap_TransportLayerAddress(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 843 "./asn1/nbap/nbap.cnf"
   tvbuff_t *parameter_tvb=NULL;
   proto_item *item;
   proto_tree *subtree, *nsap_tree;
@@ -8904,7 +8869,6 @@ dissect_nbap_TransportLayerAddress(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t
     }
     dissect_nsap(nsap_tvb, 0, 20, nsap_tree);
   }
-
 
 
   return offset;
@@ -10427,7 +10391,6 @@ dissect_nbap_AvailabilityStatus(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
 
 static int
 dissect_nbap_HSDSCH_RNTI(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2484 "./asn1/nbap/nbap.cnf"
   gint hrnti;
 umts_fp_conversation_info_t *umts_fp_conversation_info = NULL;
 fp_hsdsch_channel_info_t* fp_hsdsch_channel_info = NULL;
@@ -10452,7 +10415,7 @@ nbap_hsdsch_channel_info = nbap_private_data->nbap_hsdsch_channel_info;
     for (i = 0; i < maxNrOfMACdFlows; i++) {
         if (nbap_hsdsch_channel_info[i].crnc_port != 0){
             conversation = find_conversation(actx->pinfo->num, &(nbap_hsdsch_channel_info[i].crnc_address), &null_addr,
-                               ENDPOINT_UDP, nbap_hsdsch_channel_info[i].crnc_port, 0, NO_ADDR_B);
+                               CONVERSATION_UDP, nbap_hsdsch_channel_info[i].crnc_port, 0, NO_ADDR_B);
             if(conversation != NULL){
                 umts_fp_conversation_info = (umts_fp_conversation_info_t *)conversation_get_proto_data(conversation, proto_fp);
                 DISSECTOR_ASSERT(umts_fp_conversation_info != NULL);
@@ -10462,7 +10425,6 @@ nbap_hsdsch_channel_info = nbap_private_data->nbap_hsdsch_channel_info;
             }
          }
      }
-
 
 
   return offset;
@@ -10675,7 +10637,6 @@ dissect_nbap_BundlingModeIndicator(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t
 
 static int
 dissect_nbap_CommonTransportChannelID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 936 "./asn1/nbap/nbap.cnf"
   guint32 commontransportchannelid;
   nbap_dch_channel_info_t* nbap_dch_chnl_info;
   nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
@@ -10686,7 +10647,6 @@ dissect_nbap_CommonTransportChannelID(tvbuff_t *tvb _U_, int offset _U_, asn1_ct
   nbap_private_data->common_transport_channel_id = commontransportchannelid;
   if(commontransportchannelid<maxNrOfDCHs)
     nbap_dch_chnl_info[commontransportchannelid].next_dch = 0;
-
 
 
   return offset;
@@ -11491,7 +11451,6 @@ dissect_nbap_Common_E_DCH_HSDPCCH_InfoItem(tvbuff_t *tvb _U_, int offset _U_, as
 
 static int
 dissect_nbap_CommonPhysicalChannelID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 926 "./asn1/nbap/nbap.cnf"
   guint32 commonphysicalchannelid;
   nbap_dch_channel_info_t* nbap_dch_chnl_info;
   nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
@@ -11502,7 +11461,6 @@ dissect_nbap_CommonPhysicalChannelID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
   nbap_private_data->common_physical_channel_id = commonphysicalchannelid;
   if(commonphysicalchannelid<maxNrOfDCHs)
     nbap_dch_chnl_info[commonphysicalchannelid].next_dch = 0;
-
 
 
   return offset;
@@ -11759,7 +11717,6 @@ static const value_string nbap_PayloadCRC_PresenceIndicator_vals[] = {
 
 static int
 dissect_nbap_PayloadCRC_PresenceIndicator(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 891 "./asn1/nbap/nbap.cnf"
 guint32 payload_crc_value;
 
   offset = dissect_per_enumerated(tvb, offset, actx, tree, hf_index,
@@ -11771,7 +11728,6 @@ guint32 payload_crc_value;
     }else{
         nbap_get_private_data(actx->pinfo)->dch_crc_present = FALSE;
     }
-
 
 
   return offset;
@@ -11811,7 +11767,6 @@ dissect_nbap_E_DCH_MACdFlow_Multiplexing_List(tvbuff_t *tvb _U_, int offset _U_,
 
 static int
 dissect_nbap_LogicalChannelID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1966 "./asn1/nbap/nbap.cnf"
   guint32 logical_channel_id;
   guint num_items;
   nbap_edch_channel_info_t* nbap_edch_channel_info;
@@ -11828,7 +11783,6 @@ dissect_nbap_LogicalChannelID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
         nbap_edch_channel_info[nbap_private_data->e_dch_macdflow_id].lchId[num_items-1] = nbap_private_data->logical_channel_id;
 
 
-
   return offset;
 }
 
@@ -11836,7 +11790,6 @@ dissect_nbap_LogicalChannelID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
 
 static int
 dissect_nbap_MAC_PDU_SizeExtended(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2085 "./asn1/nbap/nbap.cnf"
 guint32 hsdsch_macdflow_id;
 nbap_hsdsch_channel_info_t* nbap_hsdsch_channel_info;
 nbap_hsdsch_channel_info = nbap_get_private_data(actx->pinfo)->nbap_hsdsch_channel_info;
@@ -11848,7 +11801,6 @@ nbap_hsdsch_channel_info = nbap_get_private_data(actx->pinfo)->nbap_hsdsch_chann
     if(nbap_hsdsch_channel_info[hsdsch_macdflow_id].crnc_port != 0){
             nbap_hsdsch_channel_info[hsdsch_macdflow_id].entity = ehs;
     }
-
 
 
   return offset;
@@ -12263,7 +12215,6 @@ static const per_sequence_t CommonMACFlow_Specific_InfoItem_sequence[] = {
 
 static int
 dissect_nbap_CommonMACFlow_Specific_InfoItem(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2330 "./asn1/nbap/nbap.cnf"
     address     dst_addr;
     guint32 transportLayerAddress_ipv4;
     guint16 bindingID;
@@ -12293,7 +12244,6 @@ dissect_nbap_CommonMACFlow_Specific_InfoItem(tvbuff_t *tvb _U_, int offset _U_, 
     nbap_common_channel_info[common_macdflow_id].crnc_port = nbap_private_data->binding_id_port;
 
 
-
   return offset;
 }
 
@@ -12315,7 +12265,6 @@ dissect_nbap_CommonMACFlow_Specific_InfoList(tvbuff_t *tvb _U_, int offset _U_, 
 
 static int
 dissect_nbap_MACdPDU_Size(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1949 "./asn1/nbap/nbap.cnf"
 guint32 mac_d_pdu_size;
 guint num_items;
 nbap_edch_channel_info_t* nbap_edch_channel_info;
@@ -12333,7 +12282,6 @@ nbap_edch_channel_info = nbap_private_data->nbap_edch_channel_info;
     num_items = nbap_private_data->num_items;
     if(num_items > 0 && num_items < MAX_EDCH_DDIS + 1)
         nbap_edch_channel_info[nbap_private_data->e_dch_macdflow_id].edch_macd_pdu_size[num_items-1] = nbap_private_data->mac_d_pdu_size;
-
 
 
   return offset;
@@ -12629,7 +12577,6 @@ static const per_sequence_t CommonTransportChannel_InformationResponse_sequence[
 
 static int
 dissect_nbap_CommonTransportChannel_InformationResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 174 "./asn1/nbap/nbap.cnf"
 address dst_addr;
 nbap_setup_conv_t *request_conv;
 conversation_t *conv;
@@ -12654,7 +12601,7 @@ nbap_private_data->binding_id_port = 0;
 
   set_address(&dst_addr, AT_IPv4, 4, &transportLayerAddress_ipv4);
 
-  request_conv = find_setup_conv(nbap_private_data->transaction_id,nbap_private_data->dd_mode,nbap_private_data->common_transport_channel_id);
+  request_conv = find_setup_conv(actx->pinfo, nbap_private_data->transaction_id,nbap_private_data->dd_mode,nbap_private_data->common_transport_channel_id);
 
   if(request_conv == NULL){
     return offset;
@@ -12666,11 +12613,10 @@ nbap_private_data->binding_id_port = 0;
 
   delete_setup_conv(request_conv);
   nbap_debug("    Frame %u conversation setup frame: %u %s:%u -> %s:%u", actx->pinfo->num, conv->setup_frame,
-            address_to_str(wmem_packet_scope(), &conv->key_ptr->addr1), conv->key_ptr->port1,
-            address_to_str(wmem_packet_scope(), &conv->key_ptr->addr2), conv->key_ptr->port2);
+            address_to_str(actx->pinfo->pool, &conv->key_ptr->addr1), conv->key_ptr->port1,
+            address_to_str(actx->pinfo->pool, &conv->key_ptr->addr2), conv->key_ptr->port2);
 
   nbap_debug("Frame %u CommonTransportChannel-InformationResponse End", actx->pinfo->num);
-
 
 
 
@@ -13585,14 +13531,12 @@ dissect_nbap_CriticalityDiagnostics(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_
 
 static int
 dissect_nbap_CRNC_CommunicationContextID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2443 "./asn1/nbap/nbap.cnf"
 guint32 com_context_id;
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 1048575U, &com_context_id, FALSE);
 
 nbap_get_private_data(actx->pinfo)->com_context_id = com_context_id;
 nbap_get_private_data(actx->pinfo)->crnc_context_present = TRUE;
-
 
 
   return offset;
@@ -15018,7 +14962,6 @@ dissect_nbap_ToAWE(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, prot
 
 static int
 dissect_nbap_T_dCH_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 904 "./asn1/nbap/nbap.cnf"
   guint32 dch_id;
   gint num_dch_in_flow;
   nbap_dch_channel_info_t* nbap_dch_chnl_info;
@@ -15038,7 +14981,6 @@ dissect_nbap_T_dCH_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, p
   }
 
 
-
   return offset;
 }
 
@@ -15046,7 +14988,6 @@ dissect_nbap_T_dCH_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, p
 
 static int
 dissect_nbap_TransportFormatSet_NrOfTransportBlocks(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1363 "./asn1/nbap/nbap.cnf"
 guint32 NrOfTransportBlocks;
 guint num_items;
 guint32 dch_id;
@@ -15094,7 +15035,6 @@ nbap_dch_chnl_info = nbap_private_data->nbap_dch_chnl_info;
     }
 
 
-
   return offset;
 }
 
@@ -15102,7 +15042,6 @@ nbap_dch_chnl_info = nbap_private_data->nbap_dch_chnl_info;
 
 static int
 dissect_nbap_TransportFormatSet_TransportBlockSize(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1408 "./asn1/nbap/nbap.cnf"
 guint32 TransportBlockSize;
 guint num_items;
 guint32 dch_id;
@@ -15142,7 +15081,6 @@ nbap_dch_chnl_info = nbap_private_data->nbap_dch_chnl_info;
             }
         }
     }
-
 
 
   return offset;
@@ -15243,9 +15181,7 @@ static const per_sequence_t TransportFormatSet_DynamicPartList_item_sequence[] =
 
 static int
 dissect_nbap_TransportFormatSet_DynamicPartList_item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1360 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_items++;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_TransportFormatSet_DynamicPartList_item, TransportFormatSet_DynamicPartList_item_sequence);
@@ -15260,9 +15196,7 @@ static const per_sequence_t TransportFormatSet_DynamicPartList_sequence_of[1] = 
 
 static int
 dissect_nbap_TransportFormatSet_DynamicPartList(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1357 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_items = 0;
-
 
   offset = dissect_per_constrained_sequence_of(tvb, offset, actx, tree, hf_index,
                                                   ett_nbap_TransportFormatSet_DynamicPartList, TransportFormatSet_DynamicPartList_sequence_of,
@@ -15431,7 +15365,6 @@ dissect_nbap_TransportFormatSet(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
 
 static int
 dissect_nbap_T_ul_TransportFormatSet(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1309 "./asn1/nbap/nbap.cnf"
     nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
     guint32 dch_id = nbap_private_data->dch_id;
     nbap_dch_channel_info_t* nbap_dch_chnl_info;
@@ -15440,7 +15373,6 @@ dissect_nbap_T_ul_TransportFormatSet(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
     if (dch_id != 0xffffffff) {
         nbap_dch_chnl_info[dch_id].num_ul_chans = 0;
     }
-
 
   offset = dissect_nbap_TransportFormatSet(tvb, offset, actx, tree, hf_index);
 
@@ -15451,7 +15383,6 @@ dissect_nbap_T_ul_TransportFormatSet(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
 
 static int
 dissect_nbap_T_dl_TransportFormatSet(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1319 "./asn1/nbap/nbap.cnf"
     nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
     guint32 dch_id = nbap_private_data->dch_id;
     nbap_dch_channel_info_t* nbap_dch_chnl_info;
@@ -15460,7 +15391,6 @@ dissect_nbap_T_dl_TransportFormatSet(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
     if (dch_id != 0xffffffff) {
         nbap_dch_chnl_info[dch_id].num_dl_chans = 0;
     }
-
 
   offset = dissect_nbap_TransportFormatSet(tvb, offset, actx, tree, hf_index);
 
@@ -15507,16 +15437,12 @@ static const per_sequence_t DCH_Specific_FDD_Item_sequence[] = {
 
 static int
 dissect_nbap_DCH_Specific_FDD_Item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1303 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_dch_in_flow++;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_DCH_Specific_FDD_Item, DCH_Specific_FDD_Item_sequence);
 
-#line 1306 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->prev_dch_id = nbap_get_private_data(actx->pinfo)->dch_id;
-
 
   return offset;
 }
@@ -15528,10 +15454,8 @@ static const per_sequence_t DCH_Specific_FDD_InformationList_sequence_of[1] = {
 
 static int
 dissect_nbap_DCH_Specific_FDD_InformationList(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1299 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_dch_in_flow = 0;
     nbap_get_private_data(actx->pinfo)->prev_dch_id = 0;
-
 
   offset = dissect_per_constrained_sequence_of(tvb, offset, actx, tree, hf_index,
                                                   ett_nbap_DCH_Specific_FDD_InformationList, DCH_Specific_FDD_InformationList_sequence_of,
@@ -15809,9 +15733,7 @@ static int
 dissect_nbap_T_dCH_ID_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_nbap_DCH_ID(tvb, offset, actx, tree, hf_index);
 
-#line 923 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->dch_id = nbap_get_private_data(actx->pinfo)->t_dch_id;
-
 
   return offset;
 }
@@ -15820,7 +15742,6 @@ dissect_nbap_T_dCH_ID_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 static int
 dissect_nbap_T_ul_TransportFormatSet_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1329 "./asn1/nbap/nbap.cnf"
     nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
     guint32 dch_id = nbap_private_data->dch_id;
     nbap_dch_channel_info_t* nbap_dch_chnl_info;
@@ -15829,7 +15750,6 @@ dissect_nbap_T_ul_TransportFormatSet_01(tvbuff_t *tvb _U_, int offset _U_, asn1_
     if (dch_id != 0xffffffff) {
         nbap_dch_chnl_info[dch_id].num_ul_chans = 0;
     }
-
 
   offset = dissect_nbap_TransportFormatSet(tvb, offset, actx, tree, hf_index);
 
@@ -15840,7 +15760,6 @@ dissect_nbap_T_ul_TransportFormatSet_01(tvbuff_t *tvb _U_, int offset _U_, asn1_
 
 static int
 dissect_nbap_T_dl_TransportFormatSet_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1339 "./asn1/nbap/nbap.cnf"
     nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
     guint32 dch_id = nbap_private_data->dch_id;
     nbap_dch_channel_info_t* nbap_dch_chnl_info;
@@ -15849,7 +15768,6 @@ dissect_nbap_T_dl_TransportFormatSet_01(tvbuff_t *tvb _U_, int offset _U_, asn1_
     if (dch_id != 0xffffffff) {
         nbap_dch_chnl_info[dch_id].num_dl_chans = 0;
     }
-
 
   offset = dissect_nbap_TransportFormatSet(tvb, offset, actx, tree, hf_index);
 
@@ -18317,7 +18235,6 @@ dissect_nbap_E_DCH_HARQ_Combining_Capability(tvbuff_t *tvb _U_, int offset _U_, 
 
 static int
 dissect_nbap_E_DCH_DDI_Value(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1932 "./asn1/nbap/nbap.cnf"
   guint32 e_dch_ddi_value;
   guint num_items;
   nbap_edch_channel_info_t* nbap_edch_channel_info;
@@ -18335,7 +18252,6 @@ dissect_nbap_E_DCH_DDI_Value(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
   num_items = nbap_private_data->num_items;
   if(num_items > 0 && num_items < MAX_EDCH_DDIS + 1)
       nbap_edch_channel_info[nbap_private_data->e_dch_macdflow_id].edch_ddi[num_items-1] = nbap_private_data->e_dch_ddi_value;
-
 
 
   return offset;
@@ -18458,9 +18374,7 @@ static const per_sequence_t E_DCH_LogicalChannelInformationItem_sequence[] = {
 
 static int
 dissect_nbap_E_DCH_LogicalChannelInformationItem(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1929 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_items++;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_E_DCH_LogicalChannelInformationItem, E_DCH_LogicalChannelInformationItem_sequence);
@@ -18475,7 +18389,6 @@ static const per_sequence_t E_DCH_LogicalChannelInformation_sequence_of[1] = {
 
 static int
 dissect_nbap_E_DCH_LogicalChannelInformation(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1919 "./asn1/nbap/nbap.cnf"
     nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
     nbap_private_data->num_items = 0;
     nbap_edch_channel_info_t* nbap_edch_channel_info;
@@ -18487,7 +18400,6 @@ dissect_nbap_E_DCH_LogicalChannelInformation(tvbuff_t *tvb _U_, int offset _U_, 
 
 
 nbap_edch_channel_info[nbap_private_data->e_dch_macdflow_id].no_ddi_entries = nbap_private_data->num_items;
-
 
 
   return offset;
@@ -18511,7 +18423,6 @@ static const per_sequence_t E_DCH_MACdFlow_Specific_InfoItem_sequence[] = {
 
 static int
 dissect_nbap_E_DCH_MACdFlow_Specific_InfoItem(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1671 "./asn1/nbap/nbap.cnf"
 umts_fp_conversation_info_t *p_conv_data = NULL;
 fp_edch_channel_info_t* fp_edch_channel_info = NULL;
 address     null_addr;
@@ -18535,7 +18446,7 @@ nbap_edch_channel_info = nbap_private_data->nbap_edch_channel_info;
     e_dch_macdflow_id = nbap_private_data->e_dch_macdflow_id;
     clear_address(&null_addr);
     p_conv = find_conversation(actx->pinfo->num, &nbap_edch_channel_info[e_dch_macdflow_id].crnc_address, &null_addr,
-                               ENDPOINT_UDP, nbap_edch_channel_info[e_dch_macdflow_id].crnc_port, 0, NO_ADDR_B);
+                               CONVERSATION_UDP, nbap_edch_channel_info[e_dch_macdflow_id].crnc_port, 0, NO_ADDR_B);
     if(!p_conv)
         return offset;
 
@@ -18574,7 +18485,6 @@ nbap_edch_channel_info = nbap_private_data->nbap_edch_channel_info;
     /* use to display e_dch_macdflow_id */
     p_conv_data->num_dch_in_flow = 1;
     p_conv_data->dch_ids_in_flow_list[0] = nbap_private_data->e_dch_macdflow_id;
-
 
 
   return offset;
@@ -18707,9 +18617,7 @@ dissect_nbap_E_DCH_LogicalChannelToModifyItem(tvbuff_t *tvb _U_, int offset _U_,
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_E_DCH_LogicalChannelToModifyItem, E_DCH_LogicalChannelToModifyItem_sequence);
 
-#line 1916 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_items++;
-
 
   return offset;
 }
@@ -18777,7 +18685,6 @@ static const per_sequence_t E_DCH_MACdFlow_Specific_InfoItem_to_Modify_sequence[
 
 static int
 dissect_nbap_E_DCH_MACdFlow_Specific_InfoItem_to_Modify(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1825 "./asn1/nbap/nbap.cnf"
 guint32 no_ddi_entries, i;
 address     null_addr;
 nbap_edch_port_info_t *old_info;
@@ -18830,7 +18737,7 @@ nbap_private_data->num_items = 1;
     /* Check if we have conversation info */
     clear_address(&null_addr);
     p_conv = find_conversation(actx->pinfo->num, &nbap_edch_channel_info[e_dch_macdflow_id].crnc_address, &null_addr,
-                               ENDPOINT_UDP, nbap_edch_channel_info[e_dch_macdflow_id].crnc_port, 0, NO_ADDR_B);
+                               CONVERSATION_UDP, nbap_edch_channel_info[e_dch_macdflow_id].crnc_port, 0, NO_ADDR_B);
     if(!p_conv)
         return offset;
 
@@ -18869,7 +18776,6 @@ nbap_private_data->num_items = 1;
     /* use to display e_dch_macdflow_id */
     p_conv_data->num_dch_in_flow = 1;
     p_conv_data->dch_ids_in_flow_list[0] = e_dch_macdflow_id;
-
 
 
   return offset;
@@ -18918,7 +18824,6 @@ static const per_sequence_t E_DCH_FDD_Information_to_Modify_sequence[] = {
 
 static int
 dissect_nbap_E_DCH_FDD_Information_to_Modify(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1734 "./asn1/nbap/nbap.cnf"
 
 address     dst_addr, null_addr;
 conversation_t *conversation,*old_conversation = NULL;
@@ -18953,22 +18858,22 @@ nbap_private_data->binding_id_port = 0;
         set_address(&dst_addr, AT_IPv4, 4, &transportLayerAddress_ipv4);
 
         old_conversation = find_conversation(actx->pinfo->num, &dst_addr,
-            &null_addr, ENDPOINT_UDP, bindingID,
+            &null_addr, CONVERSATION_UDP, bindingID,
             0, NO_ADDR_B|NO_PORT_B);
 
         if(old_conversation){
             nbap_debug("Frame %u E-DCH-FDD-Information-to-Modify: found old conv on IP %s Port %u",
                 actx->pinfo->num,
-                address_to_str(wmem_packet_scope(), &dst_addr), bindingID);
+                address_to_str(actx->pinfo->pool, &dst_addr), bindingID);
         }else{
             nbap_debug("Frame %u E-DCH-FDD-Information-to-Modify: Did not find old conv on IP %s Port %u",
                 actx->pinfo->num,
-                address_to_str(wmem_packet_scope(), &dst_addr), bindingID);
+                address_to_str(actx->pinfo->pool, &dst_addr), bindingID);
         }
 
         /* It's not part of any conversation - create a new one. */
         conversation = conversation_new(actx->pinfo->num, &dst_addr,
-                &null_addr, ENDPOINT_UDP, bindingID,
+                &null_addr, CONVERSATION_UDP, bindingID,
                 0, NO_ADDR2|NO_PORT2);
 
             /* Set dissector */
@@ -19010,7 +18915,6 @@ nbap_private_data->binding_id_port = 0;
 
                 set_umts_fp_conv_data(conversation, umts_fp_conversation_info);
             }
-
 
 
   return offset;
@@ -22375,7 +22279,7 @@ static const per_sequence_t GANSS_GenericDataInfoReqItem_sequence[] = {
   { &hf_nbap_ganss_Time_Model_GNSS_GNSS, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_BIT_STRING_SIZE_9 },
   { &hf_nbap_ganss_UTC_Model, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_BOOLEAN },
   { &hf_nbap_ganss_Almanac  , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_BOOLEAN },
-  { &hf_nbap_ganss_Real_Time_Integrity, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_BOOLEAN },
+  { &hf_nbap_gANSS_GenericDataInfoReqItem_ganss_Real_Time_Integrity, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_BOOLEAN },
   { &hf_nbap_ganss_Data_Bit_Assistance_Req, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_GANSS_Data_Bit_Assistance_ReqItem },
   { &hf_nbap_ie_Extensions  , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_ProtocolExtensionContainer },
   { NULL, 0, 0, NULL }
@@ -22578,7 +22482,7 @@ static const per_sequence_t GANSS_Generic_DataItem_sequence[] = {
   { &hf_nbap_ganss_Time_Model, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_GANSS_Time_Model },
   { &hf_nbap_ganss_UTC_TIME , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_GANSS_UTC_Model },
   { &hf_nbap_ganss_Almanac_01, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_GANSS_Almanac },
-  { &hf_nbap_ganss_Real_Time_Integrity_01, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_GANSS_Real_Time_Integrity },
+  { &hf_nbap_ganss_Real_Time_Integrity, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_GANSS_Real_Time_Integrity },
   { &hf_nbap_ganss_Data_Bit_Assistance, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_GANSS_Data_Bit_Assistance },
   { &hf_nbap_ie_Extensions  , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_nbap_ProtocolExtensionContainer },
   { NULL, 0, 0, NULL }
@@ -23508,7 +23412,6 @@ static const value_string nbap_PICH_Mode_vals[] = {
 
 static int
 dissect_nbap_PICH_Mode(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1068 "./asn1/nbap/nbap.cnf"
 guint32 PICH_Mode = 0;
   offset = dissect_per_enumerated(tvb, offset, actx, tree, hf_index,
                                      4, &PICH_Mode, TRUE, 0, NULL);
@@ -23528,7 +23431,6 @@ guint32 PICH_Mode = 0;
             nbap_get_private_data(actx->pinfo)->paging_indications = 144;
             break;
     }
-
 
 
   return offset;
@@ -23621,7 +23523,6 @@ static const per_sequence_t HSDSCH_Common_System_InformationFDD_sequence[] = {
 
 static int
 dissect_nbap_HSDSCH_Common_System_InformationFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2357 "./asn1/nbap/nbap.cnf"
 /*
  * 5.1.6 High Speed Downlink Shared Channels
  * The Data Transfer procedure is used to transfer a HS-DSCH DATA FRAME (TYPE 1, TYPE 2 [FDD and 1.28Mcps
@@ -23663,11 +23564,11 @@ int i;
         if (nbap_common_channel_info[i].crnc_port != 0){
 
             conversation = find_conversation(actx->pinfo->num, &(nbap_common_channel_info[i].crnc_address), &null_addr,
-                               ENDPOINT_UDP, nbap_common_channel_info[i].crnc_port, 0, NO_ADDR_B);
+                               CONVERSATION_UDP, nbap_common_channel_info[i].crnc_port, 0, NO_ADDR_B);
 
             if (conversation == NULL) {
                 conversation = conversation_new(actx->pinfo->num, &(nbap_common_channel_info[i].crnc_address),
-                    &null_addr, ENDPOINT_UDP, nbap_common_channel_info[i].crnc_port,
+                    &null_addr, CONVERSATION_UDP, nbap_common_channel_info[i].crnc_port,
                     0, NO_ADDR2|NO_PORT2);
 
                 /* Set dissector */
@@ -23698,7 +23599,6 @@ int i;
             }
         }
     }
-
 
   return offset;
 }
@@ -23763,7 +23663,6 @@ dissect_nbap_HSDSCH_Common_System_Information_ResponseFDD(tvbuff_t *tvb _U_, int
 
 static int
 dissect_nbap_HSDSCH_MACdFlow_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 948 "./asn1/nbap/nbap.cnf"
   guint32 hsdsch_macdflow_id;
   guint num_items;
   gint* hsdsch_macdflow_ids;
@@ -23781,7 +23680,6 @@ hsdsch_macdflow_ids = nbap_private_data->hsdsch_macdflow_ids;
 hsdsch_macdflow_ids[num_items-1] = hsdsch_macdflow_id;
 
 
-
   return offset;
 }
 
@@ -23797,7 +23695,6 @@ static const per_sequence_t HSDSCH_MACdFlow_Specific_InfoItem_sequence[] = {
 
 static int
 dissect_nbap_HSDSCH_MACdFlow_Specific_InfoItem(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2058 "./asn1/nbap/nbap.cnf"
     address     dst_addr;
     guint32 transportLayerAddress_ipv4;
     guint16 bindingID;
@@ -23825,7 +23722,6 @@ dissect_nbap_HSDSCH_MACdFlow_Specific_InfoItem(tvbuff_t *tvb _U_, int offset _U_
     hsdsch_macdflow_id = nbap_private_data->hsdsch_macdflow_id;
     copy_address_wmem(actx->pinfo->pool,&(nbap_hsdsch_channel_info[hsdsch_macdflow_id].crnc_address),&dst_addr);
     nbap_hsdsch_channel_info[hsdsch_macdflow_id].crnc_port = bindingID;
-
 
 
   return offset;
@@ -23905,7 +23801,6 @@ static const value_string nbap_RLC_Mode_vals[] = {
 
 static int
 dissect_nbap_RLC_Mode(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1980 "./asn1/nbap/nbap.cnf"
     guint32 rlc_mode;
     nbap_hsdsch_channel_info_t* nbap_hsdsch_channel_info;
     nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
@@ -23925,7 +23820,6 @@ dissect_nbap_RLC_Mode(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, p
         default:
             break;
     }
-
 
 
   return offset;
@@ -23948,9 +23842,7 @@ static const per_sequence_t PriorityQueue_InfoItem_sequence[] = {
 
 static int
 dissect_nbap_PriorityQueue_InfoItem(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2049 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_items++;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_PriorityQueue_InfoItem, PriorityQueue_InfoItem_sequence);
@@ -23982,7 +23874,6 @@ static const per_sequence_t HSDSCH_MACdFlows_Information_sequence[] = {
 
 static int
 dissect_nbap_HSDSCH_MACdFlows_Information(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2009 "./asn1/nbap/nbap.cnf"
     int protocol_ie_id;
     guint32 i;
     nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
@@ -24018,7 +23909,6 @@ dissect_nbap_HSDSCH_MACdFlows_Information(tvbuff_t *tvb _U_, int offset _U_, asn
         }
 
 
-
   return offset;
 }
 
@@ -24026,7 +23916,6 @@ dissect_nbap_HSDSCH_MACdFlows_Information(tvbuff_t *tvb _U_, int offset _U_, asn
 
 static int
 dissect_nbap_T_hSDSCH_Physical_Layer_Category(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1999 "./asn1/nbap/nbap.cnf"
     guint32 hsdsch_physical_layer_category;
     nbap_hsdsch_channel_info_t* nbap_hsdsch_channel_info;
     nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
@@ -24037,7 +23926,6 @@ dissect_nbap_T_hSDSCH_Physical_Layer_Category(tvbuff_t *tvb _U_, int offset _U_,
 
 
     nbap_hsdsch_channel_info[nbap_private_data->hsdsch_macdflow_id].hsdsch_physical_layer_category = hsdsch_physical_layer_category;
-
 
 
   return offset;
@@ -24097,7 +23985,6 @@ static const per_sequence_t HSDSCH_FDD_Information_sequence[] = {
 
 static int
 dissect_nbap_HSDSCH_FDD_Information(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2096 "./asn1/nbap/nbap.cnf"
 /*
  * Collect the information about the HSDSCH MACdFlows set up conversation(s) and set the conversation data.
  */
@@ -24134,16 +24021,16 @@ dissect_nbap_HSDSCH_FDD_Information(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_
             nbap_debug("Frame %u HSDSCH-MACdFlows-Information:hsdsch_macdflow_id %u Look for conv on IP %s Port %u",
                         actx->pinfo->num,
                         i,
-                        address_to_str (wmem_packet_scope(), &(nbap_hsdsch_channel_info[i].crnc_address)),
+                        address_to_str (actx->pinfo->pool, &(nbap_hsdsch_channel_info[i].crnc_address)),
                         nbap_hsdsch_channel_info[i].crnc_port);
             conversation = find_conversation(actx->pinfo->num, &(nbap_hsdsch_channel_info[i].crnc_address), &null_addr,
-                               ENDPOINT_UDP, nbap_hsdsch_channel_info[i].crnc_port, 0, NO_ADDR_B);
+                               CONVERSATION_UDP, nbap_hsdsch_channel_info[i].crnc_port, 0, NO_ADDR_B);
 
             if (conversation == NULL) {
                 /* It's not part of any conversation - create a new one. */
                 nbap_debug("Frame %u HSDSCH-MACdFlows-Information: Set up conv on Port %u", actx->pinfo->num, nbap_hsdsch_channel_info[i].crnc_port);
                 conversation = conversation_new(actx->pinfo->num, &(nbap_hsdsch_channel_info[i].crnc_address),
-                    &null_addr, ENDPOINT_UDP, nbap_hsdsch_channel_info[i].crnc_port,
+                    &null_addr, CONVERSATION_UDP, nbap_hsdsch_channel_info[i].crnc_port,
                     0, NO_ADDR2|NO_PORT2);
 
                 /* Set dissector */
@@ -24196,7 +24083,6 @@ dissect_nbap_HSDSCH_FDD_Information(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_
     }
 
 
-
   return offset;
 }
 
@@ -24241,7 +24127,6 @@ static const per_sequence_t HSDSCH_MACdFlow_Specific_InfoItem_to_Modify_sequence
 
 static int
 dissect_nbap_HSDSCH_MACdFlow_Specific_InfoItem_to_Modify(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2192 "./asn1/nbap/nbap.cnf"
     address     dst_addr;
     guint32 transportLayerAddress_ipv4;
     guint16 bindingID;
@@ -24267,7 +24152,6 @@ dissect_nbap_HSDSCH_MACdFlow_Specific_InfoItem_to_Modify(tvbuff_t *tvb _U_, int 
     /* Set address for collection of HSDSCH entries */
     copy_address_wmem(actx->pinfo->pool,&(nbap_hsdsch_channel_info[nbap_private_data->hsdsch_macdflow_id].crnc_address),&dst_addr);
     nbap_hsdsch_channel_info[nbap_private_data->hsdsch_macdflow_id].crnc_port = bindingID;
-
 
 
   return offset;
@@ -24304,9 +24188,7 @@ static const per_sequence_t PriorityQueue_InfoItem_to_Add_sequence[] = {
 
 static int
 dissect_nbap_PriorityQueue_InfoItem_to_Add(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2052 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_items = 1;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_PriorityQueue_InfoItem_to_Add, PriorityQueue_InfoItem_to_Add_sequence);
@@ -24439,7 +24321,6 @@ static const per_sequence_t HSDSCH_Information_to_Modify_sequence[] = {
 
 static int
 dissect_nbap_HSDSCH_Information_to_Modify(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2217 "./asn1/nbap/nbap.cnf"
 /*
  * This is pretty much the same like if we setup a previous flow
  * Collect the information about the HSDSCH MACdFlows set up conversation(s) and set the conversation data.
@@ -24480,17 +24361,17 @@ dissect_nbap_HSDSCH_Information_to_Modify(tvbuff_t *tvb _U_, int offset _U_, asn
         if (nbap_hsdsch_channel_info[i].crnc_port != 0){
             nbap_debug("    hsdsch_macdflow_id %u Look for conv on IP %s Port %u",
                         i,
-                        address_to_str (wmem_packet_scope(), &(nbap_hsdsch_channel_info[i].crnc_address)),
+                        address_to_str (actx->pinfo->pool, &(nbap_hsdsch_channel_info[i].crnc_address)),
                         nbap_hsdsch_channel_info[i].crnc_port);
             conversation = find_conversation(actx->pinfo->num, &(nbap_hsdsch_channel_info[i].crnc_address), &null_addr,
-                               ENDPOINT_UDP, nbap_hsdsch_channel_info[i].crnc_port, 0, NO_ADDR_B);
+                               CONVERSATION_UDP, nbap_hsdsch_channel_info[i].crnc_port, 0, NO_ADDR_B);
 
             if (conversation == NULL) {
                 /* It's not part of any conversation - create a new one. */
                 nbap_debug("    Set up conv on Port %u", nbap_hsdsch_channel_info[i].crnc_port);
 
                 conversation = conversation_new(actx->pinfo->num, &(nbap_hsdsch_channel_info[i].crnc_address),
-                    &null_addr, ENDPOINT_UDP, nbap_hsdsch_channel_info[i].crnc_port,
+                    &null_addr, CONVERSATION_UDP, nbap_hsdsch_channel_info[i].crnc_port,
                     0, NO_ADDR2|NO_PORT2);
 
                 /* Set dissector */
@@ -24549,7 +24430,6 @@ dissect_nbap_HSDSCH_Information_to_Modify(tvbuff_t *tvb _U_, int offset _U_, asn
             actx->pinfo->num);
 
     }
-
 
 
   return offset;
@@ -24652,9 +24532,7 @@ static const per_sequence_t HSDSCH_MACdFlow_Specific_InformationResp_Item_sequen
 
 static int
 dissect_nbap_HSDSCH_MACdFlow_Specific_InformationResp_Item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2055 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_items++;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_HSDSCH_MACdFlow_Specific_InformationResp_Item, HSDSCH_MACdFlow_Specific_InformationResp_Item_sequence);
@@ -25068,13 +24946,11 @@ static const per_sequence_t HSDSCH_Paging_System_InformationFDD_sequence[] = {
 
 static int
 dissect_nbap_HSDSCH_Paging_System_InformationFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2433 "./asn1/nbap/nbap.cnf"
   /*
-  g_warning("HS-DSCH Type 3 NOT Implemented!");
+  ws_warning("HS-DSCH Type 3 NOT Implemented!");
   */
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_HSDSCH_Paging_System_InformationFDD, HSDSCH_Paging_System_InformationFDD_sequence);
-
 
 
 
@@ -25262,9 +25138,7 @@ static const per_sequence_t HSDSCH_MACdFlows_to_Delete_Item_sequence[] = {
 
 static int
 dissect_nbap_HSDSCH_MACdFlows_to_Delete_Item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2046 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_items++;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_HSDSCH_MACdFlows_to_Delete_Item, HSDSCH_MACdFlows_to_Delete_Item_sequence);
@@ -25279,9 +25153,7 @@ static const per_sequence_t HSDSCH_MACdFlows_to_Delete_sequence_of[1] = {
 
 static int
 dissect_nbap_HSDSCH_MACdFlows_to_Delete(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2041 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->num_items = 0;
-
 
   offset = dissect_per_constrained_sequence_of(tvb, offset, actx, tree, hf_index,
                                                   ett_nbap_HSDSCH_MACdFlows_to_Delete, HSDSCH_MACdFlows_to_Delete_sequence_of,
@@ -26656,7 +26528,6 @@ dissect_nbap_IB_OC_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, p
 
 static int
 dissect_nbap_IB_SG_DATA(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 576 "./asn1/nbap/nbap.cnf"
   tvbuff_t *parameter_tvb=NULL;
   tvbuff_t *final_tvb=NULL;
   proto_item *ti;
@@ -26723,15 +26594,15 @@ dissect_nbap_IB_SG_DATA(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_,
     default: /* First, subsequent or last */
       if(preferences_ib_sg_data_encoding == IB_SG_DATA_ENC_VAR_1) {
           is_short = ( segment_type == 1 || segment_type == 4 ); /* first-short or last-short */
-          nbap_ib_segment = nbap_parse_ib_sg_data_var1(parameter_tvb, is_short);
+          nbap_ib_segment = nbap_parse_ib_sg_data_var1(actx->pinfo, parameter_tvb, is_short);
           if (nbap_ib_segment == NULL ) { /* failed to parse */
             return offset;
           }
       }
       else { /* This is IB_SG_DATA_ENC_VAR_2 */
         /* Using the per encoded length */
-        data = (guint8*)tvb_memdup(wmem_packet_scope(), parameter_tvb, 0, (per_length + 7)/8);
-        nbap_ib_segment = wmem_new(wmem_packet_scope(), nbap_ib_segment_t);
+        data = (guint8*)tvb_memdup(actx->pinfo->pool, parameter_tvb, 0, (per_length + 7)/8);
+        nbap_ib_segment = wmem_new(actx->pinfo->pool, nbap_ib_segment_t);
         nbap_ib_segment->bit_length = per_length;
         nbap_ib_segment->data = data;
       }
@@ -26739,7 +26610,7 @@ dissect_nbap_IB_SG_DATA(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_,
       list = nbap_private_data->ib_segments;
       if (!list) {
         if ( segment_type == 0 || segment_type == 1 ) { /* first or first-short */
-          list = wmem_list_new(wmem_packet_scope());
+          list = wmem_list_new(actx->pinfo->pool);
           nbap_private_data->ib_segments = list;
         }
         else {
@@ -26924,7 +26795,6 @@ dissect_nbap_IB_SG_DATA(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_,
     }
   col_append_str(actx->pinfo->cinfo, COL_INFO,")");
   col_set_fence(actx->pinfo->cinfo, COL_INFO);
-
 
 
   return offset;
@@ -28601,7 +28471,6 @@ dissect_nbap_NI_Information(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
 
 static int
 dissect_nbap_NodeB_CommunicationContextID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 2449 "./asn1/nbap/nbap.cnf"
   gboolean crnc_context_present;
   guint node_b_com_context_id;
   nbap_com_context_id_t *cur_val;
@@ -28637,7 +28506,6 @@ dissect_nbap_NodeB_CommunicationContextID(tvbuff_t *tvb _U_, int offset _U_, asn
       nbap_private_data->crnc_context_present = TRUE;
     }
   }
-
 
 
   return offset;
@@ -29196,9 +29064,7 @@ static int
 dissect_nbap_T_dCH_id(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_nbap_DCH_ID(tvb, offset, actx, tree, hf_index);
 
-#line 1447 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->dch_id = nbap_get_private_data(actx->pinfo)->t_dch_id;
-
 
   return offset;
 }
@@ -29214,7 +29080,6 @@ static const per_sequence_t RL_Specific_DCH_Info_Item_sequence[] = {
 
 static int
 dissect_nbap_RL_Specific_DCH_Info_Item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1450 "./asn1/nbap/nbap.cnf"
 address     dst_addr, null_addr;
 conversation_t *conversation = NULL;
 umts_fp_conversation_info_t *umts_fp_conversation_info;
@@ -29250,13 +29115,13 @@ nbap_private_data->dch_id = 0xFFFFFFFF;
         set_address(&dst_addr, AT_IPv4, 4, &transportLayerAddress_ipv4);
 
         conversation = find_conversation(actx->pinfo->num, &dst_addr,
-            &null_addr, ENDPOINT_UDP, nbap_private_data->binding_id_port,
+            &null_addr, CONVERSATION_UDP, nbap_private_data->binding_id_port,
             0, NO_ADDR_B|NO_PORT_B);
 
         if (conversation == NULL) {
             /* It's not part of any conversation - create a new one. */
             conversation = conversation_new(actx->pinfo->num, &dst_addr,
-                &null_addr, ENDPOINT_UDP, nbap_private_data->binding_id_port,
+                &null_addr, CONVERSATION_UDP, nbap_private_data->binding_id_port,
                 0, NO_ADDR2|NO_PORT2);
 
             /* Set dissector */
@@ -29332,7 +29197,6 @@ nbap_private_data->dch_id = 0xFFFFFFFF;
         }
 
 
-
   return offset;
 }
 
@@ -29361,7 +29225,6 @@ static const per_sequence_t RL_Specific_E_DCH_Information_Item_sequence[] = {
 
 static int
 dissect_nbap_RL_Specific_E_DCH_Information_Item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1565 "./asn1/nbap/nbap.cnf"
 address     dst_addr, null_addr;
 conversation_t *conversation;
 umts_fp_conversation_info_t *umts_fp_conversation_info = NULL;
@@ -29391,7 +29254,7 @@ nbap_private_data->binding_id_port = 0;
         set_address(&dst_addr, AT_IPv4, 4, &transportLayerAddress_ipv4);
 
         conversation = find_conversation(actx->pinfo->num, &dst_addr,
-            &null_addr, ENDPOINT_UDP, bindingID,
+            &null_addr, CONVERSATION_UDP, bindingID,
             0, NO_ADDR_B|NO_PORT_B);
         if (conversation) {
             umts_fp_conversation_info = (umts_fp_conversation_info_t*)conversation_get_proto_data(conversation, proto_fp);
@@ -29404,7 +29267,7 @@ nbap_private_data->binding_id_port = 0;
 
             /* It's not part of any conversation - create a new one. */
             conversation = conversation_new(actx->pinfo->num, &dst_addr,
-                &null_addr, ENDPOINT_UDP, bindingID,
+                &null_addr, CONVERSATION_UDP, bindingID,
                 0, NO_ADDR2|NO_PORT2);
 
             /* Set dissector */
@@ -29447,13 +29310,13 @@ nbap_private_data->binding_id_port = 0;
 
                     nbap_debug("    wmem_tree_insert32(edch_flow_port_map) com_context_id %u e_dch_macdflow_id %u IP %s Port %u",
                         umts_fp_conversation_info->com_context_id,e_dch_macdflow_id,
-                        address_to_str(wmem_packet_scope(), &dst_addr),bindingID);
+                        address_to_str(actx->pinfo->pool, &dst_addr),bindingID);
 
                     wmem_tree_insert32(edch_flow_port_map, umts_fp_conversation_info->com_context_id, nbap_edch_port_info);
                 }else{
                     nbap_debug("    Insert in existing edch_flow_port_map com_context_id %u e_dch_macdflow_id %u IP %s Port %u",
                         umts_fp_conversation_info->com_context_id,e_dch_macdflow_id,
-                        address_to_str(wmem_packet_scope(), &dst_addr), bindingID);
+                        address_to_str(actx->pinfo->pool, &dst_addr), bindingID);
 
                     /* Must be same ADDRESS */
                     old_info->crnc_port[e_dch_macdflow_id] = bindingID;
@@ -29468,7 +29331,6 @@ nbap_private_data->binding_id_port = 0;
                 nbap_debug("Frame %u RL-Specific-E-DCH-Information-Item End", actx->pinfo->num);
             }
     }
-
 
 
   return offset;
@@ -32728,11 +32590,9 @@ static const per_sequence_t CommonTransportChannelSetupRequestFDD_sequence[] = {
 
 static int
 dissect_nbap_CommonTransportChannelSetupRequestFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 152 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CommonTransportChannelSetupRequest(FDD) ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CommonTransportChannelSetupRequestFDD, CommonTransportChannelSetupRequestFDD_sequence);
@@ -32918,7 +32778,6 @@ static const per_sequence_t FACH_ParametersItem_CTCH_SetupRqstFDD_sequence[] = {
 
 static int
 dissect_nbap_FACH_ParametersItem_CTCH_SetupRqstFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1199 "./asn1/nbap/nbap.cnf"
 address dst_addr, null_addr;
 conversation_t *conversation;
 
@@ -32950,7 +32809,7 @@ nbap_private_data->transport_format_set_type = NBAP_CPCH;
 
   set_address(&dst_addr, AT_IPv4, 4, &transportLayerAddress_ipv4);
 
-  conversation = conversation_new(actx->pinfo->num, &dst_addr, &null_addr, ENDPOINT_UDP, bindingID, 0, NO_ADDR2|NO_PORT2);
+  conversation = conversation_new(actx->pinfo->num, &dst_addr, &null_addr, CONVERSATION_UDP, bindingID, 0, NO_ADDR2|NO_PORT2);
 
   /* Set dissector */
   conversation_set_dissector(conversation, fp_handle);
@@ -33017,9 +32876,8 @@ nbap_private_data->transport_format_set_type = NBAP_CPCH;
     set_umts_fp_conv_data(conversation, umts_fp_conversation_info);
 
     /* Add Setup Conversation to list, we need it in response msg */
-    add_setup_conv(nbap_private_data->transaction_id,nbap_private_data->dd_mode,nbap_private_data->common_transport_channel_id, actx->pinfo->num, &dst_addr, bindingID, umts_fp_conversation_info, conversation);
+    add_setup_conv(actx->pinfo, nbap_private_data->transaction_id,nbap_private_data->dd_mode,nbap_private_data->common_transport_channel_id, actx->pinfo->num, &dst_addr, bindingID, umts_fp_conversation_info, conversation);
   }
-
 
 
   return offset;
@@ -33043,14 +32901,12 @@ dissect_nbap_FACH_ParametersListIE_CTCH_SetupRqstFDD(tvbuff_t *tvb _U_, int offs
 
 static int
 dissect_nbap_T_transportFormatSet(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1349 "./asn1/nbap/nbap.cnf"
     nbap_private_data_t* nbap_private_data = nbap_get_private_data(actx->pinfo);
     nbap_dch_channel_info_t* nbap_dch_chnl_info;
     nbap_dch_chnl_info = nbap_private_data->nbap_dch_chnl_info;
     nbap_private_data->transport_format_set_type = NBAP_PCH;
     nbap_dch_chnl_info[nbap_private_data->common_transport_channel_id].num_dl_chans = 0;
     nbap_dch_chnl_info[nbap_private_data->common_transport_channel_id].num_ul_chans = 0;
-
 
   offset = dissect_nbap_TransportFormatSet(tvb, offset, actx, tree, hf_index);
 
@@ -33090,7 +32946,6 @@ static const per_sequence_t PCH_ParametersItem_CTCH_SetupRqstFDD_sequence[] = {
 
 static int
 dissect_nbap_PCH_ParametersItem_CTCH_SetupRqstFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1087 "./asn1/nbap/nbap.cnf"
 
 address dst_addr, null_addr;
 conversation_t *conversation;
@@ -33124,7 +32979,7 @@ nbap_private_data->num_items = 1;
 
   set_address(&dst_addr, AT_IPv4, 4, &transportLayerAddress_ipv4);
 
-  conversation = conversation_new(actx->pinfo->num, &dst_addr, &null_addr, ENDPOINT_UDP, bindingID, 0, NO_ADDR2|NO_PORT2);
+  conversation = conversation_new(actx->pinfo->num, &dst_addr, &null_addr, CONVERSATION_UDP, bindingID, 0, NO_ADDR2|NO_PORT2);
 
   /* Set dissector */
   conversation_set_dissector(conversation, fp_handle);
@@ -33199,11 +33054,10 @@ nbap_private_data->num_items = 1;
     set_umts_fp_conv_data(conversation, umts_fp_conversation_info);
 
     /* Add Setup Conversation to list, we need it in response msg */
-    add_setup_conv(nbap_private_data->transaction_id, nbap_private_data->dd_mode, common_transport_channel_id, actx->pinfo->num, &dst_addr, bindingID, umts_fp_conversation_info, conversation);
+    add_setup_conv(actx->pinfo, nbap_private_data->transaction_id, nbap_private_data->dd_mode, common_transport_channel_id, actx->pinfo->num, &dst_addr, bindingID, umts_fp_conversation_info, conversation);
 
     nbap_debug("Frame %u PCH-ParametersItem-CTCH-SetupRqstFDD End", actx->pinfo->num);
   }
-
 
 
   return offset;
@@ -33238,7 +33092,6 @@ static const per_sequence_t RACH_ParametersItem_CTCH_SetupRqstFDD_sequence[] = {
 
 static int
 dissect_nbap_RACH_ParametersItem_CTCH_SetupRqstFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 991 "./asn1/nbap/nbap.cnf"
 address dst_addr, null_addr;
 conversation_t *conversation;
 fp_rach_channel_info_t* fp_rach_channel_info;
@@ -33268,7 +33121,7 @@ nbap_private_data->transport_format_set_type = NBAP_CPCH;
 
   set_address(&dst_addr, AT_IPv4, 4, &transportLayerAddress_ipv4);
 
-  conversation = conversation_new(actx->pinfo->num, &dst_addr, &null_addr, ENDPOINT_UDP, bindingID, 0, NO_ADDR2|NO_PORT2);
+  conversation = conversation_new(actx->pinfo->num, &dst_addr, &null_addr, CONVERSATION_UDP, bindingID, 0, NO_ADDR2|NO_PORT2);
 
   conversation_set_dissector(conversation, fp_handle);
 
@@ -33314,9 +33167,8 @@ nbap_private_data->transport_format_set_type = NBAP_CPCH;
     set_umts_fp_conv_data(conversation, umts_fp_conversation_info);
 
     /* Add Setup Conversation to list, we need it in response msg */
-    add_setup_conv(nbap_private_data->transaction_id,nbap_private_data->dd_mode,nbap_private_data->common_transport_channel_id, actx->pinfo->num, &dst_addr, bindingID, umts_fp_conversation_info, conversation);
+    add_setup_conv(actx->pinfo, nbap_private_data->transaction_id,nbap_private_data->dd_mode,nbap_private_data->common_transport_channel_id, actx->pinfo->num, &dst_addr, bindingID, umts_fp_conversation_info, conversation);
   }
-
 
 
   return offset;
@@ -34026,11 +33878,9 @@ static const per_sequence_t CommonTransportChannelSetupResponse_sequence[] = {
 
 static int
 dissect_nbap_CommonTransportChannelSetupResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 158 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CommonTransportChannelSetupResponse ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CommonTransportChannelSetupResponse, CommonTransportChannelSetupResponse_sequence);
@@ -34061,11 +33911,9 @@ static const per_sequence_t CommonTransportChannelSetupFailure_sequence[] = {
 
 static int
 dissect_nbap_CommonTransportChannelSetupFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 164 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CommonTransportChannelSetupFailure ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CommonTransportChannelSetupFailure, CommonTransportChannelSetupFailure_sequence);
@@ -34780,11 +34628,9 @@ static const per_sequence_t UnblockResourceIndication_sequence[] = {
 
 static int
 dissect_nbap_UnblockResourceIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 529 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"UnblockResourceIndication ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_UnblockResourceIndication, UnblockResourceIndication_sequence);
@@ -34801,11 +34647,9 @@ static const per_sequence_t AuditRequiredIndication_sequence[] = {
 
 static int
 dissect_nbap_AuditRequiredIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 439 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"AuditRequiredIndication ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_AuditRequiredIndication, AuditRequiredIndication_sequence);
@@ -34822,11 +34666,9 @@ static const per_sequence_t AuditRequest_sequence[] = {
 
 static int
 dissect_nbap_AuditRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 224 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"AuditRequest ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_AuditRequest, AuditRequest_sequence);
@@ -34843,11 +34685,9 @@ static const per_sequence_t AuditResponse_sequence[] = {
 
 static int
 dissect_nbap_AuditResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 230 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"AuditResponse ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_AuditResponse, AuditResponse_sequence);
@@ -35437,11 +35277,9 @@ static const per_sequence_t AuditFailure_sequence[] = {
 
 static int
 dissect_nbap_AuditFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 236 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"AuditFailure ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -35459,11 +35297,9 @@ static const per_sequence_t CommonMeasurementInitiationRequest_sequence[] = {
 
 static int
 dissect_nbap_CommonMeasurementInitiationRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 291 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CommonMeasurementInitiationRequest ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CommonMeasurementInitiationRequest, CommonMeasurementInitiationRequest_sequence);
@@ -35577,11 +35413,9 @@ static const per_sequence_t CommonMeasurementInitiationResponse_sequence[] = {
 
 static int
 dissect_nbap_CommonMeasurementInitiationResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 297 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CommonMeasurementInitiationResponse ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CommonMeasurementInitiationResponse, CommonMeasurementInitiationResponse_sequence);
@@ -35693,11 +35527,9 @@ static const per_sequence_t CommonMeasurementInitiationFailure_sequence[] = {
 
 static int
 dissect_nbap_CommonMeasurementInitiationFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 303 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CommonMeasurementInitiationFailure ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CommonMeasurementInitiationFailure, CommonMeasurementInitiationFailure_sequence);
@@ -35714,11 +35546,9 @@ static const per_sequence_t CommonMeasurementReport_sequence[] = {
 
 static int
 dissect_nbap_CommonMeasurementReport(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 445 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CommonMeasurementReport ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CommonMeasurementReport, CommonMeasurementReport_sequence);
@@ -35830,11 +35660,9 @@ static const per_sequence_t CommonMeasurementTerminationRequest_sequence[] = {
 
 static int
 dissect_nbap_CommonMeasurementTerminationRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 451 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CommonMeasurementTerminationRequest ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CommonMeasurementTerminationRequest, CommonMeasurementTerminationRequest_sequence);
@@ -35851,11 +35679,9 @@ static const per_sequence_t CommonMeasurementFailureIndication_sequence[] = {
 
 static int
 dissect_nbap_CommonMeasurementFailureIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 457 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CommonMeasurementFailureIndication ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CommonMeasurementFailureIndication, CommonMeasurementFailureIndication_sequence);
@@ -35872,11 +35698,9 @@ static const per_sequence_t CellSetupRequestFDD_sequence[] = {
 
 static int
 dissect_nbap_CellSetupRequestFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 124 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CellSetupRequest(FDD) ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CellSetupRequestFDD, CellSetupRequestFDD_sequence);
@@ -36404,11 +36228,9 @@ static const per_sequence_t CellSetupResponse_sequence[] = {
 
 static int
 dissect_nbap_CellSetupResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 130 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CellSetupResponse ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CellSetupResponse, CellSetupResponse_sequence);
@@ -36425,11 +36247,9 @@ static const per_sequence_t CellSetupFailure_sequence[] = {
 
 static int
 dissect_nbap_CellSetupFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 136 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CellSetupFailure ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -36968,11 +36788,9 @@ static const per_sequence_t ResourceStatusIndication_sequence[] = {
 
 static int
 dissect_nbap_ResourceStatusIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 433 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"ResourceStatusIndication ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_ResourceStatusIndication, ResourceStatusIndication_sequence);
@@ -37726,11 +37544,9 @@ static const per_sequence_t SystemInformationUpdateRequest_sequence[] = {
 
 static int
 dissect_nbap_SystemInformationUpdateRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 270 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"SystemInformationUpdateRequest ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_SystemInformationUpdateRequest, SystemInformationUpdateRequest_sequence);
@@ -37797,10 +37613,8 @@ static const per_sequence_t MIB_SB_SIB_InformationItem_SystemInfoUpdateRqst_sequ
 
 static int
 dissect_nbap_MIB_SB_SIB_InformationItem_SystemInfoUpdateRqst(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 572 "./asn1/nbap/nbap.cnf"
     nbap_get_private_data(actx->pinfo)->ib_type = 10; /* not-Used-sIB8 */
     nbap_get_private_data(actx->pinfo)->segment_type = 0;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_MIB_SB_SIB_InformationItem_SystemInfoUpdateRqst, MIB_SB_SIB_InformationItem_SystemInfoUpdateRqst_sequence);
@@ -37862,11 +37676,9 @@ static const per_sequence_t SystemInformationUpdateResponse_sequence[] = {
 
 static int
 dissect_nbap_SystemInformationUpdateResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 276 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"SystemInformationUpdateResponse ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_SystemInformationUpdateResponse, SystemInformationUpdateResponse_sequence);
@@ -37883,11 +37695,9 @@ static const per_sequence_t SystemInformationUpdateFailure_sequence[] = {
 
 static int
 dissect_nbap_SystemInformationUpdateFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 282 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"SystemInformationUpdateFailure ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -37905,12 +37715,10 @@ static const per_sequence_t RadioLinkSetupRequestFDD_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkSetupRequestFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 246 "./asn1/nbap/nbap.cnf"
 
     col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkSetupRequest(FDD) ");
     /* CRNC -> Node B */
     actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkSetupRequestFDD, RadioLinkSetupRequestFDD_sequence);
@@ -38382,12 +38190,10 @@ static const per_sequence_t RadioLinkSetupResponseFDD_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkSetupResponseFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 253 "./asn1/nbap/nbap.cnf"
 
     col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkSetupResponse(FDD) ");
     /* Node B -> CRNC */
     actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkSetupResponseFDD, RadioLinkSetupResponseFDD_sequence);
@@ -38602,11 +38408,9 @@ static const per_sequence_t RadioLinkSetupFailureFDD_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkSetupFailureFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 260 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkSetupFailure(FDD) ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -38886,9 +38690,7 @@ static const per_sequence_t RadioLinkAdditionRequestFDD_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkAdditionRequestFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 309 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkAdditionRequest(FDD) ");
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -39258,9 +39060,7 @@ static const per_sequence_t RadioLinkAdditionResponseFDD_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkAdditionResponseFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 314 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkAdditionResponse(FDD) ");
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -39533,9 +39333,7 @@ static const per_sequence_t RadioLinkAdditionFailureFDD_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkAdditionFailureFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 319 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkAdditionRequest(FDD) ");
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -39813,11 +39611,9 @@ static const per_sequence_t RadioLinkReconfigurationPrepareFDD_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkReconfigurationPrepareFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 339 "./asn1/nbap/nbap.cnf"
     col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkReconfigurationPrepare(FDD) ");
     /* CRNC -> Node B */
     actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkReconfigurationPrepareFDD, RadioLinkReconfigurationPrepareFDD_sequence);
@@ -41431,11 +41227,9 @@ static const per_sequence_t RadioLinkReconfigurationReady_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkReconfigurationReady(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 345 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkReconfigurationReady ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkReconfigurationReady, RadioLinkReconfigurationReady_sequence);
@@ -41512,7 +41306,6 @@ static const per_sequence_t RadioLinkReconfigurationFailure_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkReconfigurationFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 351 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkReconfigurationFailure ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
@@ -41521,7 +41314,6 @@ actx->pinfo->link_dir=P2P_DIR_UL;
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkReconfigurationFailure ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkReconfigurationFailure, RadioLinkReconfigurationFailure_sequence);
@@ -41620,11 +41412,9 @@ static const per_sequence_t RadioLinkReconfigurationCommit_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkReconfigurationCommit(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 463 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkReconfigurationCommit ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkReconfigurationCommit, RadioLinkReconfigurationCommit_sequence);
@@ -41641,11 +41431,9 @@ static const per_sequence_t RadioLinkReconfigurationCancel_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkReconfigurationCancel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 469 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkReconfigurationCancel ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkReconfigurationCancel, RadioLinkReconfigurationCancel_sequence);
@@ -41662,11 +41450,9 @@ static const per_sequence_t RadioLinkReconfigurationRequestFDD_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkReconfigurationRequestFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 361 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkReconfigurationRequestFDD(FDD) ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkReconfigurationRequestFDD, RadioLinkReconfigurationRequestFDD_sequence);
@@ -42119,9 +41905,7 @@ static const per_sequence_t RadioLinkReconfigurationResponse_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkReconfigurationResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 367 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkReconfigurationResponse ");
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -42178,11 +41962,9 @@ static const per_sequence_t RadioLinkDeletionRequest_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkDeletionRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 327 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkDeletionRequest ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkDeletionRequest, RadioLinkDeletionRequest_sequence);
@@ -42228,11 +42010,9 @@ static const per_sequence_t RadioLinkDeletionResponse_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkDeletionResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 333 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkDeletionResponse ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkDeletionResponse, RadioLinkDeletionResponse_sequence);
@@ -42249,11 +42029,9 @@ static const per_sequence_t DL_PowerControlRequest_sequence[] = {
 
 static int
 dissect_nbap_DL_PowerControlRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 511 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"DL-PowerControlRequest ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_DL_PowerControlRequest, DL_PowerControlRequest_sequence);
@@ -42300,11 +42078,9 @@ static const per_sequence_t DL_PowerTimeslotControlRequest_sequence[] = {
 
 static int
 dissect_nbap_DL_PowerTimeslotControlRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 517 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"DL-PowerTimeslotControlRequest ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_DL_PowerTimeslotControlRequest, DL_PowerTimeslotControlRequest_sequence);
@@ -42321,11 +42097,9 @@ static const per_sequence_t DedicatedMeasurementInitiationRequest_sequence[] = {
 
 static int
 dissect_nbap_DedicatedMeasurementInitiationRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 381 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"DedicatedMeasurementInitiationRequest ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_DedicatedMeasurementInitiationRequest, DedicatedMeasurementInitiationRequest_sequence);
@@ -42517,11 +42291,9 @@ static const per_sequence_t DedicatedMeasurementInitiationResponse_sequence[] = 
 
 static int
 dissect_nbap_DedicatedMeasurementInitiationResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 387 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"DedicatedMeasurementInitiationResponse ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_DedicatedMeasurementInitiationResponse, DedicatedMeasurementInitiationResponse_sequence);
@@ -42821,11 +42593,9 @@ static const per_sequence_t DedicatedMeasurementInitiationFailure_sequence[] = {
 
 static int
 dissect_nbap_DedicatedMeasurementInitiationFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 393 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"DedicatedMeasurementInitiationFailure ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_DedicatedMeasurementInitiationFailure, DedicatedMeasurementInitiationFailure_sequence);
@@ -42842,11 +42612,9 @@ static const per_sequence_t DedicatedMeasurementReport_sequence[] = {
 
 static int
 dissect_nbap_DedicatedMeasurementReport(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 493 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"DedicatedMeasurementReport ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_DedicatedMeasurementReport, DedicatedMeasurementReport_sequence);
@@ -43024,11 +42792,9 @@ static const per_sequence_t DedicatedMeasurementTerminationRequest_sequence[] = 
 
 static int
 dissect_nbap_DedicatedMeasurementTerminationRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 499 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"DedicatedMeasurementTerminationRequest ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_DedicatedMeasurementTerminationRequest, DedicatedMeasurementTerminationRequest_sequence);
@@ -43045,11 +42811,9 @@ static const per_sequence_t DedicatedMeasurementFailureIndication_sequence[] = {
 
 static int
 dissect_nbap_DedicatedMeasurementFailureIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 505 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"DedicatedMeasurementFailureIndication ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_DedicatedMeasurementFailureIndication, DedicatedMeasurementFailureIndication_sequence);
@@ -43066,11 +42830,9 @@ static const per_sequence_t RadioLinkFailureIndication_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkFailureIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 475 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkFailureIndication ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkFailureIndication, RadioLinkFailureIndication_sequence);
@@ -43247,11 +43009,9 @@ static const per_sequence_t RadioLinkPreemptionRequiredIndication_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkPreemptionRequiredIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 481 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkPreemptionRequiredIndication ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkPreemptionRequiredIndication, RadioLinkPreemptionRequiredIndication_sequence);
@@ -43297,11 +43057,9 @@ static const per_sequence_t RadioLinkRestoreIndication_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkRestoreIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 487 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkRestoreIndication ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_RadioLinkRestoreIndication, RadioLinkRestoreIndication_sequence);
@@ -43475,11 +43233,9 @@ static const per_sequence_t CompressedModeCommand_sequence[] = {
 
 static int
 dissect_nbap_CompressedModeCommand(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 523 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"CompressedModeCommand ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_CompressedModeCommand, CompressedModeCommand_sequence);
@@ -43496,9 +43252,7 @@ static const per_sequence_t ErrorIndication_sequence[] = {
 
 static int
 dissect_nbap_ErrorIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 535 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"ErrorIndication ");
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -43515,9 +43269,7 @@ static const per_sequence_t PrivateMessage_sequence[] = {
 
 static int
 dissect_nbap_PrivateMessage(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 543 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"PrivateMessage ");
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_PrivateMessage, PrivateMessage_sequence);
@@ -43534,11 +43286,9 @@ static const per_sequence_t PhysicalSharedChannelReconfigurationRequestFDD_seque
 
 static int
 dissect_nbap_PhysicalSharedChannelReconfigurationRequestFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 399 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"PhysicalSharedChannelReconfigurationRequest(FDD) ");
 /* CRNC -> Node B */
 actx->pinfo->link_dir=P2P_DIR_DL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_PhysicalSharedChannelReconfigurationRequestFDD, PhysicalSharedChannelReconfigurationRequestFDD_sequence);
@@ -46002,11 +45752,9 @@ static const per_sequence_t PhysicalSharedChannelReconfigurationResponse_sequenc
 
 static int
 dissect_nbap_PhysicalSharedChannelReconfigurationResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 405 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"PhysicalSharedChannelReconfigurationResponse ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_nbap_PhysicalSharedChannelReconfigurationResponse, PhysicalSharedChannelReconfigurationResponse_sequence);
@@ -46053,11 +45801,9 @@ static const per_sequence_t PhysicalSharedChannelReconfigurationFailure_sequence
 
 static int
 dissect_nbap_PhysicalSharedChannelReconfigurationFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 411 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"PhysicalSharedChannelReconfigurationFailure ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -47506,9 +47252,7 @@ static const per_sequence_t BearerRearrangementIndication_sequence[] = {
 
 static int
 dissect_nbap_BearerRearrangementIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 550 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"BearerRearrangementIndication ");
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -47807,11 +47551,9 @@ static const per_sequence_t RadioLinkParameterUpdateIndicationFDD_sequence[] = {
 
 static int
 dissect_nbap_RadioLinkParameterUpdateIndicationFDD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 557 "./asn1/nbap/nbap.cnf"
 col_set_str(actx->pinfo->cinfo, COL_INFO,"RadioLinkParameterUpdateIndication(FDD) ");
 /* Node B -> CRNC */
 actx->pinfo->link_dir=P2P_DIR_UL;
-
 
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -55700,9 +55442,6 @@ static int dissect_NULL_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tre
 }
 
 
-/*--- End of included file: packet-nbap-fn.c ---*/
-#line 436 "./asn1/nbap/packet-nbap-template.c"
-
 static int dissect_ProtocolIEFieldValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
   guint32 protocol_ie_id;
@@ -55740,23 +55479,25 @@ static void add_hsdsch_bind(packet_info *pinfo){
   umts_fp_conversation_info_t *umts_fp_conversation_info;
   fp_hsdsch_channel_info_t* fp_hsdsch_channel_info = NULL;
   guint32 i;
+  nbap_private_data_t* nbap_private_data;
   nbap_hsdsch_channel_info_t* nbap_hsdsch_channel_info;
 
   if (PINFO_FD_VISITED(pinfo)){
     return;
   }
 
-  nbap_hsdsch_channel_info = nbap_get_private_data(pinfo)->nbap_hsdsch_channel_info;
+  nbap_private_data = nbap_get_private_data(pinfo);
+  nbap_hsdsch_channel_info = nbap_private_data->nbap_hsdsch_channel_info;
   /* Set port to zero use that as an indication of whether we have data or not */
   clear_address(&null_addr);
   for (i = 0; i < maxNrOfMACdFlows; i++) {
     if (nbap_hsdsch_channel_info[i].crnc_port != 0){
-      conversation = find_conversation(pinfo->num, &(nbap_hsdsch_channel_info[i].crnc_address), &null_addr, ENDPOINT_UDP,
+      conversation = find_conversation(pinfo->num, &(nbap_hsdsch_channel_info[i].crnc_address), &null_addr, CONVERSATION_UDP,
                                       nbap_hsdsch_channel_info[i].crnc_port, 0, NO_ADDR_B);
 
       if (conversation == NULL) {
         /* It's not part of any conversation - create a new one. */
-        conversation = conversation_new(pinfo->num, &(nbap_hsdsch_channel_info[i].crnc_address), &null_addr, ENDPOINT_UDP,
+        conversation = conversation_new(pinfo->num, &(nbap_hsdsch_channel_info[i].crnc_address), &null_addr, CONVERSATION_UDP,
                                        nbap_hsdsch_channel_info[i].crnc_port, 0, NO_ADDR2|NO_PORT2);
 
         /* Set dissector */
@@ -55777,6 +55518,15 @@ static void add_hsdsch_bind(packet_info *pinfo){
           umts_fp_conversation_info->channel_specific_info = (void*)fp_hsdsch_channel_info;
           /*Added june 3, normally just the iterator variable*/
           fp_hsdsch_channel_info->hsdsch_macdflow_id = i ; /*hsdsch_macdflow_ids[i];*/ /* hsdsch_macdflow_id;*/
+
+          if (nbap_private_data->crnc_context_present) {
+            umts_fp_conversation_info->com_context_id = nbap_private_data->com_context_id;
+          } else {
+            /* XXX: This expert info doesn't get added in subsequent passes,
+             * but probably should.
+             */
+            expert_add_info(pinfo, NULL, &ei_nbap_no_set_comm_context_id);
+          }
 
           /* Cheat and use the DCH entries */
           umts_fp_conversation_info->num_dch_in_flow++;
@@ -55814,14 +55564,14 @@ static guint32 calculate_setup_conv_key(const guint32 transaction_id, const guin
   return key;
 }
 
-static void add_setup_conv(const guint32 transaction_id, const guint32 dd_mode, const guint32 channel_id, const guint32 req_frame_number,
+static void add_setup_conv(const packet_info *pinfo _U_, const guint32 transaction_id, const guint32 dd_mode, const guint32 channel_id, const guint32 req_frame_number,
               const address *addr, const guint32 port, umts_fp_conversation_info_t * umts_fp_conversation_info, conversation_t *conv)
 {
   nbap_setup_conv_t *new_conv = NULL;
   guint32 key;
 
   nbap_debug("Creating new setup conv\t TransactionID: %u\tddMode: %u\tChannelID: %u\t %s:%u",
-  transaction_id, dd_mode, channel_id, address_to_str(wmem_packet_scope(), addr), port);
+  transaction_id, dd_mode, channel_id, address_to_str(pinfo->pool, addr), port);
 
   new_conv = wmem_new0(wmem_file_scope(), nbap_setup_conv_t);
 
@@ -55840,7 +55590,7 @@ static void add_setup_conv(const guint32 transaction_id, const guint32 dd_mode, 
   wmem_map_insert(nbap_setup_conv_table, GUINT_TO_POINTER(key), new_conv);
 }
 
-static nbap_setup_conv_t* find_setup_conv(const guint32 transaction_id, const guint32 dd_mode, const guint32 channel_id)
+static nbap_setup_conv_t* find_setup_conv(const packet_info *pinfo _U_, const guint32 transaction_id, const guint32 dd_mode, const guint32 channel_id)
 {
   nbap_setup_conv_t *conv;
   guint32 key;
@@ -55854,7 +55604,7 @@ static nbap_setup_conv_t* find_setup_conv(const guint32 transaction_id, const gu
     nbap_debug("\tDidn't find Setup Conversation match");
   }else{
     nbap_debug("\tFOUND Setup Conversation match\t TransactionID: %u\t ddMode: %u\t ChannelID: %u\t %s:%u",
-         conv->transaction_id, conv->dd_mode, conv->channel_id, address_to_str(wmem_packet_scope(), &(conv->addr)), conv->port);
+         conv->transaction_id, conv->dd_mode, conv->channel_id, address_to_str(pinfo->pool, &(conv->addr)), conv->port);
   }
 
   return conv;
@@ -56011,9 +55761,6 @@ void proto_register_nbap(void)
     { "Reassembled Information Block", "nbap.reassembled_information_block",
     FT_BYTES, BASE_NONE, NULL, 0,
     NULL, HFILL }},
-
-/*--- Included file: packet-nbap-hfarr.c ---*/
-#line 1 "./asn1/nbap/packet-nbap-hfarr.c"
     { &hf_nbap_ActivationInformation_PDU,
       { "ActivationInformation", "nbap.ActivationInformation",
         FT_UINT32, BASE_DEC, NULL, 0,
@@ -62518,8 +62265,8 @@ void proto_register_nbap(void)
       { "ganss-Almanac", "nbap.ganss_Almanac",
         FT_BOOLEAN, BASE_NONE, NULL, 0,
         "BOOLEAN", HFILL }},
-    { &hf_nbap_ganss_Real_Time_Integrity,
-      { "ganss-Real-Time-Integrity", "nbap.ganss_Real_Time_Integrity",
+    { &hf_nbap_gANSS_GenericDataInfoReqItem_ganss_Real_Time_Integrity,
+      { "ganss-Real-Time-Integrity", "nbap.gANSS-GenericDataInfoReqItem.ganss-Real-Time-Integrity",
         FT_BOOLEAN, BASE_NONE, NULL, 0,
         "BOOLEAN", HFILL }},
     { &hf_nbap_ganss_Data_Bit_Assistance_Req,
@@ -62550,7 +62297,7 @@ void proto_register_nbap(void)
       { "ganss-Almanac", "nbap.ganss_Almanac_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
-    { &hf_nbap_ganss_Real_Time_Integrity_01,
+    { &hf_nbap_ganss_Real_Time_Integrity,
       { "ganss-Real-Time-Integrity", "nbap.ganss_Real_Time_Integrity",
         FT_UINT32, BASE_DEC, NULL, 0,
         NULL, HFILL }},
@@ -69174,9 +68921,6 @@ void proto_register_nbap(void)
       { "subCh0", "nbap.RACH.SubChannelNumbers.subCh0",
         FT_BOOLEAN, 8, NULL, 0x10,
         NULL, HFILL }},
-
-/*--- End of included file: packet-nbap-hfarr.c ---*/
-#line 746 "./asn1/nbap/packet-nbap-template.c"
   };
 
   /* List of subtrees */
@@ -69185,9 +68929,6 @@ void proto_register_nbap(void)
     &ett_nbap_TransportLayerAddress,
     &ett_nbap_TransportLayerAddress_nsap,
     &ett_nbap_ib_sg_data,
-
-/*--- Included file: packet-nbap-ettarr.c ---*/
-#line 1 "./asn1/nbap/packet-nbap-ettarr.c"
     &ett_nbap_PrivateIE_ID,
     &ett_nbap_ProcedureID,
     &ett_nbap_TransactionID,
@@ -70814,9 +70555,6 @@ void proto_register_nbap(void)
     &ett_nbap_SuccessfulOutcome,
     &ett_nbap_UnsuccessfulOutcome,
     &ett_nbap_Outcome,
-
-/*--- End of included file: packet-nbap-ettarr.c ---*/
-#line 755 "./asn1/nbap/packet-nbap-template.c"
   };
 
   static ei_register_info ei[] = {
@@ -70852,9 +70590,9 @@ void proto_register_nbap(void)
   /* Register dissector tables */
   nbap_ies_dissector_table = register_dissector_table("nbap.ies", "NBAP-PROTOCOL-IES", proto_nbap, FT_UINT32, BASE_DEC);
   nbap_extension_dissector_table = register_dissector_table("nbap.extension", "NBAP-PROTOCOL-EXTENSION", proto_nbap, FT_UINT32, BASE_DEC);
-  nbap_proc_imsg_dissector_table = register_dissector_table("nbap.proc.imsg", "NBAP-ELEMENTARY-PROCEDURE InitiatingMessage", proto_nbap, FT_STRING, BASE_NONE);
-  nbap_proc_sout_dissector_table = register_dissector_table("nbap.proc.sout", "NBAP-ELEMENTARY-PROCEDURE SuccessfulOutcome", proto_nbap, FT_STRING, BASE_NONE);
-  nbap_proc_uout_dissector_table = register_dissector_table("nbap.proc.uout", "NBAP-ELEMENTARY-PROCEDURE UnsuccessfulOutcome", proto_nbap, FT_STRING, BASE_NONE);
+  nbap_proc_imsg_dissector_table = register_dissector_table("nbap.proc.imsg", "NBAP-ELEMENTARY-PROCEDURE InitiatingMessage", proto_nbap, FT_STRING, STRING_CASE_SENSITIVE);
+  nbap_proc_sout_dissector_table = register_dissector_table("nbap.proc.sout", "NBAP-ELEMENTARY-PROCEDURE SuccessfulOutcome", proto_nbap, FT_STRING, STRING_CASE_SENSITIVE);
+  nbap_proc_uout_dissector_table = register_dissector_table("nbap.proc.uout", "NBAP-ELEMENTARY-PROCEDURE UnsuccessfulOutcome", proto_nbap, FT_STRING, STRING_CASE_SENSITIVE);
 
   register_init_routine(nbap_init);
 }
@@ -70874,9 +70612,6 @@ proto_reg_handoff_nbap(void)
   dissector_add_for_decode_as("sctp.port", nbap_handle);
   heur_dissector_add("sctp", dissect_nbap_heur, "NBAP over SCTP", "nbap_sctp", proto_nbap, HEURISTIC_ENABLE);
 
-
-/*--- Included file: packet-nbap-dis-tab.c ---*/
-#line 1 "./asn1/nbap/packet-nbap-dis-tab.c"
   dissector_add_uint("nbap.ies", id_TUTRANGPSMeasurementValueInformation, create_dissector_handle(dissect_TUTRANGPSMeasurementValueInformation_PDU, proto_nbap));
   dissector_add_uint("nbap.ies", id_SFNSFNMeasurementValueInformation, create_dissector_handle(dissect_SFNSFNMeasurementValueInformation_PDU, proto_nbap));
   dissector_add_uint("nbap.ies", id_TransmittedCarrierPowerOfAllCodesNotUsedForHSTransmission, create_dissector_handle(dissect_TransmittedCarrierPowerOfAllCodesNotUsedForHSTransmissionValue_PDU, proto_nbap));
@@ -71969,8 +71704,5 @@ proto_reg_handoff_nbap(void)
   dissector_add_string("nbap.proc.imsg", "id-secondaryULFrequencyReporting/fdd", create_dissector_handle(dissect_SecondaryULFrequencyReport_PDU, proto_nbap));
   dissector_add_string("nbap.proc.imsg", "id-secondaryULFrequencyUpdate/fdd", create_dissector_handle(dissect_SecondaryULFrequencyUpdateIndication_PDU, proto_nbap));
 
-
-/*--- End of included file: packet-nbap-dis-tab.c ---*/
-#line 813 "./asn1/nbap/packet-nbap-template.c"
 }
 

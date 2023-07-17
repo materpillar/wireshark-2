@@ -7,7 +7,7 @@
 
 FindWSWinLibs( "minizip-*" "MINIZIP_HINTS" )
 
-if(NOT WIN32)
+if(NOT USE_REPOSITORY)
   find_package(PkgConfig QUIET)
   pkg_search_module(MINIZIP QUIET minizip)
 endif()
@@ -43,6 +43,13 @@ if(MINIZIP_FOUND)
   set(MINIZIP_LIBRARIES ${MINIZIP_LIBRARY})
   set(MINIZIP_INCLUDE_DIRS ${MINIZIP_INCLUDE_DIR})
   SET(HAVE_MINIZIP ON)
+  # Some distributions have minizip-ng code instead of the original zlib contrib
+  # library but keep the old minizip name (because minizip-ng is
+  # better maintained and provides a compatibility layer). However the
+  # minizip-ng compatibility layer has some issues. We need to check
+  # for renamed struct members to avoid an endless game of whack-a-mole.
+  include(CheckStructHasMember)
+  check_struct_has_member("zip_fileinfo" "dos_date" "minizip/zip.h" HAVE_MZCOMPAT_DOS_DATE)
 else()
   set(MINIZIP_LIBRARIES)
   set(MINIZIP_INCLUDE_DIRS)

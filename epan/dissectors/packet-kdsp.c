@@ -19,6 +19,8 @@
 void proto_register_kdsp(void);
 void proto_reg_handoff_kdsp(void);
 
+static dissector_handle_t kdsp_handle;
+
 #define KDSP_PORT 2502 /* Not IANA registered */
 #define FRAME_HEADER_LEN 12
 
@@ -280,9 +282,9 @@ dissect_kdsp_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* 
     proto_tree_add_item(kdsp_tree, hf_kdsp_version,  tvb, offset, 4, ENC_BIG_ENDIAN);
     offset +=4;
     proto_tree_add_item(kdsp_tree, hf_kdsp_server_version,
-                                                     tvb, offset, 32, ENC_ASCII|ENC_NA);
+                                                     tvb, offset, 32, ENC_ASCII);
     offset +=32;
-    proto_tree_add_item(kdsp_tree, hf_kdsp_hostname, tvb, offset, 32, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(kdsp_tree, hf_kdsp_hostname, tvb, offset, 32, ENC_ASCII);
     /*offset +=32;*/
     break;
   case STRING:
@@ -290,7 +292,7 @@ dissect_kdsp_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* 
     offset +=4;
     proto_tree_add_item(kdsp_tree, hf_kdsp_str_len,   tvb, offset, 4, ENC_BIG_ENDIAN);
     offset +=4;
-    proto_tree_add_item(kdsp_tree, hf_kdsp_str_msg,   tvb, offset, -1, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(kdsp_tree, hf_kdsp_str_msg,   tvb, offset, -1, ENC_ASCII);
     break;
   case CAPPACKET:
     sub_item = proto_tree_add_item(kdsp_tree, hf_kdsp_cpt_bitmap, tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -493,11 +495,11 @@ dissect_kdsp_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* 
     offset += 16;
     proto_tree_add_item(kdsp_tree, hf_kdsp_source_invalidate,    tvb, offset, 2, ENC_BIG_ENDIAN);
     offset +=2;
-    proto_tree_add_item(kdsp_tree, hf_kdsp_source_name,          tvb, offset, 16, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(kdsp_tree, hf_kdsp_source_name,          tvb, offset, 16, ENC_ASCII);
     offset +=16;
-    proto_tree_add_item(kdsp_tree, hf_kdsp_source_interface,     tvb, offset, 16, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(kdsp_tree, hf_kdsp_source_interface,     tvb, offset, 16, ENC_ASCII);
     offset += 16;
-    proto_tree_add_item(kdsp_tree, hf_kdsp_source_type,          tvb, offset, 16, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(kdsp_tree, hf_kdsp_source_type,          tvb, offset, 16, ENC_ASCII);
     offset +=16;
     proto_tree_add_item(kdsp_tree, hf_kdsp_source_hop,           tvb, offset, 1, ENC_BIG_ENDIAN);
     offset +=1;
@@ -1125,17 +1127,17 @@ proto_register_kdsp(void)
   expert_register_field_array(expert_kdsp, ei, array_length(ei));
 
   subdissector_dlt_table = register_dissector_table("kdsp.cpt.dlt", "KDSP DLT Type", proto_kdsp, FT_UINT32, BASE_DEC);
+
+  kdsp_handle = register_dissector("kdsp", dissect_kdsp, proto_kdsp);
 }
 
 
 void
 proto_reg_handoff_kdsp(void)
 {
-  dissector_handle_t kdsp_handle;
   dissector_handle_t dlt_handle;
 
   /* XXX - Should be done in respective dissectors? */
-  kdsp_handle = create_dissector_handle(dissect_kdsp, proto_kdsp);
   dlt_handle = find_dissector("radiotap");
   if (dlt_handle)
       dissector_add_uint( "kdsp.cpt.dlt", DATALINK_RADIOTAP, dlt_handle);

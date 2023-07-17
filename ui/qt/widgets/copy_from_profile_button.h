@@ -1,4 +1,4 @@
-/* copy_from_profile_button.h
+/** @file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -27,7 +27,7 @@ public:
 
     void setFilename(QString filename);
 
-Q_SIGNALS:
+signals:
     void copyProfile(QString filename);
 
 private:

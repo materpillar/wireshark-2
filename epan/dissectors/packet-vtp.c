@@ -136,6 +136,8 @@ dissect_vtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 	guint8 *upd_timestamp;
 	int vlan_info_len;
 	int pruning_vlan_id;
+	int yy, mm, dd, hh, _mm, ss;
+	char *display;
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "VTP");
 	set_vtp_info_col(tvb, pinfo);
@@ -159,7 +161,7 @@ dissect_vtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 		proto_tree_add_item(vtp_tree, hf_vtp_md_len, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 
-		proto_tree_add_item(vtp_tree, hf_vtp_md, tvb, offset, 32, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(vtp_tree, hf_vtp_md, tvb, offset, 32, ENC_ASCII);
 		offset += 32;
 
 		proto_tree_add_item(vtp_tree, hf_vtp_conf_rev_num, tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -168,12 +170,13 @@ dissect_vtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 		proto_tree_add_item(vtp_tree, hf_vtp_upd_id, tvb, offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
 
-		upd_timestamp = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 12, ENC_ASCII);
+		upd_timestamp = display = tvb_get_string_enc(pinfo->pool, tvb, offset, 12, ENC_ASCII);
+		if (sscanf(upd_timestamp, "%2d%2d%2d%2d%2d%2d", &yy, &mm, &dd, &hh, &_mm, &ss) == 6) {
+			display = wmem_strdup_printf(pinfo->pool, "%02d-%02d-%02d %02d:%02d:%02d",
+									yy, mm, dd, hh, _mm, ss);
+		}
 		proto_tree_add_string_format_value(vtp_tree, hf_vtp_upd_ts, tvb,
-			offset, 12, (gchar*)upd_timestamp,
-			"%.2s-%.2s-%.2s %.2s:%.2s:%.2s",
-			&upd_timestamp[0], &upd_timestamp[2], &upd_timestamp[4],
-			&upd_timestamp[6], &upd_timestamp[8], &upd_timestamp[10]);
+			offset, 12, upd_timestamp, "%s", display);
 		offset += 12;
 
 		proto_tree_add_item(vtp_tree, hf_vtp_md5_digest, tvb, offset, 16, ENC_NA);
@@ -186,7 +189,7 @@ dissect_vtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 		proto_tree_add_item(vtp_tree, hf_vtp_md_len, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 
-		proto_tree_add_item(vtp_tree, hf_vtp_md, tvb, offset, 32, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(vtp_tree, hf_vtp_md, tvb, offset, 32, ENC_ASCII);
 		offset += 32;
 
 		proto_tree_add_item(vtp_tree, hf_vtp_conf_rev_num, tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -208,7 +211,7 @@ dissect_vtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 		proto_tree_add_item(vtp_tree, hf_vtp_md_len, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 
-		proto_tree_add_item(vtp_tree, hf_vtp_md, tvb, offset, 32, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(vtp_tree, hf_vtp_md, tvb, offset, 32, ENC_ASCII);
 		offset += 32;
 
 		proto_tree_add_item(vtp_tree, hf_vtp_start_value, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -221,7 +224,7 @@ dissect_vtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 		proto_tree_add_item(vtp_tree, hf_vtp_md_len, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 
-		proto_tree_add_item(vtp_tree, hf_vtp_md, tvb, offset, 32, ENC_ASCII|ENC_NA);
+		proto_tree_add_item(vtp_tree, hf_vtp_md, tvb, offset, 32, ENC_ASCII);
 		offset += 32;
 
 		proto_tree_add_item(vtp_tree, hf_vtp_pruning_first_vid, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -352,7 +355,7 @@ dissect_vlan_info(tvbuff_t *tvb, packet_info *pinfo, int offset, proto_tree *tre
 
 	/* VLAN name length appears to be rounded up to a multiple of 4. */
 	vlan_name_len = 4*((vlan_name_len + 3)/4);
-	proto_tree_add_item(vlan_info_tree, hf_vtp_vlan_name, tvb, offset, vlan_name_len, ENC_ASCII|ENC_NA);
+	proto_tree_add_item(vlan_info_tree, hf_vtp_vlan_name, tvb, offset, vlan_name_len, ENC_ASCII);
 	offset += vlan_name_len;
 	vlan_info_left -= vlan_name_len;
 

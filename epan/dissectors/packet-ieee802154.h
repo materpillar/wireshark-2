@@ -310,7 +310,8 @@ typedef enum {
 /* 0x37-0x7f Reserved */
 
 /* IETF IE - Sub IE */
-#define IEEE802154_IETF_SUBIE_6TOP  0xC9 /* not formally assigned yet */
+#define IEEE802154_IETF_SUBIE_6TOP_DRAFT                 0xC9 /* not formally assigned yet */
+#define IEEE802154_IETF_SUBIE_6TOP                       0x01 /* not formally assigned yet */
 
 /* IEEE 802.15.4 cipher block size. */
 #define IEEE802154_CIPHER_SIZE                16
@@ -597,6 +598,7 @@ extern gboolean ieee802154_long_addr_invalidate(guint64, guint);
 extern ieee802154_map_tab_t ieee802154_map;
 
 extern const value_string ieee802154_mpx_kmp_id_vals[];
+extern const value_string zboss_page_names[];
 
 extern guint ieee802154_fcs_len;
 

@@ -74,14 +74,14 @@ dissect_nasdaq_soup_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent
 
     switch (nasdaq_soup_type) {
     case '+': /* debug msg */
-        proto_tree_add_item(tree, hf_nasdaq_soup_text, tvb, offset, linelen -1, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(tree, hf_nasdaq_soup_text, tvb, offset, linelen -1, ENC_ASCII);
         offset += linelen -1;
         break;
     case 'A': /* login accept */
-        proto_tree_add_item(tree, hf_nasdaq_soup_session, tvb, offset, 10, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(tree, hf_nasdaq_soup_session, tvb, offset, 10, ENC_ASCII);
         offset += 10;
 
-        proto_tree_add_item(tree, hf_nasdaq_soup_seq_number, tvb, offset, 10, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(tree, hf_nasdaq_soup_seq_number, tvb, offset, 10, ENC_ASCII);
         offset += 10;
         break;
     case 'J': /* login reject */
@@ -94,22 +94,22 @@ dissect_nasdaq_soup_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent
         if (linelen > 1 && nasdaq_itch_handle) {
             new_tvb = tvb_new_subset_length(tvb, offset,linelen -1);
         } else {
-            proto_tree_add_item(tree, hf_nasdaq_soup_message, tvb, offset, linelen -1, ENC_ASCII|ENC_NA);
+            proto_tree_add_item(tree, hf_nasdaq_soup_message, tvb, offset, linelen -1, ENC_ASCII);
         }
         offset += linelen -1;
         break;
 
     case 'L': /* login request */
-        proto_tree_add_item(tree, hf_nasdaq_soup_username, tvb, offset, 6, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(tree, hf_nasdaq_soup_username, tvb, offset, 6, ENC_ASCII);
         offset += 6;
 
-        proto_tree_add_item(tree, hf_nasdaq_soup_password, tvb, offset, 10, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(tree, hf_nasdaq_soup_password, tvb, offset, 10, ENC_ASCII);
         offset += 10;
 
-        proto_tree_add_item(tree, hf_nasdaq_soup_session, tvb, offset, 10, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(tree, hf_nasdaq_soup_session, tvb, offset, 10, ENC_ASCII);
         offset += 10;
 
-        proto_tree_add_item(tree, hf_nasdaq_soup_seq_number, tvb, offset, 10, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(tree, hf_nasdaq_soup_seq_number, tvb, offset, 10, ENC_ASCII);
         offset += 10;
         break;
 
@@ -120,12 +120,12 @@ dissect_nasdaq_soup_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent
         break;
     default:
         /* unknown */
-        proto_tree_add_item(tree, hf_nasdaq_soup_message, tvb, offset, linelen -1, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(tree, hf_nasdaq_soup_message, tvb, offset, linelen -1, ENC_ASCII);
         offset += linelen -1;
         break;
     }
 
-    proto_tree_add_item(tree, hf_nasdaq_soup_packet_eol, tvb, offset, 1, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(tree, hf_nasdaq_soup_packet_eol, tvb, offset, 1, ENC_ASCII);
     if (new_tvb) {
         call_dissector(nasdaq_itch_handle, new_tvb, pinfo, parent_tree);
     }
@@ -248,6 +248,10 @@ proto_register_nasdaq_soup(void)
     proto_register_field_array(proto_nasdaq_soup, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
+    /* Register the dissector */
+    nasdaq_soup_handle = register_dissector("nasdaq_soup", dissect_nasdaq_soup, proto_nasdaq_soup);
+
+    /* Register preferences */
     nasdaq_soup_module = prefs_register_protocol(proto_nasdaq_soup, NULL);
     prefs_register_bool_preference(nasdaq_soup_module, "desegment",
         "Reassemble Nasdaq-SoupTCP messages spanning multiple TCP segments",
@@ -262,7 +266,6 @@ proto_register_nasdaq_soup(void)
 void
 proto_reg_handoff_nasdaq_soup(void)
 {
-    nasdaq_soup_handle = create_dissector_handle(dissect_nasdaq_soup, proto_nasdaq_soup);
     nasdaq_itch_handle = find_dissector_add_dependency("nasdaq-itch", proto_nasdaq_soup);
     dissector_add_uint_range_with_preference("tcp.port", "", nasdaq_soup_handle);
 }

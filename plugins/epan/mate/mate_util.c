@@ -11,8 +11,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+#include "config.h"
+
 #include "mate.h"
 #include "mate_util.h"
+
+#include <errno.h>
 #include <wsutil/file_util.h>
 
 
@@ -25,7 +29,7 @@
 /* dbg_print:
  * which:  a pointer to the current level of debugging for a feature
  * how: the level over which this message should be printed out
- * where: the file on which to print (g_message if null)
+ * where: the file on which to print (ws_message if null)
  * fmt, ...: what to print
  */
 
@@ -36,18 +40,17 @@ void dbg_print(const gint* which, gint how, FILE* where, const gchar* fmt, ... )
 	if ( ! which || *which < how ) return;
 
 	va_start( list, fmt );
-	g_vsnprintf(debug_buffer,DEBUG_BUFFER_SIZE,fmt,list);
+	vsnprintf(debug_buffer,DEBUG_BUFFER_SIZE,fmt,list);
 	va_end( list );
 
 	if (! where) {
-		g_message("%s", debug_buffer);
+		ws_message("%s", debug_buffer);
 	} else {
 		fputs(debug_buffer,where);
 		fputs("\n",where);
 	}
 
 }
-
 
 /***************************************************************************
  *  single copy strings
@@ -79,7 +82,7 @@ static void destroy_scs_collection(SCS_collection* c) {
 }
 
 static SCS_collection* scs_init(void) {
-	SCS_collection* c = (SCS_collection *)g_malloc(sizeof(SCS_collection));
+	SCS_collection* c = g_new(SCS_collection, 1);
 
 	c->hash =  g_hash_table_new(g_str_hash,g_str_equal);
 
@@ -124,11 +127,11 @@ gchar* scs_subscribe(SCS_collection* c, const gchar* s) {
 			len = SCS_HUGE_SIZE;
 		} else {
 			len = SCS_HUGE_SIZE;
-			g_warning("mate SCS: string truncated due to huge size");
+			ws_warning("mate SCS: string truncated due to huge size");
 		}
 
 		orig = (gchar *)g_slice_alloc(len);
-		g_strlcpy(orig,s,len);
+		(void) g_strlcpy(orig,s,len);
 
 		g_hash_table_insert(c->hash,orig,ip);
 	}
@@ -174,7 +177,7 @@ void scs_unsubscribe(SCS_collection* c, gchar* s) {
 			(*ip)--;
 		}
 	} else {
-		g_warning("unsubscribe: not subscribed");
+		ws_warning("unsubscribe: not subscribed");
 	}
 }
 
@@ -192,7 +195,7 @@ gchar* scs_subscribe_printf(SCS_collection* c, gchar* fmt, ...) {
 	static gchar buf[SCS_HUGE_SIZE];
 
 	va_start( list, fmt );
-	g_vsnprintf(buf, SCS_HUGE_SIZE, fmt, list);
+	vsnprintf(buf, SCS_HUGE_SIZE, fmt, list);
 	va_end( list );
 
 	return scs_subscribe(c,buf);
@@ -292,7 +295,7 @@ extern AVP* new_avp_from_finfo(const gchar* name, field_info* finfo) {
 
 	new_avp_val->n = scs_subscribe(avp_strings, name);
 
-	repr = fvalue_to_string_repr(NULL, &finfo->value,FTREPR_DISPLAY,finfo->hfinfo->display);
+	repr = fvalue_to_string_repr(NULL, finfo->value, FTREPR_DISPLAY, finfo->hfinfo->display);
 
 	if (repr) {
 		value = scs_subscribe(avp_strings, repr);
@@ -312,7 +315,7 @@ extern AVP* new_avp_from_finfo(const gchar* name, field_info* finfo) {
 	new_avp_val->o = '=';
 
 #ifdef _AVP_DEBUGGING
-	dbg_print (dbg_avp,1,dbg_fp,"new_avp_from_finfo: %X %s%c%s;",(guint32) new_avp_val,new_avp_val->n,new_avp_val->o,new_avp_val->v);
+	dbg_print (dbg_avp,1,dbg_fp,"new_avp_from_finfo: %p %s%c%s;",new_avp_val,new_avp_val->n,new_avp_val->o,new_avp_val->v);
 #endif
 
 	return new_avp_val;
@@ -338,7 +341,7 @@ extern AVP* new_avp(const gchar* name, const gchar* value, gchar o) {
 	new_avp_val->o = o;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avp,1,dbg_fp,"new_avp_val: %X %s%c%s;",(guint32) new_avp_val,new_avp_val->n,new_avp_val->o,new_avp_val->v);
+	dbg_print(dbg_avp,1,dbg_fp,"new_avp_val: %p %s%c%s;",new_avp_val,new_avp_val->n,new_avp_val->o,new_avp_val->v);
 #endif
 	return new_avp_val;
 }
@@ -353,7 +356,7 @@ extern AVP* new_avp(const gchar* name, const gchar* value, gchar o) {
  **/
 extern void delete_avp(AVP* avp) {
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avp,1,dbg_fp,"delete_avp: %X %s%c%s;",(guint32) avp,avp->n,avp->o,avp->v);
+	dbg_print(dbg_avp,1,dbg_fp,"delete_avp: %p %s%c%s;",avp,avp->n,avp->o,avp->v);
 #endif
 
 	scs_unsubscribe(avp_strings, avp->n);
@@ -379,7 +382,7 @@ extern AVP* avp_copy(AVP* from) {
 	new_avp_val->o = from->o;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avp,1,dbg_fp,"copy_avp: %X %s%c%s;",(guint32) new_avp_val,new_avp_val->n,new_avp_val->o,new_avp_val->v);
+	dbg_print(dbg_avp,1,dbg_fp,"copy_avp: %p %s%c%s;",new_avp_val,new_avp_val->n,new_avp_val->o,new_avp_val->v);
 #endif
 
 	return new_avp_val;
@@ -398,7 +401,7 @@ extern AVPL* new_avpl(const gchar* name) {
 	AVPL* new_avpl_p = (AVPL*)g_slice_new(any_avp_type);
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,7,dbg_fp,"new_avpl_p: %X name=%s",new_avpl_p,name);
+	dbg_print(dbg_avpl_op,7,dbg_fp,"new_avpl_p: %p name=%s",new_avpl_p,name);
 #endif
 
 	new_avpl_p->name = name ? scs_subscribe(avp_strings, name) : scs_subscribe(avp_strings, "");
@@ -464,7 +467,7 @@ extern gboolean insert_avp(AVPL* avpl, AVP* avp) {
 	AVPN* c;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,4,dbg_fp,"insert_avp: %X %X %s%c%s;",avpl,avp,avp->n,avp->o,avp->v);
+	dbg_print(dbg_avpl_op,4,dbg_fp,"insert_avp: %p %p %s%c%s;",avpl,avp,avp->n,avp->o,avp->v);
 #endif
 
 	/* get to the insertion point */
@@ -516,7 +519,7 @@ extern AVP* get_avp_by_name(AVPL* avpl, gchar* name, void** cookie) {
 	AVPN* start = (AVPN*) *cookie;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,7,dbg_fp,"get_avp_by_name: entering: %X %s %X",avpl,name,*cookie);
+	dbg_print(dbg_avpl_op,7,dbg_fp,"get_avp_by_name: entering: %p %s %p",avpl,name,*cookie);
 #endif
 
 	name = scs_subscribe(avp_strings, name);
@@ -532,7 +535,7 @@ extern AVP* get_avp_by_name(AVPL* avpl, gchar* name, void** cookie) {
 	*cookie = curr;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,5,dbg_fp,"get_avp_by_name: got avp: %X",curr);
+	dbg_print(dbg_avpl_op,5,dbg_fp,"get_avp_by_name: got avp: %p",curr);
 #endif
 
 	scs_unsubscribe(avp_strings, name);
@@ -555,7 +558,7 @@ extern AVP* extract_avp_by_name(AVPL* avpl, gchar* name) {
 	AVP* avp = NULL;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,7,dbg_fp,"extract_avp_by_name: entering: %X %s",avpl,name);
+	dbg_print(dbg_avpl_op,7,dbg_fp,"extract_avp_by_name: entering: %p %s",avpl,name);
 #endif
 
 	name = scs_subscribe(avp_strings, name);
@@ -580,11 +583,11 @@ extern AVP* extract_avp_by_name(AVPL* avpl, gchar* name) {
 	(avpl->len)--;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl,4,dbg_fp,"avpl: %X new len: %i",avpl,avpl->len);
+	dbg_print(dbg_avpl,4,dbg_fp,"avpl: %p new len: %i",avpl,avpl->len);
 #endif
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,5,dbg_fp,"extract_avp_by_name: got avp: %X",avp);
+	dbg_print(dbg_avpl_op,5,dbg_fp,"extract_avp_by_name: got avp: %p",avp);
 #endif
 
 	return avp;
@@ -605,7 +608,7 @@ extern AVP* extract_first_avp(AVPL* avpl) {
 	AVPN* node;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,7,dbg_fp,"extract_first_avp: %X",avpl);
+	dbg_print(dbg_avpl_op,7,dbg_fp,"extract_first_avp: %p",avpl);
 #endif
 
 	node = avpl->null.next;
@@ -619,12 +622,12 @@ extern AVP* extract_first_avp(AVPL* avpl) {
 		g_slice_free(any_avp_type,(any_avp_type*)node);
 		(avpl->len)--;
 #ifdef _AVP_DEBUGGING
-		dbg_print(dbg_avpl,4,dbg_fp,"avpl: %X new len: %i",avpl,avpl->len);
+		dbg_print(dbg_avpl,4,dbg_fp,"avpl: %p new len: %i",avpl,avpl->len);
 #endif
 	}
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,5,dbg_fp,"extract_first_avp: got avp: %X",avp);
+	dbg_print(dbg_avpl_op,5,dbg_fp,"extract_first_avp: got avp: %p",avp);
 #endif
 
 	return avp;
@@ -656,12 +659,12 @@ extern AVP* extract_last_avp(AVPL* avpl) {
 		g_slice_free(any_avp_type,(any_avp_type*)node);
 		(avpl->len)--;
 #ifdef _AVP_DEBUGGING
-		dbg_print(dbg_avpl,4,dbg_fp,"avpl: %X new len: %i",avpl,avpl->len);
+		dbg_print(dbg_avpl,4,dbg_fp,"avpl: %p new len: %i",avpl,avpl->len);
 #endif
 	}
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,5,dbg_fp,"extract_last_avp: got avp: %X",avp);
+	dbg_print(dbg_avpl_op,5,dbg_fp,"extract_last_avp: got avp: %p",avp);
 #endif
 
 	return avp;
@@ -681,7 +684,7 @@ extern AVP* extract_last_avp(AVPL* avpl) {
 extern void delete_avpl(AVPL* avpl, gboolean avps_too) {
 	AVP* avp;
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl,3,dbg_fp,"delete_avpl: %X",avpl);
+	dbg_print(dbg_avpl,3,dbg_fp,"delete_avpl: %p",avpl);
 #endif
 
 	while(( avp = extract_last_avp(avpl))) {
@@ -710,7 +713,7 @@ extern AVP* get_next_avp(AVPL* avpl, void** cookie) {
 	AVPN* node;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,5,dbg_fp,"get_next_avp: avpl: %X avpn: %X",avpl,*cookie);
+	dbg_print(dbg_avpl_op,5,dbg_fp,"get_next_avp: avpl: %p avpn: %p",avpl,*cookie);
 #endif
 
 	if (*cookie) {
@@ -722,7 +725,7 @@ extern AVP* get_next_avp(AVPL* avpl, void** cookie) {
 	*cookie = node->next;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,5,dbg_fp,"extract_last_avp: got avp: %X",node->avp);
+	dbg_print(dbg_avpl_op,5,dbg_fp,"extract_last_avp: got avp: %p",node->avp);
 #endif
 
 	return node->avp;
@@ -787,7 +790,7 @@ extern void merge_avpl(AVPL* dst, AVPL* src, gboolean copy_avps) {
 	AVPN* cs = NULL;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,3,dbg_fp,"merge_avpl: %X %X",dst,src);
+	dbg_print(dbg_avpl_op,3,dbg_fp,"merge_avpl: %p %p",dst,src);
 #endif
 
 	cs = src->null.next;
@@ -857,7 +860,7 @@ extern AVPL* new_avpl_from_avpl(const gchar* name, AVPL* avpl, gboolean copy_avp
 	AVP* copy;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,3,dbg_fp,"new_avpl_from_avpl: %X from=%X name='%s'",newavpl,avpl,name);
+	dbg_print(dbg_avpl_op,3,dbg_fp,"new_avpl_from_avpl: %p from=%p name='%s'",newavpl,avpl,name);
 #endif
 
 	while(( avp = get_next_avp(avpl,&cookie) )) {
@@ -989,7 +992,7 @@ extern AVPL* new_avpl_loose_match(const gchar* name,
 	AVPN* cs = NULL;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,3,dbg_fp,"new_avpl_loose_match: %X src=%X op=%X name='%s'",newavpl,src,op,name);
+	dbg_print(dbg_avpl_op,3,dbg_fp,"new_avpl_loose_match: %p src=%p op=%p name='%s'",newavpl,src,op,name);
 #endif
 
 
@@ -1048,11 +1051,11 @@ extern AVPL* new_avpl_pairs_match(const gchar* name, AVPL* src, AVPL* op, gboole
 	const gchar *last_match = NULL;
 	gboolean matched = TRUE;
 
+	newavpl = new_avpl(scs_subscribe(avp_strings, name));
+
 #ifdef _AVP_DEBUGGING
 	dbg_print(dbg_avpl_op,3,dbg_fp,"%s: %p src=%p op=%p name='%s'",G_STRFUNC,newavpl,src,op,name);
 #endif
-
-	newavpl = new_avpl(scs_subscribe(avp_strings, name));
 
 	cs = src->null.next;
 	co = op->null.next;
@@ -1191,7 +1194,7 @@ extern void avpl_transform(AVPL* src, AVPL_Transf* op) {
 	AVPN* n;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,3,dbg_fp,"avpl_transform: src=%X op=%X",src,op);
+	dbg_print(dbg_avpl_op,3,dbg_fp,"avpl_transform: src=%p op=%p",src,op);
 #endif
 
 	for ( ; op ; op = op->next) {
@@ -1256,7 +1259,7 @@ extern LoAL* new_loal(const gchar* name) {
 	}
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,3,dbg_fp,"new_loal_p: %X name=%s",new_loal_p,name);
+	dbg_print(dbg_avpl_op,3,dbg_fp,"new_loal_p: %p name=%s",new_loal_p,name);
 #endif
 
 	new_loal_p->name = scs_subscribe(avp_strings,name);
@@ -1279,7 +1282,7 @@ extern void loal_append(LoAL* loal, AVPL* avpl) {
 	LoALnode* node = (LoALnode*)g_slice_new(any_avp_type);
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,3,dbg_fp,"new_loal_node: %X",node);
+	dbg_print(dbg_avpl_op,3,dbg_fp,"new_loal_node: %p",node);
 #endif
 
 	node->avpl = avpl;
@@ -1323,7 +1326,7 @@ extern AVPL* extract_first_avpl(LoAL* loal) {
 
 #ifdef _AVP_DEBUGGING
 		dbg_print(dbg_avpl_op,3,dbg_fp,"extract_first_avpl: got %s",avpl->name);
-		dbg_print(dbg_avpl_op,3,dbg_fp,"delete_loal_node: %X",node);
+		dbg_print(dbg_avpl_op,3,dbg_fp,"delete_loal_node: %p",node);
 #endif
 	}
 
@@ -1355,7 +1358,7 @@ extern AVPL* extract_last_avpl(LoAL* loal){
 	if ( avpl ) {
 		g_slice_free(any_avp_type,(any_avp_type*)node);
 #ifdef _AVP_DEBUGGING
-		dbg_print(dbg_avpl_op,3,dbg_fp,"delete_loal_node: %X",node);
+		dbg_print(dbg_avpl_op,3,dbg_fp,"delete_loal_node: %p",node);
 #endif
 	}
 
@@ -1377,7 +1380,7 @@ extern AVPL* get_next_avpl(LoAL* loal,void** cookie) {
 	LoALnode* node;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,3,dbg_fp,"get_next_avpl: loal=%X node=%X",loal,*cookie);
+	dbg_print(dbg_avpl_op,3,dbg_fp,"get_next_avpl: loal=%p node=%p",loal,*cookie);
 #endif
 
 	if (*cookie) {
@@ -1404,7 +1407,7 @@ extern void delete_loal(LoAL* loal, gboolean avpls_too, gboolean avps_too) {
 	AVPL* avpl;
 
 #ifdef _AVP_DEBUGGING
-	dbg_print(dbg_avpl_op,3,dbg_fp,"delete_loal: %X",loal);
+	dbg_print(dbg_avpl_op,3,dbg_fp,"delete_loal: %p",loal);
 #endif
 
 	while(( avpl = extract_last_avpl(loal) )) {
@@ -1434,13 +1437,13 @@ static LoAL* load_loal_error(FILE* fp, LoAL* loal, AVPL* curr, int linenum, cons
 	gchar* err;
 
 	va_start( list, fmt );
-	desc = g_strdup_vprintf(fmt, list);
+	desc = ws_strdup_vprintf(fmt, list);
 	va_end( list );
 
 	if (loal) {
-		err = g_strdup_printf("Error Loading LoAL from file: in %s at line: %i, %s",loal->name,linenum,desc);
+		err = ws_strdup_printf("Error Loading LoAL from file: in %s at line: %i, %s",loal->name,linenum,desc);
 	} else {
-		err = g_strdup_printf("Error Loading LoAL at line: %i, %s",linenum,desc);
+		err = ws_strdup_printf("Error Loading LoAL at line: %i, %s",linenum,desc);
 	}
 	ret = new_loal(err);
 
@@ -1558,7 +1561,7 @@ extern LoAL* loal_from_file(gchar* filename) {
 							i = 0;
 							name[i++] = c;
 							name[i] = '\0';
-							g_snprintf(linenum_buf,MAX_ITEM_LEN,"%s:%u",filename,linenum);
+							snprintf(linenum_buf,MAX_ITEM_LEN,"%s:%u",filename,linenum);
 							curr = new_avpl(linenum_buf);
 							continue;
 						case '#':

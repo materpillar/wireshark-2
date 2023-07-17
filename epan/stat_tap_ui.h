@@ -1,4 +1,4 @@
-/* stat_tap_ui.h
+/** @file
  * Declarations of routines to register UI information for stats
  *
  * Wireshark - Network traffic analyzer
@@ -13,6 +13,12 @@
 
 #include "ws_symbol_export.h"
 
+#include <epan/params.h>
+#include <epan/stat_groups.h>
+#include <epan/packet_info.h>
+#include <epan/tap.h>
+#include <epan/wmem_scopes.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
@@ -20,12 +26,6 @@ extern "C" {
 /*
  * Parameters for taps.
  */
-
-#include <epan/params.h>
-#include <epan/stat_groups.h>
-#include <epan/packet_info.h>
-#include <epan/tap.h>
-#include <epan/wmem/wmem.h>
 
 typedef enum {
     PARAM_UINT,   /* Unused? */
@@ -159,7 +159,7 @@ WS_DLL_PUBLIC void stat_tap_get_filter(stat_tap_table_ui* new_stat, const char *
 WS_DLL_PUBLIC stat_tap_table* stat_tap_init_table(const char *name, int num_fields, int num_elements,
                 const char *filter_string);
 WS_DLL_PUBLIC void stat_tap_add_table(stat_tap_table_ui* new_stat, stat_tap_table* table);
-
+WS_DLL_PUBLIC stat_tap_table *stat_tap_find_table(stat_tap_table_ui *ui, const char *name);
 WS_DLL_PUBLIC void stat_tap_init_table_row(stat_tap_table *stat_table, guint table_index, guint num_fields, const stat_tap_table_item_type* fields);
 WS_DLL_PUBLIC stat_tap_table_item_type* stat_tap_get_field_data(const stat_tap_table *stat_table, guint table_index, guint field_index);
 WS_DLL_PUBLIC void stat_tap_set_field_data(stat_tap_table *stat_table, guint table_index, guint field_index, stat_tap_table_item_type* field_data);

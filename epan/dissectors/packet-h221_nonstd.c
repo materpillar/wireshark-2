@@ -15,6 +15,8 @@
 void proto_register_nonstd(void);
 void proto_reg_handoff_nonstd(void);
 
+static dissector_handle_t ms_nonstd_handle;
+
 /* Define the nonstd proto */
 static int proto_nonstd = -1;
 
@@ -27,7 +29,7 @@ static int hf_h221_nonstd_netmeeting_non_standard = -1;
  */
 static int ett_nonstd = -1;
 
-const value_string ms_codec_vals[] = {
+static const value_string ms_codec_vals[] = {
     {  0x0111, "L&H CELP 4.8k" },
     {  0x0200, "MS-ADPCM" },
     {  0x0211, "L&H CELP 8k" },
@@ -111,20 +113,16 @@ proto_register_nonstd(void)
 
     proto_register_subtree_array(ett, array_length(ett));
     proto_register_field_array(proto_nonstd, hf, array_length(hf));
+
+    ms_nonstd_handle = register_dissector("h221nonstd", dissect_ms_nonstd, proto_nonstd);
 }
 
 /* The registration hand-off routine */
 void
 proto_reg_handoff_nonstd(void)
 {
-    static dissector_handle_t ms_nonstd_handle;
-
-
-    ms_nonstd_handle = create_dissector_handle(dissect_ms_nonstd, proto_nonstd);
-
     dissector_add_uint("h245.nsp.h221",0xb500534c, ms_nonstd_handle);
     dissector_add_uint("h225.nsp.h221",0xb500534c, ms_nonstd_handle);
-
 }
 
 /*

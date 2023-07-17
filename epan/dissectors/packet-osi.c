@@ -34,6 +34,8 @@ int  proto_osi         = -1;
 static int hf_osi_nlpid = -1;
 
 static dissector_handle_t osi_handle;
+static dissector_handle_t osi_tpkt_handle;
+static dissector_handle_t osi_juniper_handle;
 
 
 /* Preferences for OSI over TPKT over TCP */
@@ -403,6 +405,7 @@ const value_string nlpid_vals[] = {
   { NLPID_ISO9542_ESIS,    "ESIS" },
   { NLPID_ISO10589_ISIS,   "ISIS" },
   { NLPID_ISO10747_IDRP,   "IDRP" },
+  { NLPID_AVAYA_IPVPN,     "Avaya SPBM Fabric IPVPN" },
   { NLPID_ISO9542X25_ESIS, "ESIS (X.25)" },
   { NLPID_ISO10030,        "ISO 10030" },
   { NLPID_ISO11577,        "ISO 11577" },
@@ -493,9 +496,6 @@ static int dissect_osi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 void
 proto_reg_handoff_osi(void)
 {
-  dissector_handle_t osi_tpkt_handle, osi_juniper_handle;
-
-  osi_handle = create_dissector_handle(dissect_osi, proto_osi);
   dissector_add_uint("llc.dsap", SAP_OSINL1, osi_handle);
   dissector_add_uint("llc.dsap", SAP_OSINL2, osi_handle);
   dissector_add_uint("llc.dsap", SAP_OSINL3, osi_handle);
@@ -507,14 +507,11 @@ proto_reg_handoff_osi(void)
   dissector_add_uint("gre.proto", SAP_OSINL5, osi_handle);
   dissector_add_uint("ip.proto", IP_PROTO_ISOIP, osi_handle); /* ISO network layer PDUs [RFC 1070] */
 
-  osi_juniper_handle = create_dissector_handle(dissect_osi_juniper, proto_osi);
   dissector_add_uint("juniper.proto", JUNIPER_PROTO_ISO, osi_juniper_handle);
   dissector_add_uint("juniper.proto", JUNIPER_PROTO_CLNP, osi_juniper_handle);
   dissector_add_uint("juniper.proto", JUNIPER_PROTO_MPLS_CLNP, osi_juniper_handle);
 
   ppp_handle  = find_dissector("ppp");
-
-  osi_tpkt_handle = create_dissector_handle(dissect_osi_tpkt, proto_osi);
 
   dissector_add_for_decode_as_with_preference("tcp.port", osi_tpkt_handle);
 }
@@ -555,7 +552,10 @@ proto_register_osi(void)
                                  "Whether segmented TPKT datagrams should be reassembled",
                                  &tpkt_desegment);
 
-
+  /* Register the dissector handles */
+  osi_handle = register_dissector("osi", dissect_osi, proto_osi);
+  osi_juniper_handle = register_dissector("osi_juniper", dissect_osi_juniper, proto_osi);
+  osi_tpkt_handle = register_dissector("osi_tpkt", dissect_osi_tpkt, proto_osi);
 }
 
 /*

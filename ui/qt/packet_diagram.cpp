@@ -16,16 +16,19 @@
 
 #include "wsutil/utf8_entities.h"
 
-#include "wireshark_application.h"
+#include "main_application.h"
 
 #include "ui/qt/main_window.h"
+#include "ui/qt/capture_file_dialog.h"
 #include "ui/qt/utils/proto_node.h"
 #include "ui/qt/utils/variant_pointer.h"
+#include "ui/recent.h"
 
-
+#include <QClipboard>
 #include <QContextMenuEvent>
 #include <QGraphicsItem>
 #include <QMenu>
+#include <QStyleOptionGraphicsItem>
 
 #if defined(QT_SVG_LIB) && 0
 #include <QBuffer>
@@ -48,10 +51,9 @@ public:
         small_font_rems_(0.75),
         bit_width_rems_(1.0),
         padding_rems_(0.5),
-        span_mark_offset_rems_(0.2),
-        show_fields_(false)
+        span_mark_offset_rems_(0.2)
     {
-        setFont(wsApp->font());
+        setFont(mainApp->font());
     }
 
     void setFont(QFont font) {
@@ -62,7 +64,7 @@ public:
         QFontMetrics fm(regular_font_);
         root_em_ = fm.height();
     }
-    void setShowFields(bool show_fields = false) { show_fields_ = show_fields; }
+    void setShowFields(bool show_fields = false) { recent.gui_packet_diagram_field_values = show_fields; }
 
     int bitsPerRow() const { return bits_per_row_; }
     const QFont regularFont() const { return regular_font_; }
@@ -73,17 +75,16 @@ public:
     int vPadding() const { return root_em_ * padding_rems_; }
     int spanMarkOffset() const { return root_em_ * span_mark_offset_rems_; }
     int rowHeight() const {
-        int rows = show_fields_ ? 2 : 1;
+        int rows = recent.gui_packet_diagram_field_values ? 2 : 1;
         return ((lineHeight() * rows) + (vPadding() * 2));
     }
-    bool showFields() const { return show_fields_; }
+    bool showFields() const { return recent.gui_packet_diagram_field_values; }
 private:
     int bits_per_row_;
     double small_font_rems_;
     double bit_width_rems_;
     double padding_rems_;
     double span_mark_offset_rems_; // XXX Make this padding_rems_ / 2 instead?
-    bool show_fields_;
     QFont regular_font_;
     QFont small_font_;
     int root_em_;
@@ -358,8 +359,8 @@ PacketDiagram::PacketDiagram(QWidget *parent) :
     // XXX Move to setMonospaceFont similar to ProtoTree
     layout_->setFont(font());
 
-    connect(wsApp, &WiresharkApplication::appInitialized, this, &PacketDiagram::connectToMainWindow);
-    connect(wsApp, &WiresharkApplication::zoomRegularFont, this, &PacketDiagram::setFont);
+    connect(mainApp, &MainApplication::appInitialized, this, &PacketDiagram::connectToMainWindow);
+    connect(mainApp, &MainApplication::zoomRegularFont, this, &PacketDiagram::setFont);
 
     resetScene();
 }
@@ -466,32 +467,33 @@ void PacketDiagram::contextMenuEvent(QContextMenuEvent *event)
     }
 
     QAction *action;
-    QMenu ctx_menu(this);
+    QMenu *ctx_menu = new QMenu(this);
+    ctx_menu->setAttribute(Qt::WA_DeleteOnClose);
 
-    action = ctx_menu.addAction(tr("Show Field Values"));
+    action = ctx_menu->addAction(tr("Show Field Values"));
     action->setCheckable(true);
     action->setChecked(layout_->showFields());
     connect(action, &QAction::toggled, this, &PacketDiagram::showFieldsToggled);
 
-    ctx_menu.addSeparator();
+    ctx_menu->addSeparator();
 
-    action = ctx_menu.addAction(tr("Save Diagram As…"));
+    action = ctx_menu->addAction(tr("Save Diagram As…"));
     connect(action, &QAction::triggered, this, &PacketDiagram::saveAsTriggered);
 
-    action = ctx_menu.addAction(tr("Copy as Raster Image"));
+    action = ctx_menu->addAction(tr("Copy as Raster Image"));
     connect(action, &QAction::triggered, this, &PacketDiagram::copyAsRasterTriggered);
 
 #if defined(QT_SVG_LIB) && !defined(Q_OS_MAC)
-    action = ctx_menu.addAction(tr("…as SVG"));
+    action = ctx_menu->addAction(tr("…as SVG"));
     connect(action, &QAction::triggered, this, &PacketDiagram::copyAsSvgTriggered);
 #endif
 
-    ctx_menu.exec(event->globalPos());
+    ctx_menu->popup(event->globalPos());
 }
 
 void PacketDiagram::connectToMainWindow()
 {
-    MainWindow *main_window = qobject_cast<MainWindow *>(wsApp->mainWindow());
+    MainWindow *main_window = qobject_cast<MainWindow *>(mainApp->mainWindow());
     if (!main_window) {
         return;
     }
@@ -524,6 +526,7 @@ void PacketDiagram::resetScene(bool reset_root)
     if (scene()) {
         delete scene();
     }
+    viewport()->update();
     QGraphicsScene *new_scene = new QGraphicsScene();
     setScene(new_scene);
     connect(new_scene, &QGraphicsScene::selectionChanged, this, &PacketDiagram::sceneSelectionChanged);
@@ -752,13 +755,15 @@ void PacketDiagram::showFieldsToggled(bool checked)
 {
     layout_->setShowFields(checked);
     setRootNode(root_node_);
+    /* Viewport needs to be update to avoid residues being shown */
+    viewport()->update();
 }
 
 // XXX - We have similar code in tcp_stream_dialog and io_graph_dialog. Should this be a common routine?
 void PacketDiagram::saveAsTriggered()
 {
     QString file_name, extension;
-    QDir path(wsApp->lastOpenDir());
+    QDir path(mainApp->lastOpenDir());
     QString png_filter = tr("Portable Network Graphics (*.png)");
     QString bmp_filter = tr("Windows Bitmap (*.bmp)");
     // Gaze upon my beautiful graph with lossy artifacts!
@@ -770,7 +775,7 @@ void PacketDiagram::saveAsTriggered()
 #endif
     QString filter = fl.join(";;");
 
-    file_name = WiresharkFileDialog::getSaveFileName(this, wsApp->windowTitleString(tr("Save Graph As…")),
+    file_name = WiresharkFileDialog::getSaveFileName(this, mainApp->windowTitleString(tr("Save Graph As…")),
                                              path.canonicalPath(), filter, &extension);
 
     if (file_name.length() > 0) {
@@ -797,8 +802,7 @@ void PacketDiagram::saveAsTriggered()
 #endif
         // else error dialog?
         if (save_ok) {
-            path = QDir(file_name);
-            wsApp->setLastOpenDir(path.canonicalPath().toUtf8().constData());
+            mainApp->setLastOpenDirFromFilename(file_name);
         }
     }
 }
@@ -806,7 +810,7 @@ void PacketDiagram::saveAsTriggered()
 void PacketDiagram::copyAsRasterTriggered()
 {
     QImage raster_diagram = exportToImage();
-    wsApp->clipboard()->setImage(raster_diagram);
+    mainApp->clipboard()->setImage(raster_diagram);
 }
 
 #if defined(QT_SVG_LIB) && !defined(Q_OS_MAC) && 0
@@ -819,6 +823,6 @@ void PacketDiagram::copyAsSvgTriggered()
     // It might be easier to just do "Save As" instead.
     QMimeData *md = new QMimeData();
     md->setData("image/svg+xml", svg_buf);
-    wsApp->clipboard()->setMimeData(md);
+    mainApp->clipboard()->setMimeData(md);
 }
 #endif

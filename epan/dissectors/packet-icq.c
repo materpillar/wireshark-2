@@ -24,6 +24,8 @@
 void proto_register_icq(void);
 void proto_reg_handoff_icq(void);
 
+static dissector_handle_t icq_handle;
+
 static int proto_icq = -1;
 static int hf_icq_version = -1;
 static int hf_icq_uin = -1;
@@ -539,7 +541,7 @@ icqv5_decode_msgType(proto_tree *tree, tvbuff_t *tvb, int offset, int size,
                    "Unknown msgType: %u (0x%x)", msgType, msgType);
         break;
     case MSG_TEXT:
-        proto_tree_add_item(subtree, hf_icq_msg, tvb, offset, left, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(subtree, hf_icq_msg, tvb, offset, left, ENC_ASCII);
         break;
     case MSG_URL:
         for (n = 0; n < N_URL_FIELDS; n++) {
@@ -646,7 +648,7 @@ icqv5_decode_msgType(proto_tree *tree, tvbuff_t *tvb, int offset, int size,
 
             if (n_local == 0) {
                 /* The first element is the number of Nick/UIN pairs follow */
-                proto_tree_add_item(subtree, hf_icq_num_uin_pairs, tvb, offset, sz_local, ENC_ASCII|ENC_NA);
+                proto_tree_add_item(subtree, hf_icq_num_uin_pairs, tvb, offset, sz_local, ENC_ASCII);
                 n_local++;
             } else if (!last) {
                 int svsz = sz_local;
@@ -663,8 +665,8 @@ icqv5_decode_msgType(proto_tree *tree, tvbuff_t *tvb, int offset, int size,
                 }
                 contact = tvb_get_string_enc(wmem_packet_scope(), tvb, sep_offset_prev + 1, sz_local, ENC_ASCII);
                 proto_tree_add_string_format(subtree, hf_icq_msg_contact, tvb, offset, sz_local + svsz,
-                            contact, "%.*s: %.*s", svsz - 1,
-                            tvb_get_string_enc(wmem_packet_scope(), tvb, offset, svsz, ENC_ASCII), sz_local - 1,
+                            contact, "%s: %s",
+                            tvb_get_string_enc(wmem_packet_scope(), tvb, offset, svsz, ENC_ASCII),
                             contact);
                 n_local += 2;
             }
@@ -694,7 +696,7 @@ icqv5_cmd_send_text_code(proto_tree *tree, /* Tree to put the data in */
     proto_tree_add_item(subtree, hf_icq_text_code_length, tvb, offset + CMD_SEND_TEXT_CODE_LEN, 2, ENC_LITTLE_ENDIAN);
 
     if (len>0) {
-        proto_tree_add_item(subtree, hf_icq_text_code, tvb, offset + CMD_SEND_TEXT_CODE_TEXT, len, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(subtree, hf_icq_text_code, tvb, offset + CMD_SEND_TEXT_CODE_TEXT, len, ENC_ASCII);
     }
 
     proto_tree_add_item(subtree, hf_icq_x1, tvb, offset + CMD_SEND_TEXT_CODE_TEXT + len, 2, ENC_LITTLE_ENDIAN);
@@ -726,7 +728,7 @@ icqv5_cmd_login(proto_tree *tree, tvbuff_t *tvb, int offset)
                     (guint32)theTime, "%u = %s", (guint32)theTime, aTime);
         proto_tree_add_item(subtree, hf_icq_login_port, tvb, offset + CMD_LOGIN_PORT, 4, ENC_LITTLE_ENDIAN);
         passwdLen = tvb_get_letohs(tvb, offset + CMD_LOGIN_PASSLEN);
-        proto_tree_add_item(subtree, hf_icq_login_password, tvb, offset + CMD_LOGIN_PASSLEN, 2 + passwdLen, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(subtree, hf_icq_login_password, tvb, offset + CMD_LOGIN_PASSLEN, 2 + passwdLen, ENC_ASCII);
         proto_tree_add_item(subtree, hf_icq_login_ip, tvb, offset + CMD_LOGIN_PASSWD + passwdLen + CMD_LOGIN_IP, 4, ENC_BIG_ENDIAN);
         proto_tree_add_item(subtree, hf_icq_status, tvb, offset + CMD_LOGIN_PASSWD + passwdLen + CMD_LOGIN_STATUS, 4, ENC_LITTLE_ENDIAN);
     }
@@ -1351,14 +1353,13 @@ proto_register_icq(void)
     proto_register_subtree_array(ett, array_length(ett));
     expert_icq = expert_register_protocol(proto_icq);
     expert_register_field_array(expert_icq, ei, array_length(ei));
+
+    icq_handle = register_dissector("icq", dissect_icq, proto_icq);
 }
 
 void
 proto_reg_handoff_icq(void)
 {
-    dissector_handle_t icq_handle;
-
-    icq_handle = create_dissector_handle(dissect_icq, proto_icq);
     dissector_add_uint_with_preference("udp.port", UDP_PORT_ICQ, icq_handle);
 }
 

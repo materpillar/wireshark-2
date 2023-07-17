@@ -574,16 +574,16 @@ static const value_string pn532_diagnose_baudrate_vals[] = {
 
 static void sam_timeout_base(gchar* buf, guint32 value) {
     if (value == 0x00) {
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "No timeout control");
+        snprintf(buf, ITEM_LABEL_LENGTH, "No timeout control");
     } else if (0x01 <= value && value <= 0x13) {
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "%u ms", value * 50);
+        snprintf(buf, ITEM_LABEL_LENGTH, "%u ms", value * 50);
     } else {
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%03u s", value * 50 / 1000, value * 50 % 1000);
+        snprintf(buf, ITEM_LABEL_LENGTH, "%u.%03u s", value * 50 / 1000, value * 50 % 1000);
     }
 }
 
 static void replay_delay_base(gchar* buf, guint32 value) {
-        g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%03u s", value * 500 / 1000, value * 500 % 1000);
+        snprintf(buf, ITEM_LABEL_LENGTH, "%u.%03u s", value * 500 / 1000, value * 500 % 1000);
 }
 
 static gint
@@ -2006,7 +2006,7 @@ void proto_register_pn532(void)
          {"Not Used", "pn532.txmode.not_used.2_3", FT_UINT8, BASE_HEX,
           NULL, 0xC0, NULL, HFILL}},
         {&hf_pn532_txmode_tx_framing,
-         {"Tx Framing", "pn532.txmode.not_used.2_3", FT_UINT8, BASE_HEX,
+         {"Tx Framing", "pn532.txmode.tx_framing", FT_UINT8, BASE_HEX,
           VALS(pn532_txframing_vals), 0x03, NULL, HFILL}},
         {&hf_pn532_baudrate,
          {"Baudrate", "pn532.baudrate", FT_UINT8, BASE_HEX,

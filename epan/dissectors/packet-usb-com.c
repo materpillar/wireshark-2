@@ -798,7 +798,7 @@ dissect_usb_com_interrupt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
     offset++;
     proto_tree_add_item_ret_uint(subtree, hf_usb_com_interrupt_notif_code, tvb, offset, 1, ENC_LITTLE_ENDIAN, &notif_code);
     offset++;
-    col_add_fstr(pinfo->cinfo, COL_INFO, "%s", val_to_str(notif_code, usb_com_interrupt_notif_code_vals, "Unknown type %x"));
+    col_add_str(pinfo->cinfo, COL_INFO, val_to_str(notif_code, usb_com_interrupt_notif_code_vals, "Unknown type %x"));
     switch (notif_code) {
         case NETWORK_CONNECTION:
             proto_tree_add_item(subtree, hf_usb_com_interrupt_value_nw_conn, tvb, offset, 2, ENC_LITTLE_ENDIAN);
@@ -966,7 +966,7 @@ proto_register_usb_com(void)
             { "Network_Connection", "usbcom.descriptor.acm.capabilities.network_connection", FT_BOOLEAN, 8,
               TFS(&tfs_supported_not_supported), 0x08, NULL, HFILL }},
         { &hf_usb_com_descriptor_acm_capabilities_send_break,
-            { "Send_Break", "usbcom.descriptor.acm.capabilities.network_connection", FT_BOOLEAN, 8,
+            { "Send_Break", "usbcom.descriptor.acm.capabilities.send_break", FT_BOOLEAN, 8,
               TFS(&tfs_supported_not_supported), 0x04, NULL, HFILL }},
         { &hf_usb_com_descriptor_acm_capabilities_line_and_state,
             { "Line Requests and State Notification", "usbcom.descriptor.acm.capabilities.line_and_state", FT_BOOLEAN, 8,

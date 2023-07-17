@@ -1,4 +1,5 @@
-/* ssh-base.h
+/** @file
+ *
  * ssh-base has base utility functions to connect to hosts via ssh
  *
  * Copyright 2016, Dario Lombardo
@@ -28,26 +29,26 @@
 #endif
 
 #define SSH_BASE_OPTIONS \
-	{ "remote-host", required_argument, NULL, OPT_REMOTE_HOST}, \
-	{ "remote-port", required_argument, NULL, OPT_REMOTE_PORT}, \
-	{ "remote-username", required_argument, NULL, OPT_REMOTE_USERNAME}, \
-	{ "remote-password", required_argument, NULL, OPT_REMOTE_PASSWORD}, \
-	{ "remote-interface", required_argument, NULL, OPT_REMOTE_INTERFACE}, \
-	{ "remote-filter", required_argument, NULL, OPT_REMOTE_FILTER}, \
-	{ "remote-count", required_argument, NULL, OPT_REMOTE_COUNT}, \
-	{ "sshkey", required_argument, NULL, OPT_SSHKEY}, \
-	{ "sshkey-passphrase", required_argument, NULL, OPT_SSHKEY_PASSPHRASE}, \
-	{ "proxycommand", required_argument, NULL, OPT_PROXYCOMMAND}
+	{ "remote-host", ws_required_argument, NULL, OPT_REMOTE_HOST}, \
+	{ "remote-port", ws_required_argument, NULL, OPT_REMOTE_PORT}, \
+	{ "remote-username", ws_required_argument, NULL, OPT_REMOTE_USERNAME}, \
+	{ "remote-password", ws_required_argument, NULL, OPT_REMOTE_PASSWORD}, \
+	{ "remote-interface", ws_required_argument, NULL, OPT_REMOTE_INTERFACE}, \
+	{ "remote-filter", ws_required_argument, NULL, OPT_REMOTE_FILTER}, \
+	{ "remote-count", ws_required_argument, NULL, OPT_REMOTE_COUNT}, \
+	{ "sshkey", ws_required_argument, NULL, OPT_SSHKEY}, \
+	{ "sshkey-passphrase", ws_required_argument, NULL, OPT_SSHKEY_PASSPHRASE}, \
+	{ "proxycommand", ws_required_argument, NULL, OPT_PROXYCOMMAND}
 
 typedef struct _ssh_params {
-	gchar* host;
-	guint16 port;
-	gchar* username;
-	gchar* password;
-	gchar* sshkey_path;
-	gchar* sshkey_passphrase;
-	gchar* proxycommand;
-	gboolean debug;
+	char* host;
+	uint16_t port;
+	char* username;
+	char* password;
+	char* sshkey_path;
+	char* sshkey_passphrase;
+	char* proxycommand;
+	bool debug;
 } ssh_params_t;
 
 /* Add libssh version information to an extcap_parameters structure */

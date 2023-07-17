@@ -311,8 +311,6 @@ static int hf_ansi_637_tele_srvc_cat_prog_data_max_messages = -1;
 static int hf_ansi_637_tele_srvc_cat_prog_data_alert_option = -1;
 static int hf_ansi_637_tele_srvc_cat_prog_data_num_fields = -1;
 static int hf_ansi_637_tele_srvc_cat_prog_data_text = -1;
-static int hf_ansi_637_msb_first_field = -1;
-static int hf_ansi_637_lsb_last_field = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_ansi_637_tele = -1;
@@ -333,6 +331,7 @@ static expert_field ei_ansi_637_no_tele_parameter_dissector = EI_INIT;
 
 static dissector_handle_t ansi_637_tele_handle;
 static dissector_handle_t ansi_637_trans_handle;
+static dissector_handle_t ansi_637_trans_app_handle;
 
 static guint32 ansi_637_trans_tele_id;
 static char ansi_637_bigbuf[1024];
@@ -377,9 +376,7 @@ text_decoder(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 offset
     guint32     required_octs;
     tvbuff_t    *tvb_out = NULL;
 
-    GIConv      cd;
-    GError      *l_conv_error = NULL;
-    gchar       *ustr = NULL;
+    const guchar *ustr = NULL;
 
     /*
      * has to be big enough to hold all of the 'shifted' bits
@@ -402,7 +399,7 @@ text_decoder(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 offset
     case 0x00: /* Octet, unspecified */
 
         proto_tree_add_string(tree, hf_index, tvb_out, 0, required_octs,
-            tvb_bytes_to_str(wmem_packet_scope(), tvb_out, 0, required_octs));
+            tvb_bytes_to_str(pinfo->pool, tvb_out, 0, required_octs));
         break;
 
     case 0x02: /* 7-bit ASCII */
@@ -418,7 +415,7 @@ text_decoder(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 offset
         offset = 0;
         bit = 0;
 
-        ustr = tvb_get_ascii_7bits_string(wmem_packet_scope(), tvb_out, (offset << 3) + bit, num_fields);
+        ustr = tvb_get_ascii_7bits_string(pinfo->pool, tvb_out, (offset << 3) + bit, num_fields);
         IA5_7BIT_decode(ansi_637_bigbuf, ustr, num_fields);
 
         proto_tree_add_string(tree, hf_index, tvb_out, 0,
@@ -458,25 +455,10 @@ text_decoder(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 offset
 
         offset = 0;
 
-        if ((cd = g_iconv_open("UTF-8", "EUC-KR")) != (GIConv) -1)
-        {
-            ustr = g_convert_with_iconv(tvb_get_ptr(tvb_out, offset, required_octs), required_octs , cd , NULL , NULL , &l_conv_error);
-            if (!l_conv_error)
-            {
-                proto_tree_add_string(tree, hf_index, tvb_out, offset,
-                    required_octs, ustr);
-            }
-            else
-            {
-                proto_tree_add_expert_format(tree, pinfo, &ei_ansi_637_failed_conversion, tvb_out, offset, required_octs,
-                    "Failed iconv conversion on EUC-KR - (report to wireshark.org)");
-            }
-            if (ustr)
-            {
-                g_free(ustr);
-            }
-            g_iconv_close(cd);
-        }
+        proto_tree_add_item_ret_string(tree, hf_index, tvb_out, offset, required_octs, ENC_EUC_KR|ENC_NA, pinfo->pool, &ustr);
+        if (ustr == NULL)
+            proto_tree_add_expert_format(tree, pinfo, &ei_ansi_637_failed_conversion, tvb_out, offset, required_octs,
+                "Failed iconv conversion on EUC-KR - (report to wireshark.org)");
         break;
     }
 }
@@ -962,7 +944,7 @@ tele_param_user_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint 
 
     case 0x04:
         encoding_bit_len = 16;
-        cset = OTHER;
+        cset = UCS2;
         break;
 
     case 0x09:
@@ -1055,10 +1037,6 @@ tele_param_user_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint 
         {
             switch (cset)
             {
-            case GSM_7BITS:
-            case OTHER:
-                break;
-
             case ASCII_7BITS:
                 if (fill_bits > unused_bits)
                 {
@@ -1080,6 +1058,9 @@ tele_param_user_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint 
                     offset += 1;
                     unused_bits = 8;
                 }
+                break;
+
+            default:
                 break;
             }
         } else if (encoding_bit_len == 16) {
@@ -1370,12 +1351,12 @@ tele_param_cb_num(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint len
 
         offset += 1;
 
-        poctets = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, num_fields, ENC_ASCII|ENC_NA);
+        poctets = tvb_get_string_enc(pinfo->pool, tvb, offset, num_fields, ENC_ASCII|ENC_NA);
 
         proto_tree_add_string_format(tree, hf_ansi_637_tele_cb_num_number, tvb, offset, num_fields,
             (gchar *) poctets,
             "Number: %s",
-            (gchar *) format_text(wmem_packet_scope(), poctets, num_fields));
+            (gchar *) format_text(pinfo->pool, poctets, num_fields));
     }
     else
     {
@@ -1489,7 +1470,7 @@ tele_param_mult_enc_user_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 
         case 0x04:
             encoding_bit_len = 16;
-            cset = OTHER;
+            cset = UCS2;
             break;
 
         case 0x09:
@@ -1964,7 +1945,7 @@ trans_param_tele_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint l
         "%s (%u)",
         str, value);
 
-    g_snprintf(add_string, string_len, " - %s (%u)", str, value);
+    snprintf(add_string, string_len, " - %s (%u)", str, value);
 }
 
 static void
@@ -1983,7 +1964,7 @@ trans_param_srvc_cat(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint 
         "%s (%u)",
         str, value);
 
-    g_snprintf(add_string, string_len, " - %s (%u)", str, value);
+    snprintf(add_string, string_len, " - %s (%u)", str, value);
 
     if ((value >= ANSI_TSB58_SRVC_CAT_CMAS_MIN) && (value <= ANSI_TSB58_SRVC_CAT_CMAS_MAX))
     {
@@ -2005,6 +1986,7 @@ trans_param_address(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint l
     gboolean    email_addr;
     guint32     i, saved_offset, required_octs;
     guint64     num_fields;
+    tvbuff_t   *tvb_out;
 
     SHORT_DATA_CHECK(len, 2);
 
@@ -2031,38 +2013,24 @@ trans_param_address(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint l
             proto_tree_add_bits_ret_val(tree, hf_ansi_637_trans_addr_param_num_fields, tvb, (offset*8)+5, 8, &num_fields, ENC_BIG_ENDIAN);
             if (num_fields == 0) return;
             offset += 1;
-            oct = tvb_get_guint8(tvb, offset);;
 
             SHORT_DATA_CHECK(len - 2, num_fields);
 
-            proto_tree_add_bits_item(tree, hf_ansi_637_msb_first_field, tvb, offset*8, 3, ENC_NA);
-            offset += 1;
-
-            i = 0;
-            while (i < num_fields)
-            {
-                ansi_637_bigbuf[i] = (oct & 0x07) << 5;
-                ansi_637_bigbuf[i] |= ((oct = tvb_get_guint8(tvb, offset + i)) & 0xf8) >> 3;
-                i += 1;
-            }
-            ansi_637_bigbuf[i] = '\0';
+            tvb_out = tvb_new_octet_aligned(tvb, offset*8 + 5, (gint)num_fields*8);
+            add_new_data_source(pinfo, tvb_out, "Address");
 
             if (email_addr)
             {
-                proto_tree_add_string_format(tree, hf_ansi_637_trans_addr_param_number, tvb, offset - 1, (gint)num_fields + 1,
-                    ansi_637_bigbuf,
-                    "Number: %s",
-                    ansi_637_bigbuf);
+                proto_tree_add_item(tree, hf_ansi_637_trans_addr_param_number, tvb_out, 0, (gint)num_fields,
+                    ENC_ASCII);
             }
             else
             {
-                proto_tree_add_bytes(tree, hf_ansi_637_trans_bin_addr, tvb, offset - 1, (gint)num_fields + 1,
-                    (guint8 *) ansi_637_bigbuf);
+                proto_tree_add_item(tree, hf_ansi_637_trans_bin_addr, tvb_out, 0, (gint)num_fields, ENC_NA);
             }
 
-            offset += ((guint32)num_fields - 1);
+            offset += ((guint32)num_fields);
 
-            proto_tree_add_bits_item(tree, hf_ansi_637_lsb_last_field, tvb, offset*8, 5, ENC_NA);
             proto_tree_add_item(tree, hf_ansi_637_reserved_bits_8_07, tvb, offset, 1, ENC_BIG_ENDIAN);
         }
         else
@@ -2086,27 +2054,14 @@ trans_param_address(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint l
 
             SHORT_DATA_CHECK(len - 3, num_fields);
 
-            proto_tree_add_bits_item(tree, hf_ansi_637_msb_first_field, tvb, (offset*8)+1, 7, ENC_NA);
-            oct = tvb_get_guint8(tvb, offset);
-            offset += 1;
+            tvb_out = tvb_new_octet_aligned(tvb, offset*8 + 1, (gint)num_fields*8);
+            add_new_data_source(pinfo, tvb_out, "Address");
 
-            i = 0;
-            while (i < num_fields)
-            {
-                ansi_637_bigbuf[i] = (oct & 0x7f) << 1;
-                ansi_637_bigbuf[i] |= ((oct = tvb_get_guint8(tvb, offset + i)) & 0x80) >> 7;
-                i += 1;
-            }
-            ansi_637_bigbuf[i] = '\0';
+            proto_tree_add_item(tree, hf_ansi_637_trans_addr_param_number, tvb_out, 0, (gint)num_fields,
+                ENC_ASCII);
 
-            proto_tree_add_string_format(tree, hf_ansi_637_trans_addr_param_number, tvb, offset - 1, (gint)num_fields + 1,
-                ansi_637_bigbuf,
-                "Number: %s",
-                ansi_637_bigbuf);
+            offset += ((guint32)num_fields);
 
-            offset += ((guint32)num_fields - 1);
-
-            proto_tree_add_bits_item(tree, hf_ansi_637_lsb_last_field, tvb, offset*8, 1, ENC_NA);
             proto_tree_add_item(tree, hf_ansi_637_reserved_bits_8_7f, tvb, offset, 1, ENC_BIG_ENDIAN);
         }
     }
@@ -2171,9 +2126,9 @@ static const value_string trans_param_subaddr_type_strings[] = {
 static void
 trans_param_subaddress(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint len, guint32 offset, gchar *add_string _U_, int string_len _U_)
 {
-    guint8      oct, num_fields;
+    guint8      num_fields;
     guint32     value;
-    guint32     i;
+    tvbuff_t   *tvb_out;
 
     SHORT_DATA_CHECK(len, 2);
 
@@ -2193,25 +2148,13 @@ trans_param_subaddress(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guin
 
     SHORT_DATA_CHECK(len - 2, num_fields);
 
-    proto_tree_add_bits_item(tree, hf_ansi_637_msb_first_field, tvb, (offset*8)+12, 4, ENC_NA);
-    offset += 2;
+    offset += 1;
+    tvb_out = tvb_new_octet_aligned(tvb, offset*8 + 4, num_fields*8);
+    add_new_data_source(pinfo, tvb_out, "Subaddress");
 
-    oct = value & 0x000f;
-    i = 0;
-    while (i < num_fields)
-    {
-        ansi_637_bigbuf[i] = (oct & 0x0f) << 4;
-        ansi_637_bigbuf[i] |= ((oct = tvb_get_guint8(tvb, offset + i)) & 0xf0) >> 4;
-        i += 1;
-    }
-    ansi_637_bigbuf[i] = '\0';
+    proto_tree_add_item(tree, hf_ansi_637_trans_bin_addr, tvb_out, 0, num_fields, ENC_NA);
 
-    proto_tree_add_bytes(tree, hf_ansi_637_trans_bin_addr, tvb, offset, num_fields - 1,
-        (guint8 *) ansi_637_bigbuf);
-
-    offset += (num_fields - 1);
-
-    proto_tree_add_bits_item(tree, hf_ansi_637_lsb_last_field, tvb, offset*8, 4, ENC_NA);
+    offset += num_fields;
 
     proto_tree_add_item(tree, hf_ansi_637_reserved_bits_8_0f, tvb, offset, 1, ENC_BIG_ENDIAN);
 }
@@ -2222,7 +2165,7 @@ trans_param_bearer_reply_opt(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *
     proto_tree_add_item(tree, hf_ansi_637_trans_bearer_reply_seq_num, tvb, offset, 1, ENC_BIG_ENDIAN);
     proto_tree_add_item(tree, hf_ansi_637_reserved_bits_8_03, tvb, offset, 1, ENC_BIG_ENDIAN);
 
-    g_snprintf(add_string, string_len, " - Reply Sequence Number (%u)",
+    snprintf(add_string, string_len, " - Reply Sequence Number (%u)",
         (tvb_get_guint8(tvb, offset) & 0xfc) >> 2);
 }
 
@@ -2245,7 +2188,7 @@ trans_param_cause_codes(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
 
     oct = tvb_get_guint8(tvb, offset);
 
-    g_snprintf(add_string, string_len, " - Reply Sequence Number (%u)", (oct & 0xfc) >> 2);
+    snprintf(add_string, string_len, " - Reply Sequence Number (%u)", (oct & 0xfc) >> 2);
 
     if (!(oct & 0x03)) return;
 
@@ -2590,7 +2533,7 @@ dissect_ansi_637_trans_param(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
         {
             gchar       *ansi_637_add_string;
 
-            ansi_637_add_string = (gchar *) wmem_alloc(wmem_packet_scope(), 1024);
+            ansi_637_add_string = (gchar *) wmem_alloc(pinfo->pool, 1024);
             ansi_637_add_string[0] = '\0';
             (*param_fcn)(tvb, pinfo, subtree, len, curr_offset, ansi_637_add_string, 1024);
 
@@ -2843,7 +2786,7 @@ proto_register_ansi_637(void)
         },
         { &hf_ansi_637_tele_user_data_text,
             { "Encoded user data", "ansi_637_tele.user_data.text",
-            FT_STRING, STR_UNICODE, NULL, 0,
+            FT_STRING, BASE_NONE, NULL, 0,
             NULL, HFILL }
         },
         { &hf_ansi_637_tele_user_data_encoding,
@@ -3033,7 +2976,7 @@ proto_register_ansi_637(void)
         },
         { &hf_ansi_637_tele_cb_num_num_fields07f8,
             { "Number of fields", "ansi_637_tele.cb_num.num_fields",
-            FT_UINT8, BASE_DEC, NULL, 0x07F8,
+            FT_UINT16, BASE_DEC, NULL, 0x07F8,
             NULL, HFILL }
         },
         { &hf_ansi_637_tele_cb_num_number,
@@ -3213,7 +3156,7 @@ proto_register_ansi_637(void)
         },
         { &hf_ansi_637_tele_cmas_text,
             { "CMAE_alert_text", "ansi_637_tele.cmas.text",
-            FT_STRING, STR_UNICODE, NULL, 0,
+            FT_STRING, BASE_NONE, NULL, 0,
             NULL, HFILL }
         },
         { &hf_ansi_637_tele_mult_enc_user_data_encoding,
@@ -3228,7 +3171,7 @@ proto_register_ansi_637(void)
         },
         { &hf_ansi_637_tele_mult_enc_user_data_text,
             { "Encoded user data", "ansi_637_tele.mult_enc_user_data.text",
-            FT_STRING, STR_UNICODE, NULL, 0,
+            FT_STRING, BASE_NONE, NULL, 0,
             NULL, HFILL }
         },
         { &hf_ansi_637_tele_srvc_cat_prog_data_encoding,
@@ -3268,17 +3211,7 @@ proto_register_ansi_637(void)
         },
         { &hf_ansi_637_tele_srvc_cat_prog_data_text,
             { "Encoded program data", "ansi_637_tele.srvc_cat_prog_data.text",
-            FT_STRING, STR_UNICODE, NULL, 0,
-            NULL, HFILL }
-        },
-        { &hf_ansi_637_msb_first_field,
-            { "Most significant bits of first field", "ansi_637_tele.msb_first_field",
-            FT_UINT8, BASE_HEX, NULL, 0x0,
-            NULL, HFILL }
-        },
-        { &hf_ansi_637_lsb_last_field,
-            { "Least significant bits of last field", "ansi_637_tele.lsb_last_field",
-            FT_UINT8, BASE_HEX, NULL, 0x0,
+            FT_STRING, BASE_NONE, NULL, 0,
             NULL, HFILL }
         },
     };
@@ -3382,6 +3315,7 @@ proto_register_ansi_637(void)
 
     ansi_637_tele_handle = register_dissector("ansi_637_tele", dissect_ansi_637_tele, proto_ansi_637_tele);
     ansi_637_trans_handle = register_dissector("ansi_637_trans", dissect_ansi_637_trans, proto_ansi_637_trans);
+    ansi_637_trans_app_handle = register_dissector("ansi_637_trans_app", dissect_ansi_637_trans_app, proto_ansi_637_trans);
 
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_ansi_637_tele, hf_tele, array_length(hf_tele));
@@ -3401,10 +3335,7 @@ proto_register_ansi_637(void)
 void
 proto_reg_handoff_ansi_637(void)
 {
-    dissector_handle_t  ansi_637_trans_app_handle;
-    guint               i;
-
-    ansi_637_trans_app_handle = create_dissector_handle(dissect_ansi_637_trans_app, proto_ansi_637_trans);
+    guint i;
 
     /* Dissect messages embedded in SIP */
     dissector_add_string("media_type", "application/vnd.3gpp2.sms", ansi_637_trans_app_handle);

@@ -23,8 +23,8 @@
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
-#include <epan/wmem/wmem.h>
-#include <epan/dissectors/packet-tcp.h>
+#include <epan/wmem_scopes.h>
+#include "packet-tcp.h"
 
 #include <wsutil/strtoi.h>
 
@@ -332,6 +332,8 @@ static struct iso_type  iso_1993[128] = {
 void proto_reg_handoff_iso8583(void);
 void proto_register_iso8583(void);
 
+static dissector_handle_t iso8583_handle;
+
 static int proto_iso8583 = -1;
 
 static int hf_iso8583_len = -1;
@@ -530,7 +532,7 @@ static guint get_iso8583_msg_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offs
  * Convert a sequence of nibbles to a string of ASCII characters
  * corresponding to the hex digits in those nibbles.
  */
-static gchar* bin2hex(const guint8 *bin, enum bin2hex_enum type, guint32 len)
+static gchar* bin2hex(wmem_allocator_t *pool, const guint8 *bin, enum bin2hex_enum type, guint32 len)
 {
   gchar* ret;
   guint8 ch;
@@ -539,7 +541,7 @@ static gchar* bin2hex(const guint8 *bin, enum bin2hex_enum type, guint32 len)
   gchar* buff;
 
   /* "size" characters, plus terminating NUL */
-  ret = (gchar *)wmem_alloc(wmem_packet_scope(), size + 1);
+  ret = (gchar *)wmem_alloc(pool, size + 1);
   buff = ret;
   if(type == TYPE_BCD)
   {
@@ -550,7 +552,7 @@ static gchar* bin2hex(const guint8 *bin, enum bin2hex_enum type, guint32 len)
       str++;
       size--;
     }
-    size = len/=2;
+    size = (len/2);
   }
 
   while(size-- > 0)
@@ -588,7 +590,7 @@ static guint64 hex2bin(const char* hexstr, int len)
       if((offset -2 + len) > iso8583_len)\
         return NULL
 
-static gchar *get_bit(guint ind, tvbuff_t *tvb, guint *off_set, proto_tree *tree, proto_item **exp, gint *length, guint32 iso8583_len)
+static gchar *get_bit(guint ind, packet_info *pinfo, tvbuff_t *tvb, guint *off_set, proto_tree *tree, proto_item **exp, gint *length, guint32 iso8583_len)
 {
   gchar aux[1024];
   gchar* ret=NULL;
@@ -613,7 +615,7 @@ static gchar *get_bit(guint ind, tvbuff_t *tvb, guint *off_set, proto_tree *tree
         guint8* sizestr;
         checksize(len);
 
-        sizestr = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, len , ENC_ASCII);
+        sizestr = tvb_get_string_enc(pinfo->pool, tvb, offset, len , ENC_ASCII);
         offset += len;
         if (!ws_strtou32(sizestr, NULL, &len))
           return NULL;
@@ -657,7 +659,7 @@ static gchar *get_bit(guint ind, tvbuff_t *tvb, guint *off_set, proto_tree *tree
       if(charset_pref == ASCII_CHARSET)
       {
         checksize(len);
-        ret = (gchar *)tvb_get_string_enc(wmem_packet_scope(), tvb, offset,
+        ret = (gchar *)tvb_get_string_enc(pinfo->pool, tvb, offset,
           len , ENC_ASCII);
         *length = len;
       }
@@ -666,7 +668,7 @@ static gchar *get_bit(guint ind, tvbuff_t *tvb, guint *off_set, proto_tree *tree
         gint tlen = (len%2)? len/2 + 1 : len/2;
         checksize(tlen);
         tvb_memcpy(tvb, aux, offset, tlen);
-        if((ret = bin2hex((guint8 *)aux, TYPE_BCD, len)) == NULL)
+        if((ret = bin2hex(pinfo->pool, (guint8 *)aux, TYPE_BCD, len)) == NULL)
           return NULL;
         *length = (gint)strlen(ret);
         len = tlen;
@@ -682,14 +684,14 @@ static gchar *get_bit(guint ind, tvbuff_t *tvb, guint *off_set, proto_tree *tree
           len*=2;
         *length = len;
         checksize(len);
-        ret = (gchar *)tvb_get_string_enc(wmem_packet_scope(), tvb, offset,
+        ret = (gchar *)tvb_get_string_enc(pinfo->pool, tvb, offset,
           len, ENC_ASCII);
       }
       else
       {
         checksize(len);
         tvb_memcpy(tvb, aux, offset, len);
-        if((ret = bin2hex((guint8 *)aux, TYPE_BIN, len)) == NULL)
+        if((ret = bin2hex(pinfo->pool, (guint8 *)aux, TYPE_BIN, len)) == NULL)
           return NULL;
         *length = (gint)strlen(ret);
         str_input = TRUE;
@@ -699,7 +701,7 @@ static gchar *get_bit(guint ind, tvbuff_t *tvb, guint *off_set, proto_tree *tree
     else
     {
       checksize(len);
-      ret = (gchar *)tvb_get_string_enc(wmem_packet_scope(), tvb, offset,
+      ret = (gchar *)tvb_get_string_enc(pinfo->pool, tvb, offset,
         len , ENC_ASCII);
       *length = len;
     }
@@ -722,7 +724,7 @@ static gchar *get_bit(guint ind, tvbuff_t *tvb, guint *off_set, proto_tree *tree
 }
 
 
-static int get_bitmap(tvbuff_t *tvb, guint64* bitmap, guint offset, gint* nbitmaps, guint32 iso8583_len)
+static int get_bitmap(packet_info *pinfo, tvbuff_t *tvb, guint64* bitmap, guint offset, gint* nbitmaps, guint32 iso8583_len)
 {
   gchar* hexbit;
   gint i;
@@ -747,7 +749,7 @@ static int get_bitmap(tvbuff_t *tvb, guint64* bitmap, guint offset, gint* nbitma
       if((offset -2 + len) > iso8583_len)
         return -1;
       (*nbitmaps)++;
-      hexbit = (gchar *)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, len , ENC_ASCII);
+      hexbit = (gchar *)tvb_get_string_enc(pinfo->pool, tvb, offset, len , ENC_ASCII);
       offset+= len;
 
       if(!ishex_str(hexbit, len))
@@ -789,7 +791,7 @@ static int dissect_databits(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     if(bitmap[i/64] & (((guint64)1)<< (63 -bit)))
     {
-      cod = get_bit(i, tvb, &offset, tree, &exp, &len, iso8583_len);
+      cod = get_bit(i, pinfo, tvb, &offset, tree, &exp, &len, iso8583_len);
       if(cod == NULL || ! isstrtype_ok(data_array[i].type, cod, len ))
       {
         if(!exp)
@@ -838,13 +840,13 @@ static int dissect_iso8583_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
   if(charset_pref == ASCII_CHARSET) /* ASCII NUMBER REPRESENTATION */
   {
     len = 4;
-    msg_type = (gchar*) tvb_get_string_enc(wmem_packet_scope(), tvb, 2, len, ENC_ASCII);
+    msg_type = (gchar*) tvb_get_string_enc(pinfo->pool, tvb, 2, len, ENC_ASCII);
   }
   else /* NUMBERS REPRESENTED IN NIBBLES */
   {
     len = 2;
     tvb_memcpy(tvb, aux, 2, len);
-    if((msg_type = bin2hex((guint8 *)aux, TYPE_BCD, len*2)) == NULL)
+    if((msg_type = bin2hex(pinfo->pool, (guint8 *)aux, TYPE_BCD, len*2)) == NULL)
       return 0;
   }
 
@@ -856,11 +858,11 @@ static int dissect_iso8583_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
   /* Heuristic: 16 bytes Bitmap1 - all HEX digits */
 
   if(bin_encode_pref == BIN_BIN_ENC) /* ASCII NUMBER REPRESENTATION */
-    msg_bitmap = (gchar *)tvb_get_string_enc(wmem_packet_scope(), tvb, 6, BM_LEN*2 , ENC_ASCII);
+    msg_bitmap = (gchar *)tvb_get_string_enc(pinfo->pool, tvb, 6, BM_LEN*2 , ENC_ASCII);
   else
   {
     tvb_memcpy(tvb, aux, 6, BM_LEN);
-    if((msg_bitmap = bin2hex((guint8 *)aux, TYPE_BCD, BM_LEN)) == NULL)
+    if((msg_bitmap = bin2hex(pinfo->pool, (guint8 *)aux, TYPE_BCD, BM_LEN)) == NULL)
       return 0;
   }
 
@@ -883,18 +885,18 @@ static int dissect_iso8583_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
   /* Set the Protocol column */
   col_clear(pinfo->cinfo, COL_PROTOCOL);
   col_add_fstr(pinfo->cinfo, COL_PROTOCOL, "ISO 8583-1%s",
-      val_to_str((guint)msg_type[0], packetversionnames, " Unknown VERSION"));
+      val_to_str_const((guint)msg_type[0], packetversionnames, " Unknown VERSION"));
   col_clear(pinfo->cinfo, COL_INFO);
   /* print version of the packet*/
   col_add_fstr(pinfo->cinfo, COL_INFO, "Type %s - %s", msg_type,
-      val_to_str((guint)msg_type[1], packettypenames, "Unknown type"));
+      val_to_str_const((guint)msg_type[1], packettypenames, "Unknown type"));
 
   /*** PROTOCOL TREE ***/
 
   /* create display subtree for the protocol */
   ti = proto_tree_add_item(tree, proto_iso8583, tvb, 0, -1, ENC_NA);
   proto_item_append_text(ti, ":  Type %s - %s", msg_type,
-      val_to_str((guint)msg_type[1], packettypenames, "Unknown type"));
+      val_to_str_const((guint)msg_type[1], packettypenames, "Unknown type"));
 
   iso8583_tree = proto_item_add_subtree(ti, ett_iso8583);
 
@@ -924,7 +926,7 @@ static int dissect_iso8583_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
   /*BITMAPS*/
   offset+=len;
 
-  get_bitmap(tvb, bitmap, offset, &nofbitmaps, iso8583_len);
+  get_bitmap(pinfo, tvb, bitmap, offset, &nofbitmaps, iso8583_len);
 
   if(nofbitmaps == 0)
   {
@@ -937,8 +939,8 @@ static int dissect_iso8583_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
   {
     len = BM_LEN*2;
     exp = proto_tree_add_item(iso8583_tree, hf_iso8583_bitmap1, tvb,
-        offset, len, ENC_ASCII|ENC_NA);
-    if(!ishex_str((gchar *)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, len , ENC_ASCII), len))
+        offset, len, ENC_ASCII);
+    if(!ishex_str((gchar *)tvb_get_string_enc(pinfo->pool, tvb, offset, len , ENC_ASCII), len))
     {
       expert_add_info(pinfo, exp, &ei_iso8583_MALFORMED);
       return offset + len;
@@ -948,7 +950,7 @@ static int dissect_iso8583_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
   {
     gchar* hexstr;
     len = BM_LEN;
-    hexstr = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, len);
+    hexstr = tvb_bytes_to_str(pinfo->pool, tvb, offset, len);
     exp = proto_tree_add_string(iso8583_tree, hf_iso8583_bitmap1, tvb, offset, len, hexstr);
   }
   offset+=len;
@@ -959,8 +961,8 @@ static int dissect_iso8583_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     if(bin_encode_pref == BIN_ASCII_ENC)
     {
       exp = proto_tree_add_item(iso8583_tree, hf_iso8583_bitmap2, tvb,
-          offset, len, ENC_ASCII|ENC_NA);
-      if(!ishex_str((gchar *)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, len , ENC_ASCII), len))
+          offset, len, ENC_ASCII);
+      if(!ishex_str((gchar *)tvb_get_string_enc(pinfo->pool, tvb, offset, len , ENC_ASCII), len))
       {
         expert_add_info(pinfo, exp, &ei_iso8583_MALFORMED);
         return offset + len;
@@ -968,7 +970,7 @@ static int dissect_iso8583_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     }
     else
     {
-      gchar* hexstr = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, len);
+      gchar* hexstr = tvb_bytes_to_str(pinfo->pool, tvb, offset, len);
       exp = proto_tree_add_string(iso8583_tree, hf_iso8583_bitmap2, tvb, offset, len, hexstr);
     }
     offset+=len;
@@ -1013,17 +1015,17 @@ proto_register_iso8583(void)
     },
     { &hf_iso8583_mti,
       { "MTI", "iso8583.mti",
-        FT_STRING, STR_ASCII, NULL , 0,
+        FT_STRING, BASE_NONE, NULL , 0,
         "Message Type Indicator (MTI)", HFILL }
     },
     { &hf_iso8583_bitmap1,
       { "Bitmap 1", "iso8583.map1",
-        FT_STRING, STR_ASCII, NULL , 0,
+        FT_STRING, BASE_NONE, NULL , 0,
         "First Bitmap (hex representation)", HFILL }
     },
     { &hf_iso8583_bitmap2,
       { "Bitmap 2", "iso8583.map2",
-        FT_STRING, STR_ASCII, NULL , 0,
+        FT_STRING, BASE_NONE, NULL , 0,
         "Second Bitmap (hex representation)", HFILL }
     }
   };
@@ -1317,7 +1319,7 @@ proto_register_iso8583(void)
     else
     {
       hf_data[i].hfinfo.type = FT_STRING;
-      hf_data[i].hfinfo.display = STR_ASCII;
+      hf_data[i].hfinfo.display = BASE_NONE;
     }
     hf_data[i].hfinfo.strings = NULL;
     hf_data[i].hfinfo.bitmask = 0;
@@ -1328,6 +1330,9 @@ proto_register_iso8583(void)
 
   expert_iso8583 = expert_register_protocol(proto_iso8583);
   expert_register_field_array(expert_iso8583, ei, array_length(ei));
+
+  /* Register dissector handle */
+  iso8583_handle = register_dissector("iso8583", dissect_iso8583, proto_iso8583);
 
   /* Register preferences module */
   iso8583_module = prefs_register_protocol(proto_iso8583, NULL);
@@ -1351,10 +1356,6 @@ proto_register_iso8583(void)
 
 void proto_reg_handoff_iso8583(void)
 {
-  dissector_handle_t iso8583_handle;
-
-  iso8583_handle = create_dissector_handle(dissect_iso8583, proto_iso8583);
-
   dissector_add_for_decode_as_with_preference("tcp.port", iso8583_handle);
 }
 

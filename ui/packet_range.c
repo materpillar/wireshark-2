@@ -21,6 +21,8 @@
 
 #include "packet_range.h"
 
+#include <wsutil/ws_assert.h>
+
 /* (re-)calculate the packet counts (except the user specified range) */
 static void packet_range_calc(packet_range_t *range) {
     guint32       framenum;
@@ -48,13 +50,14 @@ static void packet_range_calc(packet_range_t *range) {
     range->displayed_marked_cnt             = 0;
     range->displayed_mark_range_cnt         = 0;
     range->displayed_plus_dependents_cnt    = 0;
+    range->displayed_plus_dependents_mark_range_cnt  = 0;
     range->displayed_ignored_cnt            = 0;
     range->displayed_ignored_selection_range_cnt  = 0;
     range->displayed_ignored_marked_cnt     = 0;
     range->displayed_ignored_mark_range_cnt = 0;
     range->displayed_ignored_user_range_cnt = 0;
 
-    g_assert(range->cf != NULL);
+    ws_assert(range->cf != NULL);
 
     /* XXX - this doesn't work unless you have a full set of frame_data
      * structures for all packets in the capture, which is not,
@@ -143,6 +146,10 @@ static void packet_range_calc(packet_range_t *range) {
                         range->displayed_ignored_mark_range_cnt++;
                     }
                 }
+                if (packet->passed_dfilter ||
+                    packet->dependent_of_displayed) {
+                    range->displayed_plus_dependents_mark_range_cnt++;
+                }
             }
         }
 
@@ -158,9 +165,10 @@ static void packet_range_calc_user(packet_range_t *range) {
     range->user_range_cnt                   = 0;
     range->ignored_user_range_cnt           = 0;
     range->displayed_user_range_cnt         = 0;
+    range->displayed_plus_dependents_user_range_cnt = 0;
     range->displayed_ignored_user_range_cnt = 0;
 
-    g_assert(range->cf != NULL);
+    ws_assert(range->cf != NULL);
 
     /* XXX - this doesn't work unless you have a full set of frame_data
      * structures for all packets in the capture, which is not,
@@ -196,6 +204,10 @@ static void packet_range_calc_user(packet_range_t *range) {
                         range->displayed_ignored_user_range_cnt++;
                     }
                 }
+                if (packet->passed_dfilter ||
+                    packet->dependent_of_displayed) {
+                    range->displayed_plus_dependents_user_range_cnt++;
+                }
             }
         }
     }
@@ -210,7 +222,7 @@ static void packet_range_calc_selection(packet_range_t *range) {
     range->displayed_selection_range_cnt         = 0;
     range->displayed_ignored_selection_range_cnt = 0;
 
-    g_assert(range->cf != NULL);
+    ws_assert(range->cf != NULL);
 
     if (range->cf->provider.frames != NULL) {
         for (framenum = 1; framenum <= range->cf->count; framenum++) {
@@ -292,7 +304,7 @@ range_process_e packet_range_process_packet(packet_range_t *range, frame_data *f
         return range_process_next;
     }
 
-    g_assert(range->cf != NULL);
+    ws_assert(range->cf != NULL);
 
     switch(range->process) {
     case(range_process_all):
@@ -329,12 +341,28 @@ range_process_e packet_range_process_packet(packet_range_t *range, frame_data *f
         }
         break;
     default:
-        g_assert_not_reached();
+        ws_assert_not_reached();
     }
 
     /* This packet has to pass the display filter but didn't?
      * Try next, but only if we're not including dependent packets and this
      * packet happens to be a dependency on something that is displayed.
+     */
+    /* XXX: We only track if a frame is depended upon by some displayed frame,
+     * not which of the other frames depend on it.
+     * For Selected and Marked frames, we never include depended upon packets,
+     * because we already returned above if the frame wasn't selected or
+     * marked.
+     * For Marked Range and User Range, we include packets in the range that
+     * any frame displayed, not just ones in the range, depend upon.
+     * We also don't include any frames outside the range that frames in the
+     * range depend upon. So we don't include some depended on frames we
+     * should, but include some unnecessary ones, with the problems mostly
+     * occuring at the beginning and end of the ranges.
+     * For ignored packets, since we don't dissect them, we don't know
+     * anything about packets they depend upon, which is helpful as we
+     * don't have to calculate more counts based on interaction terms. If
+     * someone wants to include those, then don't ignore the packet.
      */
     if ((range->process_filtered && fdata->passed_dfilter == FALSE) &&
         !(range->include_dependents && fdata->dependent_of_displayed)) {
@@ -361,7 +389,7 @@ void packet_range_convert_str(packet_range_t *range, const gchar *es)
     if (range->user_range != NULL)
         wmem_free(NULL, range->user_range);
 
-    g_assert(range->cf != NULL);
+    ws_assert(range->cf != NULL);
 
     ret = range_convert_str(NULL, &new_range, es, range->cf->count);
     if (ret != CVT_NO_ERROR) {
@@ -388,7 +416,7 @@ void packet_range_convert_selection_str(packet_range_t *range, const char *es)
     if (range->selection_range != NULL)
         wmem_free(NULL, range->selection_range);
 
-    g_assert(range->cf != NULL);
+    ws_assert(range->cf != NULL);
 
     ret = range_convert_str(NULL, &new_range, es, range->cf->count);
     if (ret != CVT_NO_ERROR) {
@@ -406,16 +434,3 @@ void packet_range_convert_selection_str(packet_range_t *range, const char *es)
     /* calculate new user specified packet range counts */
     packet_range_calc_selection(range);
 }
-
-/*
- * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
- *
- * Local variables:
- * c-basic-offset: 4
- * tab-width: 8
- * indent-tabs-mode: nil
- * End:
- *
- * vi: set shiftwidth=4 tabstop=8 expandtab:
- * :indentSize=4:tabSize=8:noTabs=true:
- */

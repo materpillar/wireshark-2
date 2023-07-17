@@ -20,6 +20,7 @@
 
 /* Initialize the protocol and registered fields */
 
+static dissector_handle_t wimaxmacphy_handle;
 static int proto_wimaxmacphy                                         = -1;
 static int hf_wimaxmacphy_hdr_phy_entity_id                          = -1;
 static int hf_wimaxmacphy_hdr_message_segmentation                   = -1;
@@ -2659,7 +2660,7 @@ proto_register_wimaxmacphy(void)
                 {
                     "Initial Frame Number (from PHY)",
                     "wimaxmacphy.prim_initial_frame_number",
-                    FT_UINT8,
+                    FT_UINT24,
                     BASE_DEC,
                     NULL,
                     0x0,
@@ -2761,8 +2762,7 @@ proto_register_wimaxmacphy(void)
             {
                 &hf_wimaxmacphy_prim_number_of_consecutive_frames_with_aas,
                 {
-                    "Number of consecutive frames with AAS Calibration Zone"
-                    " allocation",
+                    "Number of consecutive frames with AAS Calibration Zone allocation",
                     "wimaxmacphy.prim_number_of_consecutive_frames_with_aas",
                     FT_UINT8,
                     BASE_DEC,
@@ -2868,10 +2868,10 @@ proto_register_wimaxmacphy(void)
                 {
                     "Current Frame Number (lsb)",
                     "wimaxmacphy.prim_current_frame_number",
-                    FT_UINT8,
+                    FT_UINT16,
                     BASE_DEC,
                     NULL,
-                    0xf0,
+                    0x00f0,
                     NULL,
                     HFILL
                 }
@@ -2881,10 +2881,10 @@ proto_register_wimaxmacphy(void)
                 {
                     "ACID for HARQ data bursts",
                     "wimaxmacphy.prim_acid_for_harq_data_bursts",
-                    FT_UINT8,
+                    FT_UINT16,
                     BASE_DEC,
                     NULL,
-                    0x0f,
+                    0x000f,
                     NULL,
                     HFILL
                 }
@@ -3206,10 +3206,9 @@ proto_register_wimaxmacphy(void)
                 {
                     "Feedback sub-type",
                     "wimaxmacphy.prim_fast_feedback_sub_type",
-                    FT_UINT8,
+                    FT_UINT16,
                     BASE_DEC,
-                    VALS(
-                        wimaxmacphy_prim_fast_feedback_sub_type_vals),
+                    VALS(wimaxmacphy_prim_fast_feedback_sub_type_vals),
                     0x7000,
                     NULL,
                     HFILL
@@ -3402,7 +3401,7 @@ proto_register_wimaxmacphy(void)
                 {
                     "Number of Zone Descriptors",
                     "wimaxmacphy.number_of_zone_descriptors",
-                    FT_UINT8,
+                    FT_UINT24,
                     BASE_DEC,
                     NULL,
                     0x0,
@@ -3547,8 +3546,7 @@ proto_register_wimaxmacphy(void)
                     "wimaxmacphy.zone_disable_pusc_subchannel_rotation",
                     FT_UINT8,
                     BASE_DEC,
-                    VALS(
-                    wimaxmacphy_ul_zone_disable_pusc_subchannel_rotation_vals),
+                    VALS(wimaxmacphy_ul_zone_disable_pusc_subchannel_rotation_vals),
                     0x0f,
                     NULL,
                     HFILL
@@ -3951,8 +3949,7 @@ proto_register_wimaxmacphy(void)
             {
                 &hf_wimaxmacphy_dl_burst_map_number_of_slots,
                 {
-                    "Number of slots (duration) after repetition code is"
-                    " applied",
+                    "Number of slots (duration) after repetition code is applied",
                     "wimaxmacphy.burst_map_number_of_slots",
                     FT_UINT16,
                     BASE_DEC,
@@ -4424,8 +4421,7 @@ proto_register_wimaxmacphy(void)
                     "wimaxmacphy.burst_sounding_max_cyclic_shift_indx",
                     FT_UINT8,
                     BASE_DEC,
-                    VALS(
-                     wimaxmacphy_ul_burst_sounding_max_cyclic_shift_indx_vals),
+                    VALS(wimaxmacphy_ul_burst_sounding_max_cyclic_shift_indx_vals),
                     0x0,
                     NULL,
                     HFILL
@@ -4451,8 +4447,7 @@ proto_register_wimaxmacphy(void)
                     "wimaxmacphy.burst_sounding_decimation_offset_rand",
                     FT_UINT8,
                     BASE_DEC,
-                    VALS(
-                    wimaxmacphy_ul_burst_sounding_decimation_offset_rand_vals),
+                    VALS(wimaxmacphy_ul_burst_sounding_decimation_offset_rand_vals),
                     0x0,
                     NULL,
                     HFILL
@@ -4864,7 +4859,7 @@ proto_register_wimaxmacphy(void)
             {
                 &hf_wimaxmacphy_sub_burst_harq_chase_harq_channel_id,
                 {
-                    "HARQ channeld id (ACID)",
+                    "HARQ channel id (ACID)",
                     "wimaxmacphy.sub_burst_harq_chase_harq_channel_id",
                     FT_UINT8,
                     BASE_DEC,
@@ -5191,10 +5186,10 @@ proto_register_wimaxmacphy(void)
                 {
                     "ACID",
                     "wimaxmacphy.sub_burst_harq_ack_acid",
-                    FT_UINT8,
+                    FT_UINT32,
                     BASE_DEC,
                     NULL,
-                    0xf0,
+                    0x000000f0,
                     NULL,
                     HFILL
                 }
@@ -5207,7 +5202,7 @@ proto_register_wimaxmacphy(void)
                     FT_UINT32,
                     BASE_HEX,
                     NULL,
-                    0x0fff,
+                    0x00000fff,
                     NULL,
                     HFILL
                 }
@@ -5232,8 +5227,7 @@ proto_register_wimaxmacphy(void)
                     "wimaxmacphy.sub_burst_sounding_power_assignment_method",
                     FT_UINT8,
                     BASE_HEX,
-                    VALS(
-                      wimaxmacphy_ul_sub_burst_sounding_power_assignment_vals),
+                    VALS(wimaxmacphy_ul_sub_burst_sounding_power_assignment_vals),
                     0x0,
                     NULL,
                     HFILL
@@ -5259,8 +5253,7 @@ proto_register_wimaxmacphy(void)
                     "wimaxmacphy.sub_burst_sounding_allocation_mode",
                     FT_UINT8,
                     BASE_DEC,
-                    VALS(
-                       wimaxmacphy_ul_sub_burst_sounding_allocation_mode_vals),
+                    VALS(wimaxmacphy_ul_sub_burst_sounding_allocation_mode_vals),
                     0x0,
                     NULL,
                     HFILL
@@ -5414,6 +5407,7 @@ proto_register_wimaxmacphy(void)
         "WiMAX MAC-PHY over Ethernet",
         "WiMAX MAC-PHY",
         "wimaxmacphy");
+    wimaxmacphy_handle = register_dissector("wimaxmacphy", dissect_wimaxmacphy, proto_wimaxmacphy);
 
     /* Required function calls to register the header fields and subtrees
      * used */
@@ -5426,9 +5420,6 @@ proto_register_wimaxmacphy(void)
 void
 proto_reg_handoff_wimaxmacphy(void)
 {
-    dissector_handle_t wimaxmacphy_handle;
-
-    wimaxmacphy_handle = create_dissector_handle(dissect_wimaxmacphy, proto_wimaxmacphy);
     dissector_add_for_decode_as_with_preference("udp.port", wimaxmacphy_handle);
 }
 
